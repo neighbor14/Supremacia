@@ -1,40 +1,128 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
+import { Plus, Minus, Maximize2 } from 'lucide-react';
+
+const INITIAL_VB = { x: 0, y: 0, w: 1000, h: 500 };
+const MIN_W = 120;
+const MAX_W = 1000;
+const MIN_H = 60;
+const MAX_H = 500;
 
 export default function WorldMap() {
   const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone } = useGameStore();
-  const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 1000, h: 500 });
+  const [viewBox, setViewBox] = useState(INITIAL_VB);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [lastViewBox, setLastViewBox] = useState({ x: 0, y: 0 });
+  const [hasMoved, setHasMoved] = useState(false);
+
+  // Pinch-to-zoom state
+  const [pinchStartDist, setPinchStartDist] = useState(0);
+  const [pinchStartVB, setPinchStartVB] = useState(INITIAL_VB);
+  const [isPinching, setIsPinching] = useState(false);
 
   if (!game) return null;
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const factor = e.deltaY > 0 ? 1.1 : 0.9;
+  // --- Zoom helpers ---
+  const zoomBy = useCallback((factor: number, centerX?: number, centerY?: number) => {
     setViewBox(prev => {
-      const newW = Math.max(200, Math.min(1000, prev.w * factor));
-      const newH = Math.max(100, Math.min(500, prev.h * factor));
-      const dx = (prev.w - newW) / 2;
-      const dy = (prev.h - newH) / 2;
-      return { x: prev.x + dx, y: prev.y + dy, w: newW, h: newH };
+      const newW = Math.max(MIN_W, Math.min(MAX_W, prev.w * factor));
+      const newH = Math.max(MIN_H, Math.min(MAX_H, prev.h * factor));
+      // Zoom toward center of viewBox (or custom center)
+      const cx = centerX ?? (prev.x + prev.w / 2);
+      const cy = centerY ?? (prev.y + prev.h / 2);
+      const newX = cx - (newW / prev.w) * (cx - prev.x);
+      const newY = cy - (newH / prev.h) * (cy - prev.y);
+      return { x: newX, y: newY, w: newW, h: newH };
     });
   }, []);
 
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === 'touch' || e.button === 0) {
+  const resetZoom = useCallback(() => {
+    setViewBox(INITIAL_VB);
+  }, []);
+
+  // --- Mouse wheel zoom ---
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 1.15 : 0.87;
+    zoomBy(factor);
+  }, [zoomBy]);
+
+  // --- Touch handling for pinch-to-zoom + pan ---
+  const getTouchDist = (touches: React.TouchList) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // Start pinch
+      e.preventDefault();
+      setIsPinching(true);
+      setIsPanning(false);
+      setPinchStartDist(getTouchDist(e.touches));
+      setPinchStartVB({ ...viewBox });
+    } else if (e.touches.length === 1) {
+      // Start pan
       setIsPanning(true);
+      setHasMoved(false);
+      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+      setLastViewBox({ x: viewBox.x, y: viewBox.y });
+    }
+  }, [viewBox]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isPinching && e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getTouchDist(e.touches);
+      if (pinchStartDist === 0) return;
+      const scale = pinchStartDist / dist;
+      const newW = Math.max(MIN_W, Math.min(MAX_W, pinchStartVB.w * scale));
+      const newH = Math.max(MIN_H, Math.min(MAX_H, pinchStartVB.h * scale));
+      const dx = (pinchStartVB.w - newW) / 2;
+      const dy = (pinchStartVB.h - newH) / 2;
+      setViewBox({ x: pinchStartVB.x + dx, y: pinchStartVB.y + dy, w: newW, h: newH });
+    } else if (isPanning && e.touches.length === 1) {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const scaleX = viewBox.w / rect.width;
+      const scaleY = viewBox.h / rect.height;
+      const dx = (e.touches[0].clientX - panStart.x) * scaleX;
+      const dy = (e.touches[0].clientY - panStart.y) * scaleY;
+      const totalMove = Math.abs(e.touches[0].clientX - panStart.x) + Math.abs(e.touches[0].clientY - panStart.y);
+      if (totalMove > 8) setHasMoved(true);
+      setViewBox(prev => ({ ...prev, x: lastViewBox.x - dx, y: lastViewBox.y - dy }));
+    }
+  }, [isPinching, isPanning, pinchStartDist, pinchStartVB, panStart, lastViewBox, viewBox.w, viewBox.h]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      setIsPinching(false);
+    }
+    if (e.touches.length === 0) {
+      setIsPanning(false);
+    }
+  }, []);
+
+  // --- Mouse/pointer pan (desktop) ---
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return; // handled by touch events
+    if (e.button === 0) {
+      setIsPanning(true);
+      setHasMoved(false);
       setPanStart({ x: e.clientX, y: e.clientY });
       setLastViewBox({ x: viewBox.x, y: viewBox.y });
     }
   }, [viewBox]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
     if (!isPanning) return;
     const container = containerRef.current;
     if (!container) return;
@@ -43,6 +131,8 @@ export default function WorldMap() {
     const scaleY = viewBox.h / rect.height;
     const dx = (e.clientX - panStart.x) * scaleX;
     const dy = (e.clientY - panStart.y) * scaleY;
+    const totalMove = Math.abs(e.clientX - panStart.x) + Math.abs(e.clientY - panStart.y);
+    if (totalMove > 5) setHasMoved(true);
     setViewBox(prev => ({ ...prev, x: lastViewBox.x - dx, y: lastViewBox.y - dy }));
   }, [isPanning, panStart, lastViewBox, viewBox.w, viewBox.h]);
 
@@ -50,16 +140,17 @@ export default function WorldMap() {
     setIsPanning(false);
   }, []);
 
+  // --- Click handlers (only fire if not panning) ---
   const handleTerritoryClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isPanning) {
+    if (!hasMoved) {
       selectTerritory(id === selectedTerritory ? null : id);
     }
   };
 
   const handleSeaClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isPanning) {
+    if (!hasMoved) {
       selectSeaZone(id === selectedSeaZone ? null : id);
     }
   };
@@ -71,7 +162,7 @@ export default function WorldMap() {
     if (territory.owner) {
       return SUPERPOWERS[territory.owner].color;
     }
-    return '#475569'; // neutral
+    return '#475569';
   };
 
   const getSeaColor = (seaId: string): string => {
@@ -96,18 +187,24 @@ export default function WorldMap() {
     return total;
   };
 
+  // Zoom level indicator
+  const zoomLevel = Math.round((1000 / viewBox.w) * 100);
+
   return (
     <div
       ref={containerRef}
-      className="w-full h-full touch-none select-none"
+      className="w-full h-full select-none relative"
+      style={{ touchAction: 'none' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       <svg
-        ref={svgRef}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
         className="w-full h-full"
         style={{ background: '#0a1628' }}
@@ -120,7 +217,7 @@ export default function WorldMap() {
         </defs>
         <rect x="-100" y="-100" width="1200" height="700" fill="url(#grid)" />
 
-        {/* Sea zones (render first, behind territories) */}
+        {/* Sea zones */}
         {Object.values(game.seaZones).map(sea => (
           <g key={sea.id}>
             <path
@@ -132,7 +229,6 @@ export default function WorldMap() {
               onClick={(e) => handleSeaClick(sea.id, e)}
               className="cursor-pointer hover:opacity-80 transition-opacity"
             />
-            {/* Sea name */}
             <text
               x={sea.labelPos.x}
               y={sea.labelPos.y}
@@ -142,7 +238,6 @@ export default function WorldMap() {
             >
               {sea.name}
             </text>
-            {/* Navy count */}
             {getNavyCount(sea.id) > 0 && (
               <g>
                 <circle cx={sea.labelPos.x} cy={sea.labelPos.y + 10} r={6} fill="#1e293b" stroke="#60a5fa" strokeWidth={0.5} />
@@ -177,7 +272,6 @@ export default function WorldMap() {
                 onClick={(e) => handleTerritoryClick(territory.id, e)}
                 className="cursor-pointer hover:opacity-100 transition-opacity"
               />
-              {/* Territory name */}
               <text
                 x={territory.labelPos.x}
                 y={territory.labelPos.y - 5}
@@ -187,7 +281,6 @@ export default function WorldMap() {
               >
                 {territory.name}
               </text>
-              {/* Army count badge */}
               {armyCount > 0 && !territory.nuked && (
                 <g>
                   <circle cx={territory.labelPos.x} cy={territory.labelPos.y + 5} r={7} fill="#0f172a" stroke={color} strokeWidth={1} />
@@ -202,7 +295,6 @@ export default function WorldMap() {
                   </text>
                 </g>
               )}
-              {/* Nuke marker */}
               {territory.nuked && (
                 <text
                   x={territory.labelPos.x}
@@ -214,7 +306,6 @@ export default function WorldMap() {
                   ☢
                 </text>
               )}
-              {/* Port indicator */}
               {territory.hasPort && !territory.nuked && (
                 <circle
                   cx={territory.labelPos.x + 12}
@@ -228,6 +319,34 @@ export default function WorldMap() {
           );
         })}
       </svg>
+
+      {/* Zoom controls - floating buttons */}
+      <div className="absolute bottom-4 right-3 flex flex-col gap-1.5 z-10">
+        <button
+          onClick={() => zoomBy(0.7)}
+          className="w-10 h-10 rounded-lg bg-card/90 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-card active:scale-[0.93] transition-all shadow-lg"
+          aria-label="Zoom in"
+        >
+          <Plus size={20} />
+        </button>
+        <div className="text-center text-[10px] text-muted-foreground font-mono bg-card/70 rounded px-1 py-0.5">
+          {zoomLevel}%
+        </div>
+        <button
+          onClick={() => zoomBy(1.4)}
+          className="w-10 h-10 rounded-lg bg-card/90 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-card active:scale-[0.93] transition-all shadow-lg"
+          aria-label="Zoom out"
+        >
+          <Minus size={20} />
+        </button>
+        <button
+          onClick={resetZoom}
+          className="w-10 h-10 rounded-lg bg-card/90 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-card active:scale-[0.93] transition-all shadow-lg mt-1"
+          aria-label="Reset zoom"
+        >
+          <Maximize2 size={16} />
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useGameStore } from '../game/store';
 import WorldMap from '../ui/WorldMap';
@@ -8,6 +8,7 @@ import BottomSheet from '../ui/BottomSheet';
 import CombatModal from '../ui/CombatModal';
 import NuclearModal from '../ui/NuclearModal';
 import GameOverModal from '../ui/GameOverModal';
+import TurnTutorial from '../ui/TurnTutorial';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
@@ -41,6 +42,8 @@ export default function GameScreen() {
       {/* Middle: Map */}
       <div className="flex-1 relative overflow-hidden">
         <WorldMap />
+        {/* Tutorial overlay inside map area */}
+        <TurnTutorial />
       </div>
 
       {/* Bottom: Player Status */}
