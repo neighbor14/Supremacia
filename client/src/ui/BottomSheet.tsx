@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGameStore } from '../game/store';
+import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { ResourceType, UnitType, TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
@@ -182,8 +183,10 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
   const handleTransaction = (resource: ResourceType) => {
     const qty = quantities[resource];
     if (mode === 'sell') {
+      playSound('resource-loss', 0.6);
       dispatch({ type: 'SELL_RESOURCE', resource, quantity: qty });
     } else {
+      playSound('resource-gain', 0.6);
       dispatch({ type: 'BUY_RESOURCE', resource, quantity: qty });
     }
   };
@@ -270,14 +273,20 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
               {/* Quantity control */}
               <div className="flex items-center gap-0.5 shrink-0">
                 <button
-                  onClick={() => adjustQty(r, -1)}
+                  onClick={() => {
+                    playSound('button-click', 0.5);
+                    adjustQty(r, -1);
+                  }}
                   className="w-5 h-5 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
                 >
                   <MinusIcon size={10} />
                 </button>
                 <span className="text-[11px] font-mono-num w-4 text-center">{quantities[r]}</span>
                 <button
-                  onClick={() => adjustQty(r, 1)}
+                  onClick={() => {
+                    playSound('button-click', 0.5);
+                    adjustQty(r, 1);
+                  }}
                   className="w-5 h-5 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
                 >
                   <Plus size={10} />

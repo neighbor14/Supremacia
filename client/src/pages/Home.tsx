@@ -16,7 +16,7 @@ export default function Home() {
 
   const handleSelectSuperpower = (id: SuperpowerId) => {
     startGame(id);
-    setLocation('/game');
+    setLocation('/setup');
   };
 
   const handleContinue = () => {

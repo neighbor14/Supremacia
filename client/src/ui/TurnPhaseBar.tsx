@@ -1,4 +1,5 @@
 import { useGameStore } from '../game/store';
+import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { TurnStage } from '../game/types';
 
@@ -23,6 +24,7 @@ export default function TurnPhaseBar() {
 
   const handleStageAction = () => {
     if (!isHuman) return;
+    playSound('button-click', 0.6);
     if (turn.stage === 1) {
       dispatch({ type: 'PAY_SALARIES' });
       dispatch({ type: 'NEXT_STAGE' });
@@ -36,12 +38,19 @@ export default function TurnPhaseBar() {
     if (!isHuman || stage <= 2) return;
     if (turn.optionalStagesUsed.length >= 3) return;
     if (turn.optionalStagesUsed.includes(stage)) return;
+    playSound('button-click', 0.6);
     dispatch({ type: 'NEXT_STAGE' });
   };
 
   const handleEndTurn = () => {
     if (!isHuman) return;
+    playSound('button-click', 0.7);
     dispatch({ type: 'END_TURN' });
+  };
+
+  const handleSkipStage = () => {
+    playSound('button-click', 0.6);
+    dispatch({ type: 'SKIP_STAGE' });
   };
 
   return (
@@ -100,7 +109,7 @@ export default function TurnPhaseBar() {
           </span>
           <div className="flex-1" />
           <button
-            onClick={() => dispatch({ type: 'SKIP_STAGE' })}
+            onClick={handleSkipStage}
             className="text-[10px] px-2 py-1 bg-secondary text-secondary-foreground rounded uppercase tracking-wider hover:bg-secondary/80 active:scale-[0.97]"
             style={{ fontFamily: 'var(--font-display)' }}
           >

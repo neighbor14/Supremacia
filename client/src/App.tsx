@@ -5,12 +5,14 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import SetupScreen from "./pages/SetupScreen";
 import GameScreen from "./pages/GameScreen";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/setup" component={SetupScreen} />
       <Route path="/game" component={GameScreen} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

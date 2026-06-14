@@ -1,0 +1,11 @@
+{
+  "name": "Supremacia Digital",
+  "short_name": "Supremacia",
+  "description": "Simulador Geopolítico Digital",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "icons": []
+}
