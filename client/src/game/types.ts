@@ -87,6 +87,7 @@ export interface TurnState {
 
 export interface MarketState {
   prices: Record<ResourceType, number>;
+  priceHistory: Array<{ turn: number; grain: number; oil: number; mineral: number }>;
   minPrice: number;
   maxPrice: number;
   priceStep: number;

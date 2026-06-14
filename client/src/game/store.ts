@@ -140,6 +140,17 @@ function advanceToNextPlayer(state: GameState): void {
     state.turn.turnNumber++;
     state.turn.currentPlayerIndex = 0;
     state.turn.isFirstTurn = false;
+    // Record price history at end of round
+    state.market.priceHistory.push({
+      turn: state.turn.turnNumber,
+      grain: state.market.prices.grain,
+      oil: state.market.prices.oil,
+      mineral: state.market.prices.mineral,
+    });
+    // Keep last 20 entries
+    if (state.market.priceHistory.length > 20) {
+      state.market.priceHistory = state.market.priceHistory.slice(-20);
+    }
     // Filter eliminated players
     state.turn.playerOrder = state.turn.playerOrder.filter(id => !state.players[id].isEliminated);
     if (state.turn.playerOrder.length <= 1) {

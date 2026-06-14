@@ -58,6 +58,7 @@ export function createInitialGameState(humanPlayer: SuperpowerId = 'usa'): GameS
   // Market
   const market: MarketState = {
     prices: { grain: RULES.MARKET_START_PRICE, oil: RULES.MARKET_START_PRICE, mineral: RULES.MARKET_START_PRICE },
+    priceHistory: [{ turn: 0, grain: RULES.MARKET_START_PRICE, oil: RULES.MARKET_START_PRICE, mineral: RULES.MARKET_START_PRICE }],
     minPrice: RULES.MARKET_MIN_PRICE,
     maxPrice: RULES.MARKET_MAX_PRICE,
     priceStep: RULES.MARKET_PRICE_STEP,
