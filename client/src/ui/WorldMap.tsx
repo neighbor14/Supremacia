@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
@@ -59,6 +59,14 @@ export default function WorldMap() {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
+  const getTouchCenter = (touches: React.TouchList) => {
+    if (touches.length < 2) return { x: 0, y: 0 };
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    };
+  };
+
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       // Start pinch
@@ -67,27 +75,35 @@ export default function WorldMap() {
       setIsPanning(false);
       setPinchStartDist(getTouchDist(e.touches));
       setPinchStartVB({ ...viewBox });
-    } else if (e.touches.length === 1) {
-      // Start pan
+    } else if (e.touches.length === 1 && !isPinching) {
+      // Start pan only if not already pinching
       setIsPanning(true);
       setHasMoved(false);
       setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
       setLastViewBox({ x: viewBox.x, y: viewBox.y });
     }
-  }, [viewBox]);
+  }, [viewBox, isPinching]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (isPinching && e.touches.length === 2) {
       e.preventDefault();
       const dist = getTouchDist(e.touches);
       if (pinchStartDist === 0) return;
-      const scale = pinchStartDist / dist;
-      const newW = Math.max(MIN_W, Math.min(MAX_W, pinchStartVB.w * scale));
-      const newH = Math.max(MIN_H, Math.min(MAX_H, pinchStartVB.h * scale));
-      const dx = (pinchStartVB.w - newW) / 2;
-      const dy = (pinchStartVB.h - newH) / 2;
-      setViewBox({ x: pinchStartVB.x + dx, y: pinchStartVB.y + dy, w: newW, h: newH });
-    } else if (isPanning && e.touches.length === 1) {
+      
+      // Calculate zoom factor
+      const scale = dist / pinchStartDist;
+      const newW = Math.max(MIN_W, Math.min(MAX_W, pinchStartVB.w / scale));
+      const newH = Math.max(MIN_H, Math.min(MAX_H, pinchStartVB.h / scale));
+      
+      // Keep center fixed during pinch zoom
+      const centerX = pinchStartVB.x + pinchStartVB.w / 2;
+      const centerY = pinchStartVB.y + pinchStartVB.h / 2;
+      const newX = centerX - newW / 2;
+      const newY = centerY - newH / 2;
+      
+      setViewBox({ x: newX, y: newY, w: newW, h: newH });
+    } else if (isPanning && e.touches.length === 1 && !isPinching) {
+      e.preventDefault();
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -193,159 +209,113 @@ export default function WorldMap() {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full select-none relative"
+      className="w-full h-full select-none relative bg-slate-950"
       style={{ touchAction: 'none' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
-      onWheel={handleWheel}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onWheel={handleWheel}
     >
+      {/* SVG Map */}
       <svg
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
         className="w-full h-full"
-        style={{ background: '#0a1628' }}
+        style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
       >
-        {/* Grid lines */}
-        <defs>
-          <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-            <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1e293b" strokeWidth="0.3" />
-          </pattern>
-        </defs>
-        <rect x="-100" y="-100" width="1200" height="700" fill="url(#grid)" />
-
         {/* Sea zones */}
-        {Object.values(game.seaZones).map(sea => (
-          <g key={sea.id}>
+        {Object.entries(game.seaZones).map(([seaId, sea]) => (
+          <path
+            key={seaId}
+            d={sea.path}
+            fill={getSeaColor(seaId)}
+            stroke={selectedSeaZone === seaId ? '#fbbf24' : '#1e40af'}
+            strokeWidth={selectedSeaZone === seaId ? 3 : 1}
+            opacity={0.6}
+            onClick={(e) => handleSeaClick(seaId, e as any)}
+            style={{ cursor: 'pointer' }}
+          />
+        ))}
+
+        {/* Territories */}
+        {Object.entries(game.territories).map(([territoryId, territory]) => (
+          <g key={territoryId}>
             <path
-              d={sea.svgPath}
-              fill={getSeaColor(sea.id)}
-              stroke={selectedSeaZone === sea.id ? '#60a5fa' : '#1e3a5f'}
-              strokeWidth={selectedSeaZone === sea.id ? 2 : 0.5}
-              opacity={0.6}
-              onClick={(e) => handleSeaClick(sea.id, e)}
-              className="cursor-pointer hover:opacity-80 transition-opacity"
+              d={territory.path}
+              fill={getTerritoryColor(territoryId)}
+              stroke={selectedTerritory === territoryId ? '#fbbf24' : '#475569'}
+              strokeWidth={selectedTerritory === territoryId ? 2 : 0.5}
+              onClick={(e) => handleTerritoryClick(territoryId, e as any)}
+              style={{ cursor: 'pointer' }}
             />
-            <text
-              x={sea.labelPos.x}
-              y={sea.labelPos.y}
-              textAnchor="middle"
-              className="pointer-events-none"
-              style={{ fontSize: '6px', fill: '#64748b', fontFamily: 'var(--font-body)' }}
-            >
-              {sea.name}
-            </text>
-            {getNavyCount(sea.id) > 0 && (
-              <g>
-                <circle cx={sea.labelPos.x} cy={sea.labelPos.y + 10} r={6} fill="#1e293b" stroke="#60a5fa" strokeWidth={0.5} />
-                <text
-                  x={sea.labelPos.x}
-                  y={sea.labelPos.y + 13}
-                  textAnchor="middle"
-                  style={{ fontSize: '7px', fill: '#60a5fa', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}
-                  className="pointer-events-none"
-                >
-                  {getNavyCount(sea.id)}
-                </text>
-              </g>
+            {/* Army count label */}
+            {getArmyCount(territoryId) > 0 && (
+              <text
+                x={territory.labelX}
+                y={territory.labelY}
+                fill="#fef3c7"
+                fontSize="12"
+                fontWeight="bold"
+                textAnchor="middle"
+                pointerEvents="none"
+              >
+                {getArmyCount(territoryId)}
+              </text>
             )}
           </g>
         ))}
 
-        {/* Territories */}
-        {Object.values(game.territories).map(territory => {
-          const isSelected = selectedTerritory === territory.id;
-          const color = getTerritoryColor(territory.id);
-          const armyCount = getArmyCount(territory.id);
-
+        {/* Navy count labels */}
+        {Object.entries(game.seaZones).map(([seaId, sea]) => {
+          const count = getNavyCount(seaId);
+          if (count === 0) return null;
           return (
-            <g key={territory.id}>
-              <path
-                d={territory.svgPath}
-                fill={color}
-                stroke={isSelected ? '#fbbf24' : '#0f172a'}
-                strokeWidth={isSelected ? 2 : 1}
-                opacity={territory.nuked ? 0.3 : 0.85}
-                onClick={(e) => handleTerritoryClick(territory.id, e)}
-                className="cursor-pointer hover:opacity-100 transition-opacity"
-              />
-              <text
-                x={territory.labelPos.x}
-                y={territory.labelPos.y - 5}
-                textAnchor="middle"
-                className="pointer-events-none"
-                style={{ fontSize: '5.5px', fill: '#f8fafc', fontFamily: 'var(--font-display)', fontWeight: 600, textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}
-              >
-                {territory.name}
-              </text>
-              {armyCount > 0 && !territory.nuked && (
-                <g>
-                  <circle cx={territory.labelPos.x} cy={territory.labelPos.y + 5} r={7} fill="#0f172a" stroke={color} strokeWidth={1} />
-                  <text
-                    x={territory.labelPos.x}
-                    y={territory.labelPos.y + 8}
-                    textAnchor="middle"
-                    style={{ fontSize: '7px', fill: '#f8fafc', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}
-                    className="pointer-events-none"
-                  >
-                    {armyCount}
-                  </text>
-                </g>
-              )}
-              {territory.nuked && (
-                <text
-                  x={territory.labelPos.x}
-                  y={territory.labelPos.y + 5}
-                  textAnchor="middle"
-                  style={{ fontSize: '14px' }}
-                  className="pointer-events-none"
-                >
-                  ☢
-                </text>
-              )}
-              {territory.hasPort && !territory.nuked && (
-                <circle
-                  cx={territory.labelPos.x + 12}
-                  cy={territory.labelPos.y - 5}
-                  r={2}
-                  fill="#f8fafc"
-                  className="pointer-events-none"
-                />
-              )}
-            </g>
+            <text
+              key={`navy-${seaId}`}
+              x={sea.labelX}
+              y={sea.labelY}
+              fill="#93c5fd"
+              fontSize="10"
+              fontWeight="bold"
+              textAnchor="middle"
+              pointerEvents="none"
+            >
+              ⚓ {count}
+            </text>
           );
         })}
       </svg>
 
-      {/* Zoom controls - floating buttons */}
-      <div className="absolute bottom-4 right-3 flex flex-col gap-1.5 z-10">
+      {/* Zoom Controls - Bottom Right */}
+      <div className="absolute bottom-4 right-4 flex flex-col gap-2">
         <button
-          onClick={() => zoomBy(0.7)}
-          className="w-10 h-10 rounded-lg bg-card/90 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-card active:scale-[0.93] transition-all shadow-lg"
-          aria-label="Zoom in"
+          onClick={() => zoomBy(0.87)}
+          className="w-10 h-10 rounded bg-primary/80 hover:bg-primary text-primary-foreground flex items-center justify-center active:scale-[0.9] transition-all"
+          title="Zoom out"
         >
-          <Plus size={20} />
+          <Minus size={18} />
         </button>
-        <div className="text-center text-[10px] text-muted-foreground font-mono bg-card/70 rounded px-1 py-0.5">
-          {zoomLevel}%
-        </div>
         <button
-          onClick={() => zoomBy(1.4)}
-          className="w-10 h-10 rounded-lg bg-card/90 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-card active:scale-[0.93] transition-all shadow-lg"
-          aria-label="Zoom out"
+          onClick={() => zoomBy(1.15)}
+          className="w-10 h-10 rounded bg-primary/80 hover:bg-primary text-primary-foreground flex items-center justify-center active:scale-[0.9] transition-all"
+          title="Zoom in"
         >
-          <Minus size={20} />
+          <Plus size={18} />
         </button>
         <button
           onClick={resetZoom}
-          className="w-10 h-10 rounded-lg bg-card/90 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-card active:scale-[0.93] transition-all shadow-lg mt-1"
-          aria-label="Reset zoom"
+          className="w-10 h-10 rounded bg-secondary/80 hover:bg-secondary text-secondary-foreground flex items-center justify-center active:scale-[0.9] transition-all"
+          title="Reset zoom"
         >
-          <Maximize2 size={16} />
+          <Maximize2 size={18} />
         </button>
+      </div>
+
+      {/* Zoom Level Indicator */}
+      <div className="absolute bottom-4 left-4 px-3 py-2 rounded bg-background/80 backdrop-blur-sm border border-border text-xs font-mono text-muted-foreground">
+        {zoomLevel}%
       </div>
     </div>
   );
