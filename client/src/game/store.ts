@@ -180,13 +180,28 @@ function canUseOptionalStage(state: GameState, stage: TurnStage): boolean {
 
 function nextStage(state: GameState): void {
   const current = state.turn.stage;
+  const player = state.players[state.turn.currentPlayer];
+  
   if (current === 1) {
     state.turn.stage = 2;
   } else if (current === 2) {
-    // After mandatory stages, player can choose optional or end turn
-    state.turn.stage = 3; // Default to first optional
+    // After mandatory stages, human player chooses which optional stage to go to
+    // For CPU, auto-advance to first available optional
+    if (player.isHuman) {
+      // Stay at stage 2 with stageComplete=true to signal "ready to choose"
+      state.turn.stageComplete = true;
+      return; // Don't reset stageComplete below
+    } else {
+      state.turn.stage = 3;
+    }
   } else {
-    // Find next available optional stage
+    // After completing an optional stage, human chooses next or ends turn
+    if (player.isHuman) {
+      // Mark current stage as used and wait for player choice
+      state.turn.stageComplete = true;
+      return;
+    }
+    // For CPU: find next available optional stage
     const nextOptions = RULES.OPTIONAL_STAGES.filter(s => s > current && canUseOptionalStage(state, s));
     if (nextOptions.length > 0 && state.turn.optionalStagesUsed.length < RULES.MAX_OPTIONAL_STAGES) {
       state.turn.stage = nextOptions[0];
@@ -999,6 +1014,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (state.turn.stage > 2) {
           nextStage(state);
         }
+        break;
+      case 'SELECT_OPTIONAL_STAGE':
+        selectOptionalStage(state, action.stage);
         break;
       case 'END_TURN':
         advanceToNextPlayer(state);

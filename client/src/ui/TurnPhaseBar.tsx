@@ -13,6 +13,16 @@ const STAGE_NAMES: Record<number, string> = {
   7: 'Comprar',
 };
 
+const STAGE_ICONS: Record<number, string> = {
+  1: '💰',
+  2: '🏭',
+  3: '📈',
+  4: '⚔️',
+  5: '🚀',
+  6: '🏗️',
+  7: '🛒',
+};
+
 export default function TurnPhaseBar() {
   const { game, dispatch } = useGameStore();
   if (!game) return null;
@@ -22,26 +32,27 @@ export default function TurnPhaseBar() {
   const sp = SUPERPOWERS[turn.currentPlayer];
   const isHuman = currentPlayer.isHuman;
 
-  const handleStageAction = () => {
+  // After mandatory stages complete, player is in "choosing" mode
+  const isChoosingPhase = isHuman && turn.stage >= 2 && turn.stageComplete;
+
+  const handleMandatoryAction = () => {
     if (!isHuman) return;
     playSound('button-click', 0.6);
     if (turn.stage === 1) {
       dispatch({ type: 'PAY_SALARIES' });
       dispatch({ type: 'NEXT_STAGE' });
-    } else if (turn.stage === 2) {
+    } else if (turn.stage === 2 && !turn.stageComplete) {
       dispatch({ type: 'TRANSFER_PRODUCTION' });
       dispatch({ type: 'NEXT_STAGE' });
     }
   };
 
-  const handleSelectStage = (stage: TurnStage) => {
-    if (!isHuman || stage <= 2) return;
+  const handleSelectOptionalStage = (stage: TurnStage) => {
+    if (!isHuman) return;
     if (turn.optionalStagesUsed.length >= 3) return;
     if (turn.optionalStagesUsed.includes(stage)) return;
-    // Skip/advance stages until we reach the target stage
-    while (turn.stage < stage) {
-      dispatch({ type: 'NEXT_STAGE' });
-    }
+    playSound('turn-start', 0.5);
+    dispatch({ type: 'SELECT_OPTIONAL_STAGE', stage });
   };
 
   const handleEndTurn = () => {
@@ -52,7 +63,18 @@ export default function TurnPhaseBar() {
 
   const handleSkipStage = () => {
     playSound('button-click', 0.6);
-    dispatch({ type: 'SKIP_STAGE' });
+    dispatch({ type: 'NEXT_STAGE' });
+  };
+
+  // Check which optional stages are still available
+  const getStageAvailability = (stage: number) => {
+    if (stage <= 2) return 'mandatory';
+    if (turn.optionalStagesUsed.includes(stage as TurnStage)) return 'used';
+    // Must be in order: stage must be > last used optional
+    const lastUsed = turn.optionalStagesUsed[turn.optionalStagesUsed.length - 1] || 2;
+    if (stage <= lastUsed) return 'past';
+    if (turn.optionalStagesUsed.length >= 3) return 'locked';
+    return 'available';
   };
 
   return (
@@ -73,66 +95,113 @@ export default function TurnPhaseBar() {
         </span>
       </div>
 
-      {/* Stage indicators */}
-      <div className="flex items-center gap-1">
-        {[1, 2, 3, 4, 5, 6, 7].map(stage => {
-          const isCurrent = turn.stage === stage;
-          const isUsed = turn.optionalStagesUsed.includes(stage as TurnStage);
-          const isMandatory = stage <= 2;
-          const isPast = stage < turn.stage || (stage <= 2 && turn.stage > 2);
+      {/* Choosing mode: show clear selection UI */}
+      {isChoosingPhase ? (
+        <div>
+          <p className="text-[10px] text-emerald-400 mb-1.5 font-medium uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
+            Escolha sua próxima ação ({turn.optionalStagesUsed.length}/3 usadas):
+          </p>
+          <div className="flex items-center gap-1">
+            {[3, 4, 5, 6, 7].map(stage => {
+              const availability = getStageAvailability(stage);
+              const isAvailable = availability === 'available';
 
-          return (
+              return (
+                <button
+                  key={stage}
+                  onClick={() => isAvailable && handleSelectOptionalStage(stage as TurnStage)}
+                  disabled={!isAvailable}
+                  className={`
+                    flex-1 py-2 px-1 rounded text-center transition-all text-[10px] uppercase tracking-wider
+                    ${isAvailable
+                      ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 active:scale-[0.95] animate-pulse-subtle'
+                      : availability === 'used'
+                        ? 'bg-secondary/30 text-muted-foreground/50 line-through'
+                        : 'bg-secondary/30 text-muted-foreground/30 cursor-not-allowed'
+                    }
+                  `}
+                  style={{ fontFamily: 'var(--font-display)' }}
+                  title={
+                    availability === 'used' ? 'Já usada neste turno'
+                    : availability === 'past' ? 'Não pode voltar atrás'
+                    : availability === 'locked' ? 'Limite de 3 atingido'
+                    : 'Clique para selecionar'
+                  }
+                >
+                  <span className="block text-sm mb-0.5">{STAGE_ICONS[stage]}</span>
+                  {STAGE_NAMES[stage]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-end mt-2">
             <button
-              key={stage}
-              onClick={() => {
-                if (!isHuman) return;
-                playSound('button-click', 0.5);
-                if (isCurrent && stage <= 2) {
-                  handleStageAction();
-                } else if (!isCurrent && !isPast && !isUsed && stage > 2) {
-                  // Jump to this optional stage
-                  handleSelectStage(stage as TurnStage);
-                }
-              }}
-              disabled={!isHuman || (isPast && !isCurrent) || (isUsed && !isCurrent)}
-              className={`
-                flex-1 py-1.5 px-1 rounded text-center transition-all text-[10px] uppercase tracking-wider cursor-pointer
-                ${isCurrent ? 'bg-primary text-primary-foreground ring-1 ring-primary/50' : ''}
-                ${isPast ? 'bg-secondary/50 text-muted-foreground' : ''}
-                ${isUsed && !isCurrent ? 'bg-accent text-accent-foreground' : ''}
-                ${!isCurrent && !isPast && !isUsed && stage > 2 ? 'bg-secondary/70 text-secondary-foreground hover:bg-secondary active:scale-[0.97]' : ''}
-              `}
+              onClick={handleEndTurn}
+              className="text-[10px] px-3 py-1.5 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
-              title={isUsed ? 'Já usada' : isPast ? 'Passada' : isCurrent ? 'Atual' : 'Clique para ir'}
             >
-              {STAGE_NAMES[stage]}
+              Encerrar Turno
             </button>
-          );
-        })}
-      </div>
-
-      {/* Action buttons */}
-      {isHuman && turn.stage > 2 && (
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-[10px] text-muted-foreground">
-            Opcionais: {turn.optionalStagesUsed.length}/3
-          </span>
-          <div className="flex-1" />
-          <button
-            onClick={handleSkipStage}
-            className="text-[10px] px-2 py-1 bg-secondary text-secondary-foreground rounded uppercase tracking-wider hover:bg-secondary/80 active:scale-[0.97]"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Pular
-          </button>
-          <button
-            onClick={handleEndTurn}
-            className="text-[10px] px-2 py-1 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.97]"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Encerrar Turno
-          </button>
+          </div>
         </div>
+      ) : (
+        <>
+          {/* Normal stage indicators */}
+          <div className="flex items-center gap-1">
+            {[1, 2, 3, 4, 5, 6, 7].map(stage => {
+              const isCurrent = turn.stage === stage && !turn.stageComplete;
+              const isUsed = turn.optionalStagesUsed.includes(stage as TurnStage);
+              const isPast = stage < turn.stage || (stage <= 2 && turn.stage > 2);
+
+              return (
+                <button
+                  key={stage}
+                  onClick={() => {
+                    if (!isHuman) return;
+                    if (isCurrent && stage <= 2) {
+                      handleMandatoryAction();
+                    }
+                  }}
+                  disabled={!isHuman || !isCurrent}
+                  className={`
+                    flex-1 py-1.5 px-1 rounded text-center transition-all text-[10px] uppercase tracking-wider
+                    ${isCurrent ? 'bg-primary text-primary-foreground ring-1 ring-primary/50 cursor-pointer' : ''}
+                    ${isPast && !isCurrent ? 'bg-secondary/50 text-muted-foreground' : ''}
+                    ${isUsed && !isCurrent ? 'bg-accent/50 text-accent-foreground/70' : ''}
+                    ${!isCurrent && !isPast && !isUsed ? 'bg-secondary/30 text-muted-foreground/50' : ''}
+                  `}
+                  style={{ fontFamily: 'var(--font-display)' }}
+                >
+                  {STAGE_NAMES[stage]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Action buttons during an active optional stage */}
+          {isHuman && turn.stage > 2 && !turn.stageComplete && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-[10px] text-muted-foreground">
+                Fase: {STAGE_NAMES[turn.stage]}
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={handleSkipStage}
+                className="text-[10px] px-2 py-1 bg-secondary text-secondary-foreground rounded uppercase tracking-wider hover:bg-secondary/80 active:scale-[0.97]"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                Concluir Fase
+              </button>
+              <button
+                onClick={handleEndTurn}
+                className="text-[10px] px-2 py-1 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.97]"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                Encerrar Turno
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

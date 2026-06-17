@@ -179,4 +179,5 @@ export type GameAction =
   | { type: 'PAY_LOAN'; amount: number }
   | { type: 'CPU_TURN' }
   | { type: 'LOAD_GAME'; state: GameState }
+  | { type: 'SELECT_OPTIONAL_STAGE'; stage: TurnStage }
   | { type: 'DECLARE_DETENTE' };
