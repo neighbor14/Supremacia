@@ -2,20 +2,29 @@ import { useState } from 'react';
 import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
-import { ResourceType, UnitType, TurnStage } from '../game/types';
+import { ResourceType, TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
-import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Search } from 'lucide-react';
 import ProspectPanel from './ProspectPanel';
 
 export default function BottomSheet() {
-  const { game, selectedTerritory, selectedSeaZone, dispatch, uiMode, setUiMode, selectTerritory } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory } = useGameStore();
   if (!game) return null;
 
   const { turn } = game;
   const currentPlayer = game.players[turn.currentPlayer];
   const isHuman = currentPlayer.isHuman;
 
-  // Show territory details
+  // Phase panels take priority - territory details shown inline
+  if (isHuman) {
+    if (turn.stage === 3) return <MarketPanel mode="sell" />;
+    if (turn.stage === 7) return <BuyAndProspectPanel />;
+    if (turn.stage === 6) return <BuildPanel />;
+    if (turn.stage === 5) return <MovePanel />;
+    if (turn.stage === 4) return <AttackPanel />;
+  }
+
+  // Show territory details only when no phase panel is active
   if (selectedTerritory) {
     const territory = game.territories[selectedTerritory];
     if (!territory) return null;
@@ -26,7 +35,7 @@ export default function BottomSheet() {
     }
 
     return (
-      <div className="absolute bottom-14 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10">
+      <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             {ownerSp && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ownerSp.color }} />}
@@ -34,7 +43,9 @@ export default function BottomSheet() {
               {territory.name}
             </h3>
           </div>
-          <button onClick={() => selectTerritory(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+          <button onClick={() => selectTerritory(null)} className="w-6 h-6 flex items-center justify-center rounded bg-secondary hover:bg-secondary/80">
+            <X size={12} />
+          </button>
         </div>
 
         {territory.nuked && (
@@ -47,98 +58,29 @@ export default function BottomSheet() {
             {Object.entries(armiesHere).map(([pid, count]) => (
               <div key={pid} className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: SUPERPOWERS[pid as keyof typeof SUPERPOWERS].color }} />
-                <span className="text-xs font-mono-num">{count} exército(s)</span>
+                <span className="text-xs font-mono">{count} exército(s)</span>
               </div>
             ))}
           </div>
         )}
 
-        {/* Actions for human player */}
-        {isHuman && !territory.nuked && (
-          <TerritoryActions territoryId={selectedTerritory} />
-        )}
-      </div>
-    );
-  }
-
-  // Show market/build/move panels based on current stage
-  if (isHuman && turn.stage === 3) return <MarketPanel mode="sell" />;
-  if (isHuman && turn.stage === 7) return <ProspectPanel />;
-  if (isHuman && turn.stage === 6) return <BuildPanel />;
-  if (isHuman && turn.stage === 5) return <MovePanel />;
-  if (isHuman && turn.stage === 4) return <AttackPanel />;
-
-  return null;
-}
-
-function TerritoryActions({ territoryId }: { territoryId: string }) {
-  const { game, dispatch } = useGameStore();
-  if (!game) return null;
-
-  const { turn } = game;
-  const player = game.players[turn.currentPlayer];
-  const territory = game.territories[territoryId];
-  const myArmies = player.armies[territoryId] || 0;
-
-  // Move action (stage 5)
-  if (turn.stage === 5 && myArmies > 0) {
-    const adjacents = territory.adjacentTerritories.filter(t => !game.territories[t]?.nuked);
-    return (
-      <div>
-        <p className="text-[10px] text-muted-foreground uppercase mb-1" style={{ fontFamily: 'var(--font-display)' }}>Mover exércitos de {territory.name}</p>
-        <div className="flex flex-wrap gap-1">
-          {adjacents.map(adjId => (
-            <button
-              key={adjId}
-              onClick={() => dispatch({ type: 'MOVE_ARMY', from: territoryId, to: adjId, count: 1 })}
-              className="text-[10px] px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 active:scale-[0.97]"
-            >
-              → {game.territories[adjId]?.name}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Attack action (stage 4)
-  if (turn.stage === 4 && myArmies > 1) {
-    const targets = territory.adjacentTerritories.filter(t => {
-      const adj = game.territories[t];
-      if (!adj || adj.nuked) return false;
-      return adj.owner !== player.id;
-    });
-    if (targets.length > 0) {
-      return (
-        <div>
-          <p className="text-[10px] text-muted-foreground uppercase mb-1" style={{ fontFamily: 'var(--font-display)' }}>Atacar a partir de {territory.name}</p>
-          <div className="flex flex-wrap gap-1">
-            {targets.map(targetId => (
-              <button
-                key={targetId}
-                onClick={() => dispatch({ type: 'ATTACK_TERRITORY', from: territoryId, target: targetId })}
-                className="text-[10px] px-2 py-1 bg-destructive/80 text-destructive-foreground rounded hover:bg-destructive active:scale-[0.97]"
-              >
-                ⚔ {game.territories[targetId]?.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-    }
-  }
-
-  // Nuclear attack
-  if (turn.stage === 4 && player.nukes > 0) {
-    return (
-      <div>
-        <button
-          onClick={() => dispatch({ type: 'LAUNCH_NUKE', target: territoryId, targetType: 'territory' })}
-          className="text-[10px] px-3 py-1.5 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.97]"
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          ☢ Lançar Bomba Nuclear
-        </button>
+        {/* Resource cards linked to this territory */}
+        {game.resourceCards && (() => {
+          const linkedCards = Object.values(game.resourceCards).filter((c: any) => c.locationId === selectedTerritory && c.owner === currentPlayer.id);
+          if (linkedCards.length === 0) return null;
+          return (
+            <div className="mt-1">
+              <p className="text-[10px] text-muted-foreground uppercase mb-1">Cartas neste território:</p>
+              <div className="flex flex-wrap gap-1">
+                {linkedCards.map((card: any) => (
+                  <span key={card.id} className="text-[10px] px-1.5 py-0.5 bg-secondary rounded">
+                    {card.resourceType === 'grain' ? '🌾' : card.resourceType === 'oil' ? '🛢️' : '⛏️'} {card.companyName} (+{card.production})
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -147,7 +89,43 @@ function TerritoryActions({ territoryId }: { territoryId: string }) {
 }
 
 // ============================================================
-// ENHANCED MARKET PANEL with price chart and quantity controls
+// BUY AND PROSPECT PANEL (Stage 7) - Toggle between buy and prospect
+// ============================================================
+
+function BuyAndProspectPanel() {
+  const [mode, setMode] = useState<'buy' | 'prospect'>('buy');
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[45vh] overflow-y-auto">
+      {/* Tab toggle */}
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => { setMode('buy'); playSound('button-click', 0.4); }}
+          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+            mode === 'buy' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
+          }`}
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          <ShoppingCart size={12} /> Comprar Suprimentos
+        </button>
+        <button
+          onClick={() => { setMode('prospect'); playSound('button-click', 0.4); }}
+          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+            mode === 'prospect' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
+          }`}
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          <Search size={12} /> Prospectar Cartas
+        </button>
+      </div>
+
+      {mode === 'buy' ? <MarketPanel mode="buy" /> : <ProspectPanel />}
+    </div>
+  );
+}
+
+// ============================================================
+// MARKET PANEL with price chart and quantity controls
 // ============================================================
 
 function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
@@ -159,12 +137,10 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
   const player = game.players[game.turn.currentPlayer];
   const resources: ResourceType[] = ['grain', 'oil', 'mineral'];
   const labels: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
-  const colors: Record<ResourceType, string> = { grain: '#eab308', oil: '#64748b', mineral: '#94a3b8' };
-  const chartColors: Record<ResourceType, string> = { grain: '#eab308', oil: '#3b82f6', mineral: '#a855f7' };
+  const colors: Record<ResourceType, string> = { grain: '#eab308', oil: '#3b82f6', mineral: '#a855f7' };
 
   const history = game.market.priceHistory;
 
-  // Calculate price trend
   const getTrend = (resource: ResourceType): 'up' | 'down' | 'flat' => {
     if (history.length < 2) return 'flat';
     const prev = history[history.length - 2][resource];
@@ -192,43 +168,12 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
     }
   };
 
-  // Mini sparkline SVG for price history
-  const renderSparkline = (resource: ResourceType) => {
-    if (history.length < 2) return null;
-    const data = history.slice(-10);
-    const values = data.map(h => h[resource]);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = max - min || 1;
-    const w = 60;
-    const h = 20;
-
-    const points = values.map((v, i) => {
-      const x = (i / (values.length - 1)) * w;
-      const y = h - ((v - min) / range) * h;
-      return `${x},${y}`;
-    }).join(' ');
-
-    return (
-      <svg width={w} height={h} className="opacity-70">
-        <polyline
-          points={points}
-          fill="none"
-          stroke={chartColors[resource]}
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  };
-
   return (
-    <div className="absolute bottom-14 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10">
+    <div className="p-3">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          {mode === 'sell' ? '📈 Mercado — Vender' : '🛒 Mercado — Comprar'}
+          {mode === 'sell' ? '📈 Vender Suprimentos' : '🛒 Comprar Suprimentos'}
         </h3>
         <span className="text-[10px] text-muted-foreground font-mono">
           Saldo: ${player.money.toLocaleString()}
@@ -247,19 +192,14 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
           return (
             <div key={r} className="flex items-center gap-2">
               {/* Resource info */}
-              <div className="flex items-center gap-1.5 w-20 shrink-0">
+              <div className="flex items-center gap-1.5 w-16 shrink-0">
                 <div className="w-3 h-3 rounded-full border border-border" style={{ backgroundColor: colors[r] }} />
                 <span className="text-[11px] font-medium">{labels[r]}</span>
               </div>
 
-              {/* Sparkline */}
-              <div className="hidden sm:block shrink-0">
-                {renderSparkline(r)}
-              </div>
-
               {/* Price + trend */}
-              <div className="flex items-center gap-1 w-20 shrink-0">
-                <span className="text-xs font-bold font-mono-num" style={{ color: chartColors[r] }}>
+              <div className="flex items-center gap-1 w-16 shrink-0">
+                <span className="text-xs font-bold font-mono" style={{ color: colors[r] }}>
                   ${price.toLocaleString()}
                 </span>
                 {trend === 'up' && <TrendingUp size={10} className="text-emerald-400" />}
@@ -267,28 +207,22 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
               </div>
 
               {/* Stock */}
-              <span className="text-[10px] text-muted-foreground font-mono-num w-8 shrink-0">
+              <span className="text-[10px] text-muted-foreground font-mono w-6 shrink-0">
                 x{stock}
               </span>
 
               {/* Quantity control */}
               <div className="flex items-center gap-0.5 shrink-0">
                 <button
-                  onClick={() => {
-                    playSound('button-click', 0.5);
-                    adjustQty(r, -1);
-                  }}
-                  className="w-5 h-5 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
+                  onClick={() => { playSound('button-click', 0.5); adjustQty(r, -1); }}
+                  className="w-6 h-6 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
                 >
                   <MinusIcon size={10} />
                 </button>
-                <span className="text-[11px] font-mono-num w-4 text-center">{quantities[r]}</span>
+                <span className="text-[11px] font-mono w-4 text-center">{quantities[r]}</span>
                 <button
-                  onClick={() => {
-                    playSound('button-click', 0.5);
-                    adjustQty(r, 1);
-                  }}
-                  className="w-5 h-5 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
+                  onClick={() => { playSound('button-click', 0.5); adjustQty(r, 1); }}
+                  className="w-6 h-6 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
                 >
                   <Plus size={10} />
                 </button>
@@ -299,7 +233,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
                 onClick={() => handleTransaction(r)}
                 disabled={mode === 'sell' ? !canSell : !canBuy}
                 className={`
-                  text-[10px] px-2.5 py-1 rounded uppercase tracking-wider font-semibold
+                  text-[10px] px-3 py-1.5 rounded uppercase tracking-wider font-semibold
                   active:scale-[0.95] transition-all shrink-0
                   ${mode === 'sell'
                     ? 'bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-30 disabled:cursor-not-allowed'
@@ -314,164 +248,155 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
           );
         })}
       </div>
-
-      {/* Price chart legend */}
-      {history.length > 1 && (
-        <div className="mt-3 pt-2 border-t border-border/50">
-          <div className="flex items-center gap-4">
-            <span className="text-[9px] text-muted-foreground uppercase" style={{ fontFamily: 'var(--font-display)' }}>
-              Histórico ({history.length} turnos)
-            </span>
-            <div className="flex-1 flex items-center justify-center gap-3">
-              {resources.map(r => (
-                <div key={r} className="flex items-center gap-1">
-                  <div className="w-2 h-0.5 rounded" style={{ backgroundColor: chartColors[r] }} />
-                  <span className="text-[9px] text-muted-foreground">{labels[r]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Larger chart */}
-          <div className="mt-1.5 flex justify-center">
-            {renderFullChart()}
-          </div>
-        </div>
-      )}
     </div>
   );
-
-  function renderFullChart() {
-    if (history.length < 2) return null;
-    const data = history.slice(-10);
-    const allValues = data.flatMap(h => [h.grain, h.oil, h.mineral]);
-    const min = Math.min(...allValues);
-    const max = Math.max(...allValues);
-    const range = max - min || 1;
-    const w = 200;
-    const h = 40;
-
-    const getPoints = (resource: ResourceType) => {
-      return data.map((entry, i) => {
-        const x = (i / (data.length - 1)) * w;
-        const y = h - ((entry[resource] - min) / range) * (h - 4) - 2;
-        return `${x},${y}`;
-      }).join(' ');
-    };
-
-    return (
-      <svg width={w} height={h} className="opacity-80">
-        {/* Grid lines */}
-        {[0, 0.25, 0.5, 0.75, 1].map(pct => (
-          <line key={pct} x1={0} y1={h * pct} x2={w} y2={h * pct} stroke="currentColor" strokeWidth="0.3" className="text-border" />
-        ))}
-        {resources.map(r => (
-          <polyline
-            key={r}
-            points={getPoints(r)}
-            fill="none"
-            stroke={chartColors[r]}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
-      </svg>
-    );
-  }
 }
 
+// ============================================================
+// BUILD PANEL - Enhanced with clearer UX
+// ============================================================
+
 function BuildPanel() {
-  const { game, dispatch } = useGameStore();
+  const { game, dispatch, selectedTerritory, selectTerritory } = useGameStore();
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
   const homeTs = Object.values(game.territories).filter(t => t.superpowerId === player.id && !t.nuked && t.owner === player.id);
-  const canBuild = player.supplies.grain >= 1 && player.supplies.oil >= 1 && player.supplies.mineral >= 1 && player.money >= RULES.UNIT_COST;
+  const foreignTs = Object.entries(player.armies)
+    .filter(([tid, count]) => count > 0 && game.territories[tid]?.superpowerId !== player.id && game.territories[tid]?.owner === player.id)
+    .map(([tid]) => game.territories[tid])
+    .filter(Boolean);
+
+  const allBuildLocations = [...homeTs, ...foreignTs];
+  const hasSupplies = player.supplies.grain >= 1 && player.supplies.oil >= 1 && player.supplies.mineral >= 1;
+  const hasMoney = player.money >= RULES.UNIT_COST;
+  const canBuild = hasSupplies && hasMoney;
+
+  const handleBuild = (territoryId: string) => {
+    playSound('button-click', 0.5);
+    dispatch({ type: 'BUILD_UNITS', units: [{ type: 'army', locationId: territoryId }] });
+  };
 
   return (
-    <div className="absolute bottom-14 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10">
-      <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[45vh] overflow-y-auto">
+      <h3 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)' }}>
         🏗️ Construção
       </h3>
 
+      {/* Status info */}
+      <div className="flex flex-wrap gap-2 mb-2 text-[10px] text-muted-foreground">
+        <span>Saldo: <strong className="text-foreground">${player.money.toLocaleString()}</strong></span>
+        <span>🌾{player.supplies.grain} 🛢️{player.supplies.oil} ⛏️{player.supplies.mineral}</span>
+        <span className="text-[9px]">(Custo: $1.000 + 1 set por 3 unid.)</span>
+      </div>
+
       {/* Build armies */}
       {canBuild ? (
-        <div className="space-y-1.5 mb-3">
-          <p className="text-[10px] text-muted-foreground">Custo: $1.000 + 1 set de suprimentos por 3 unidades</p>
-          <div className="flex flex-wrap gap-1">
-            {homeTs.map(t => (
+        <div className="mb-3">
+          <p className="text-[10px] text-emerald-400 mb-1.5 font-medium">Selecione onde construir exércitos:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {allBuildLocations.map(t => (
               <button
                 key={t.id}
-                onClick={() => dispatch({ type: 'BUILD_UNITS', units: [{ type: 'army', locationId: t.id }] })}
-                className="text-[10px] px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 active:scale-[0.97]"
+                onClick={() => handleBuild(t.id)}
+                className="text-[11px] px-2.5 py-1.5 bg-emerald-600/20 text-emerald-300 rounded-md hover:bg-emerald-600/30 active:scale-[0.95] border border-emerald-600/30 transition-all"
               >
-                +1 Exército em {t.name}
+                +1 🎖️ {t.name}
               </button>
             ))}
           </div>
         </div>
       ) : (
-        <p className="text-[10px] text-muted-foreground mb-3">Suprimentos ou dinheiro insuficientes.</p>
+        <div className="mb-3 p-2 bg-destructive/10 rounded-md border border-destructive/20">
+          <p className="text-[10px] text-destructive">
+            {!hasSupplies && '❌ Suprimentos insuficientes (precisa 1 de cada). '}
+            {!hasMoney && '❌ Dinheiro insuficiente ($1.000 por unidade). '}
+          </p>
+        </div>
       )}
 
-      {/* Research / Build Nukes */}
-      <div className="flex flex-wrap gap-1">
-        {!player.hasResearchedNuke && player.money >= RULES.RESEARCH_COST_PER_CARD && (
-          <button
-            onClick={() => dispatch({ type: 'RESEARCH_NUKE', cardId: '' })}
-            className="text-[10px] px-2 py-1 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.97]"
-          >
-            Pesquisar Bomba ($2.000)
-          </button>
-        )}
-        {player.hasResearchedNuke && player.money >= RULES.NUKE_COST && player.supplies.mineral >= RULES.NUKE_MINERAL_COST && (
-          <button
-            onClick={() => dispatch({ type: 'BUILD_NUKE' })}
-            className="text-[10px] px-2 py-1 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.97]"
-          >
-            Construir Bomba ($5.000)
-          </button>
-        )}
-        {!player.hasResearchedLaserStar && player.money >= RULES.RESEARCH_COST_PER_CARD && (
-          <button
-            onClick={() => dispatch({ type: 'RESEARCH_LASER_STAR', cardId: '' })}
-            className="text-[10px] px-2 py-1 bg-primary/20 text-primary rounded hover:bg-primary/30 active:scale-[0.97]"
-          >
-            Pesquisar Laser-Star ($2.000)
-          </button>
-        )}
-        {player.hasResearchedLaserStar && player.money >= RULES.LASER_STAR_COST && player.supplies.mineral >= RULES.LASER_STAR_MINERAL_COST && (
-          <button
-            onClick={() => dispatch({ type: 'BUILD_LASER_STAR' })}
-            className="text-[10px] px-2 py-1 bg-primary/20 text-primary rounded hover:bg-primary/30 active:scale-[0.97]"
-          >
-            Construir Laser-Star ($10.000)
-          </button>
-        )}
+      {/* Research / Build Nukes & Laser-Stars */}
+      <div className="border-t border-border/50 pt-2">
+        <p className="text-[10px] text-muted-foreground uppercase mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>Armas Especiais</p>
+        <div className="flex flex-wrap gap-1.5">
+          {!player.hasResearchedNuke && player.money >= RULES.RESEARCH_COST_PER_CARD && (
+            <button
+              onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_NUKE', cardId: '' }); }}
+              className="text-[10px] px-2.5 py-1.5 bg-destructive/20 text-destructive rounded-md hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
+            >
+              🔬 Pesquisar Bomba ($2.000)
+            </button>
+          )}
+          {player.hasResearchedNuke && player.money >= RULES.NUKE_COST && player.supplies.mineral >= RULES.NUKE_MINERAL_COST && (
+            <button
+              onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'BUILD_NUKE' }); }}
+              className="text-[10px] px-2.5 py-1.5 bg-destructive/20 text-destructive rounded-md hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
+            >
+              ☢️ Construir Bomba ($5.000 + 1⛏️)
+            </button>
+          )}
+          {player.hasResearchedNuke && player.nukes > 0 && (
+            <span className="text-[10px] px-2 py-1.5 bg-destructive/10 text-destructive rounded-md">
+              Bombas: {player.nukes}
+            </span>
+          )}
+          {!player.hasResearchedLaserStar && player.money >= RULES.RESEARCH_COST_PER_CARD && (
+            <button
+              onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_LASER_STAR', cardId: '' }); }}
+              className="text-[10px] px-2.5 py-1.5 bg-blue-600/20 text-blue-300 rounded-md hover:bg-blue-600/30 active:scale-[0.95] border border-blue-600/30"
+            >
+              🔬 Pesquisar Laser-Star ($2.000)
+            </button>
+          )}
+          {player.hasResearchedLaserStar && player.money >= RULES.LASER_STAR_COST && player.supplies.mineral >= RULES.LASER_STAR_MINERAL_COST && (
+            <button
+              onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'BUILD_LASER_STAR' }); }}
+              className="text-[10px] px-2.5 py-1.5 bg-blue-600/20 text-blue-300 rounded-md hover:bg-blue-600/30 active:scale-[0.95] border border-blue-600/30"
+            >
+              🛡️ Construir Laser-Star ($10.000 + 2⛏️)
+            </button>
+          )}
+          {player.hasResearchedLaserStar && player.laserStars > 0 && (
+            <span className="text-[10px] px-2 py-1.5 bg-blue-600/10 text-blue-300 rounded-md">
+              Laser-Stars: {player.laserStars}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+// ============================================================
+// MOVE PANEL
+// ============================================================
+
 function MovePanel() {
-  const { game } = useGameStore();
+  const { game, selectedTerritory } = useGameStore();
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
   const myTerritories = Object.entries(player.armies).filter(([, count]) => count > 0);
 
   return (
-    <div className="absolute bottom-14 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10">
-      <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-        🚀 Movimento — Selecione um território no mapa
+    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto">
+      <h3 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)' }}>
+        🚀 Movimento
       </h3>
-      <p className="text-[10px] text-muted-foreground">
-        Toque em um território com seus exércitos para ver opções de movimento.
-        Custo: 1 cereal por território.
+      <p className="text-[10px] text-muted-foreground mb-2">
+        Toque em um território com seus exércitos para ver destinos.
+        Custo: 1 cereal por território | 2 petróleo por voo.
       </p>
+
+      {/* Show selected territory actions */}
+      {selectedTerritory && <SelectedTerritoryMoveActions />}
+
+      {/* List of territories with armies */}
       <div className="flex flex-wrap gap-1 mt-2">
         {myTerritories.map(([tid, count]) => (
-          <span key={tid} className="text-[10px] px-1.5 py-0.5 bg-secondary rounded">
+          <span key={tid} className={`text-[10px] px-1.5 py-0.5 rounded ${
+            selectedTerritory === tid ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-secondary'
+          }`}>
             {game.territories[tid]?.name}: {count}
           </span>
         ))}
@@ -480,26 +405,131 @@ function MovePanel() {
   );
 }
 
+function SelectedTerritoryMoveActions() {
+  const { game, selectedTerritory, dispatch } = useGameStore();
+  if (!game || !selectedTerritory) return null;
+
+  const player = game.players[game.turn.currentPlayer];
+  const territory = game.territories[selectedTerritory];
+  const myArmies = player.armies[selectedTerritory] || 0;
+
+  if (myArmies === 0) return null;
+
+  const adjacents = territory.adjacentTerritories.filter(t => !game.territories[t]?.nuked);
+
+  return (
+    <div className="bg-secondary/50 rounded-md p-2 mb-2">
+      <p className="text-[10px] text-foreground font-medium mb-1">
+        Mover de <strong>{territory.name}</strong> ({myArmies} exércitos):
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {adjacents.map(adjId => (
+          <button
+            key={adjId}
+            onClick={() => {
+              playSound('button-click', 0.5);
+              dispatch({ type: 'MOVE_ARMY', from: selectedTerritory, to: adjId, count: 1 });
+            }}
+            className="text-[10px] px-2 py-1 bg-primary/20 text-primary rounded hover:bg-primary/30 active:scale-[0.95] border border-primary/20"
+          >
+            → {game.territories[adjId]?.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ATTACK PANEL
+// ============================================================
+
 function AttackPanel() {
-  const { game } = useGameStore();
+  const { game, selectedTerritory, dispatch } = useGameStore();
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
 
   return (
-    <div className="absolute bottom-14 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10">
-      <h3 className="text-xs font-semibold uppercase tracking-wider mb-2 text-destructive" style={{ fontFamily: 'var(--font-display)' }}>
+    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto">
+      <h3 className="text-xs font-semibold uppercase tracking-wider mb-1 text-destructive" style={{ fontFamily: 'var(--font-display)' }}>
         ⚔️ Fase de Ataque
       </h3>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-[10px] text-muted-foreground mb-2">
         Selecione um território com 2+ exércitos para atacar adjacentes.
         Custo: 1 de cada suprimento por batalha.
       </p>
+
+      {/* Show attack options for selected territory */}
+      {selectedTerritory && <SelectedTerritoryAttackActions />}
+
       {player.nukes > 0 && (
-        <p className="text-[10px] text-destructive mt-1">
-          ☢ Você tem {player.nukes} bomba(s) nuclear(es). Selecione um território alvo.
+        <p className="text-[10px] text-destructive mt-2 p-1.5 bg-destructive/10 rounded">
+          ☢ Você tem {player.nukes} bomba(s) nuclear(es). Selecione qualquer território alvo no mapa.
         </p>
       )}
     </div>
   );
+}
+
+function SelectedTerritoryAttackActions() {
+  const { game, selectedTerritory, dispatch } = useGameStore();
+  if (!game || !selectedTerritory) return null;
+
+  const player = game.players[game.turn.currentPlayer];
+  const territory = game.territories[selectedTerritory];
+  const myArmies = player.armies[selectedTerritory] || 0;
+
+  // Attack from this territory
+  if (myArmies > 1) {
+    const targets = territory.adjacentTerritories.filter(t => {
+      const adj = game.territories[t];
+      if (!adj || adj.nuked) return false;
+      return adj.owner !== player.id;
+    });
+
+    if (targets.length > 0) {
+      return (
+        <div className="bg-destructive/10 rounded-md p-2 mb-2">
+          <p className="text-[10px] text-foreground font-medium mb-1">
+            Atacar de <strong>{territory.name}</strong> ({myArmies} exércitos):
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {targets.map(targetId => (
+              <button
+                key={targetId}
+                onClick={() => {
+                  playSound('combat-start', 0.7);
+                  dispatch({ type: 'ATTACK_TERRITORY', from: selectedTerritory, target: targetId });
+                }}
+                className="text-[10px] px-2 py-1 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
+              >
+                ⚔ {game.territories[targetId]?.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // Nuclear attack on selected territory
+  if (player.nukes > 0 && territory.owner !== player.id) {
+    return (
+      <div className="bg-destructive/10 rounded-md p-2 mb-2">
+        <button
+          onClick={() => {
+            playSound('missile-launch', 0.8);
+            dispatch({ type: 'LAUNCH_NUKE', target: selectedTerritory, targetType: 'territory' });
+          }}
+          className="text-[10px] px-3 py-1.5 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.95]"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          ☢ Lançar Bomba Nuclear em {territory.name}
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 }

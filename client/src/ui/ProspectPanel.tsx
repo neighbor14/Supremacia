@@ -29,7 +29,7 @@ export default function ProspectPanel() {
   const cardsInHand = Object.values(game.players).reduce((sum, p) => sum + p.resourceCards.length, 0);
 
   return (
-    <div className="absolute bottom-14 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10">
+    <div className="p-3">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
           🔍 Prospectar Cartas de Recursos
