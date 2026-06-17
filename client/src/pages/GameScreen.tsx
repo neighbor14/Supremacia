@@ -15,6 +15,7 @@ import LandscapePrompt from '../ui/LandscapePrompt';
 import EventLogDrawer from '../ui/EventLogDrawer';
 import CpuTurnOverlay from '../ui/CpuTurnOverlay';
 import AudioControls from '../ui/AudioControls';
+import ResourceCardsPanel from '../ui/ResourceCardsPanel';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
@@ -105,6 +106,8 @@ export default function GameScreen() {
           <WorldMap />
           {/* Audio controls - top right */}
           <AudioControls />
+          {/* Resource cards panel - top right */}
+          <ResourceCardsPanel />
           {/* Tutorial overlay inside map area */}
           <TurnTutorial />
           {/* Event log drawer */}
