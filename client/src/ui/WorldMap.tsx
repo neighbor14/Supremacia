@@ -200,11 +200,11 @@ export default function WorldMap() {
       onTouchEnd={onTouchEnd}
       onWheel={onWheel}
     >
-      {/* SVG Map - uses slice to fill container, no blank areas */}
+      {/* SVG Map - shows entire map without cutting off edges */}
       <svg
         viewBox="0 0 1000 500"
         className="absolute inset-0 w-full h-full"
-        preserveAspectRatio="xMidYMid slice"
+        preserveAspectRatio="xMidYMid meet"
         style={{
           cursor: interactionRef.current.isPanning ? 'grabbing' : 'grab',
           transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
