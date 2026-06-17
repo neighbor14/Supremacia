@@ -229,7 +229,7 @@ export default function WorldMap() {
         {Object.entries(game.seaZones).map(([seaId, sea]) => (
           <path
             key={seaId}
-            d={sea.path}
+            d={sea.svgPath}
             fill={getSeaColor(seaId)}
             stroke={selectedSeaZone === seaId ? '#fbbf24' : '#1e40af'}
             strokeWidth={selectedSeaZone === seaId ? 3 : 1}
@@ -243,7 +243,7 @@ export default function WorldMap() {
         {Object.entries(game.territories).map(([territoryId, territory]) => (
           <g key={territoryId}>
             <path
-              d={territory.path}
+              d={territory.svgPath}
               fill={getTerritoryColor(territoryId)}
               stroke={selectedTerritory === territoryId ? '#fbbf24' : '#475569'}
               strokeWidth={selectedTerritory === territoryId ? 2 : 0.5}
@@ -253,8 +253,8 @@ export default function WorldMap() {
             {/* Army count label */}
             {getArmyCount(territoryId) > 0 && (
               <text
-                x={territory.labelX}
-                y={territory.labelY}
+                x={territory.labelPos.x}
+                y={territory.labelPos.y}
                 fill="#fef3c7"
                 fontSize="12"
                 fontWeight="bold"
@@ -274,8 +274,8 @@ export default function WorldMap() {
           return (
             <text
               key={`navy-${seaId}`}
-              x={sea.labelX}
-              y={sea.labelY}
+              x={sea.labelPos.x}
+              y={sea.labelPos.y}
               fill="#93c5fd"
               fontSize="10"
               fontWeight="bold"

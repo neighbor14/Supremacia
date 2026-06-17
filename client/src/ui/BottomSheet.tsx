@@ -5,6 +5,7 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { ResourceType, UnitType, TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus } from 'lucide-react';
+import ProspectPanel from './ProspectPanel';
 
 export default function BottomSheet() {
   const { game, selectedTerritory, selectedSeaZone, dispatch, uiMode, setUiMode, selectTerritory } = useGameStore();
@@ -62,7 +63,7 @@ export default function BottomSheet() {
 
   // Show market/build/move panels based on current stage
   if (isHuman && turn.stage === 3) return <MarketPanel mode="sell" />;
-  if (isHuman && turn.stage === 7) return <MarketPanel mode="buy" />;
+  if (isHuman && turn.stage === 7) return <ProspectPanel />;
   if (isHuman && turn.stage === 6) return <BuildPanel />;
   if (isHuman && turn.stage === 5) return <MovePanel />;
   if (isHuman && turn.stage === 4) return <AttackPanel />;

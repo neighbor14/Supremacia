@@ -38,8 +38,10 @@ export default function TurnPhaseBar() {
     if (!isHuman || stage <= 2) return;
     if (turn.optionalStagesUsed.length >= 3) return;
     if (turn.optionalStagesUsed.includes(stage)) return;
-    playSound('button-click', 0.6);
-    dispatch({ type: 'NEXT_STAGE' });
+    // Skip/advance stages until we reach the target stage
+    while (turn.stage < stage) {
+      dispatch({ type: 'NEXT_STAGE' });
+    }
   };
 
   const handleEndTurn = () => {
@@ -83,17 +85,25 @@ export default function TurnPhaseBar() {
             <button
               key={stage}
               onClick={() => {
-                if (isCurrent && stage <= 2) handleStageAction();
+                if (!isHuman) return;
+                playSound('button-click', 0.5);
+                if (isCurrent && stage <= 2) {
+                  handleStageAction();
+                } else if (!isCurrent && !isPast && !isUsed && stage > 2) {
+                  // Jump to this optional stage
+                  handleSelectStage(stage as TurnStage);
+                }
               }}
-              disabled={!isHuman}
+              disabled={!isHuman || (isPast && !isCurrent) || (isUsed && !isCurrent)}
               className={`
-                flex-1 py-1.5 px-1 rounded text-center transition-all text-[10px] uppercase tracking-wider
+                flex-1 py-1.5 px-1 rounded text-center transition-all text-[10px] uppercase tracking-wider cursor-pointer
                 ${isCurrent ? 'bg-primary text-primary-foreground ring-1 ring-primary/50' : ''}
                 ${isPast ? 'bg-secondary/50 text-muted-foreground' : ''}
                 ${isUsed && !isCurrent ? 'bg-accent text-accent-foreground' : ''}
-                ${!isCurrent && !isPast && !isUsed ? 'bg-secondary/30 text-muted-foreground/50' : ''}
+                ${!isCurrent && !isPast && !isUsed && stage > 2 ? 'bg-secondary/70 text-secondary-foreground hover:bg-secondary active:scale-[0.97]' : ''}
               `}
               style={{ fontFamily: 'var(--font-display)' }}
+              title={isUsed ? 'Já usada' : isPast ? 'Passada' : isCurrent ? 'Atual' : 'Clique para ir'}
             >
               {STAGE_NAMES[stage]}
             </button>
