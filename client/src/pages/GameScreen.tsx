@@ -23,7 +23,6 @@ export default function GameScreen() {
   useAudioInit();
 
   // Track previous state for sound triggers
-  const prevTurnRef = useRef<number>(0);
   const prevPlayerRef = useRef<string>('');
   const prevCombatRef = useRef<boolean>(false);
   const prevNukeRef = useRef<boolean>(false);
@@ -48,12 +47,6 @@ export default function GameScreen() {
     }
     prevPlayerRef.current = currentPlayer;
 
-    // Turn number changed
-    if (game.turn.turnNumber !== prevTurnRef.current && prevTurnRef.current > 0) {
-      // New round
-    }
-    prevTurnRef.current = game.turn.turnNumber;
-
     // Combat started
     if (game.combat.active && !prevCombatRef.current) {
       playSound('combat-start');
@@ -75,7 +68,7 @@ export default function GameScreen() {
         playSound('defeat');
       }
     }
-    prevGameOverRef.current = game.gameOver;
+    prevGameOverRef.current = !!game.gameOver;
   }, [game]);
 
   // Auto-run CPU turns
@@ -97,28 +90,25 @@ export default function GameScreen() {
       {/* Landscape prompt for mobile portrait */}
       <LandscapePrompt />
 
-      <div className="h-[100dvh] w-screen overflow-hidden flex flex-col bg-background relative">
-        {/* Top: Turn Phase Bar - compact */}
+      {/* Full-screen game layout - no wasted space */}
+      <div className="fixed inset-0 overflow-hidden flex flex-col bg-background">
+        {/* Top: Turn Phase Bar - compact, always visible */}
         <TurnPhaseBar />
 
-        {/* Main area: Map fills everything */}
-        <div className="flex-1 relative overflow-hidden">
+        {/* Main area: Map fills ALL remaining space */}
+        <div className="flex-1 relative overflow-hidden min-h-0">
           <WorldMap />
-          {/* Audio controls - top right */}
+
+          {/* Overlays on top of map */}
           <AudioControls />
-          {/* Resource cards panel - top right */}
           <ResourceCardsPanel />
-          {/* Tutorial overlay inside map area */}
           <TurnTutorial />
-          {/* Event log drawer */}
           <EventLogDrawer />
-          {/* CPU turn overlay */}
           <CpuTurnOverlay />
-          {/* Player status overlay - bottom left */}
           <PlayerStatusBar />
         </div>
 
-        {/* Bottom Sheet for territory/action details */}
+        {/* Bottom Sheet for territory/action details - only shows when needed */}
         <BottomSheet />
 
         {/* Modals */}

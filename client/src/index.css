@@ -130,23 +130,7 @@
   }
 }
 
-/* Force landscape rotation when device is in portrait on mobile */
-@media (orientation: portrait) and (max-width: 768px) {
-  body.force-landscape {
-    width: 100vh;
-    height: 100vw;
-    overflow: hidden;
-    transform: rotate(90deg);
-    transform-origin: left top;
-    position: absolute;
-    top: 0;
-    left: 100vw;
-  }
-  body.force-landscape #root {
-    width: 100%;
-    height: 100%;
-  }
-}
+/* Portrait mode is now fully supported - no forced rotation */
 
 /* Safe area padding for notched devices */
 .safe-bottom {

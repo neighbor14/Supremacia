@@ -1,183 +1,167 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
 
-const INITIAL_VB = { x: 0, y: 0, w: 1000, h: 500 };
-const MIN_W = 120;
-const MAX_W = 1000;
-const MIN_H = 60;
-const MAX_H = 500;
+/**
+ * WorldMap uses CSS transform (scale + translate) for zoom/pan.
+ * Fixed: pan direction matches finger/mouse direction exactly.
+ * The SVG fills the container completely using "xMidYMid slice" to avoid blank areas.
+ */
+
+const MIN_SCALE = 0.8;
+const MAX_SCALE = 6;
+const PAN_THRESHOLD = 6; // pixels before considering it a drag
 
 export default function WorldMap() {
   const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone } = useGameStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [viewBox, setViewBox] = useState(INITIAL_VB);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [lastViewBox, setLastViewBox] = useState({ x: 0, y: 0 });
-  const [hasMoved, setHasMoved] = useState(false);
+  // Transform state
+  const [scale, setScale] = useState(1);
+  const [tx, setTx] = useState(0);
+  const [ty, setTy] = useState(0);
 
-  // Pinch-to-zoom state
-  const [pinchStartDist, setPinchStartDist] = useState(0);
-  const [pinchStartVB, setPinchStartVB] = useState(INITIAL_VB);
-  const [isPinching, setIsPinching] = useState(false);
+  // Interaction refs (avoid stale closures)
+  const interactionRef = useRef({
+    isPanning: false,
+    isPinching: false,
+    hasMoved: false,
+    startX: 0,
+    startY: 0,
+    startTx: 0,
+    startTy: 0,
+    pinchDist0: 0,
+    pinchScale0: 1,
+    pinchMidX: 0,
+    pinchMidY: 0,
+  });
 
   if (!game) return null;
 
   // --- Zoom helpers ---
-  const zoomBy = useCallback((factor: number, centerX?: number, centerY?: number) => {
-    setViewBox(prev => {
-      const newW = Math.max(MIN_W, Math.min(MAX_W, prev.w * factor));
-      const newH = Math.max(MIN_H, Math.min(MAX_H, prev.h * factor));
-      // Zoom toward center of viewBox (or custom center)
-      const cx = centerX ?? (prev.x + prev.w / 2);
-      const cy = centerY ?? (prev.y + prev.h / 2);
-      const newX = cx - (newW / prev.w) * (cx - prev.x);
-      const newY = cy - (newH / prev.h) * (cy - prev.y);
-      return { x: newX, y: newY, w: newW, h: newH };
-    });
-  }, []);
+  const zoomIn = () => setScale(s => Math.min(MAX_SCALE, s * 1.4));
+  const zoomOut = () => setScale(s => Math.max(MIN_SCALE, s / 1.4));
+  const resetZoom = () => { setScale(1); setTx(0); setTy(0); };
 
-  const resetZoom = useCallback(() => {
-    setViewBox(INITIAL_VB);
-  }, []);
-
-  // --- Mouse wheel zoom ---
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const factor = e.deltaY > 0 ? 1.15 : 0.87;
-    zoomBy(factor);
-  }, [zoomBy]);
-
-  // --- Touch handling for pinch-to-zoom + pan ---
-  const getTouchDist = (touches: React.TouchList) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
+  // --- Touch distance ---
+  const dist2 = (t1: React.Touch, t2: React.Touch) => {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  const getTouchCenter = (touches: React.TouchList) => {
-    if (touches.length < 2) return { x: 0, y: 0 };
-    return {
-      x: (touches[0].clientX + touches[1].clientX) / 2,
-      y: (touches[0].clientY + touches[1].clientY) / 2,
-    };
+  // --- Touch handlers ---
+  const onTouchStart = (e: React.TouchEvent) => {
+    const ir = interactionRef.current;
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      ir.isPinching = true;
+      ir.isPanning = false;
+      ir.pinchDist0 = dist2(e.touches[0], e.touches[1]);
+      ir.pinchScale0 = scale;
+      ir.pinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      ir.pinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      ir.startTx = tx;
+      ir.startTy = ty;
+    } else if (e.touches.length === 1 && !ir.isPinching) {
+      ir.isPanning = true;
+      ir.hasMoved = false;
+      ir.startX = e.touches[0].clientX;
+      ir.startY = e.touches[0].clientY;
+      ir.startTx = tx;
+      ir.startTy = ty;
+    }
   };
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      // Start pinch
+  const onTouchMove = (e: React.TouchEvent) => {
+    const ir = interactionRef.current;
+    if (ir.isPinching && e.touches.length >= 2) {
       e.preventDefault();
-      setIsPinching(true);
-      setIsPanning(false);
-      setPinchStartDist(getTouchDist(e.touches));
-      setPinchStartVB({ ...viewBox });
-    } else if (e.touches.length === 1 && !isPinching) {
-      // Start pan only if not already pinching
-      setIsPanning(true);
-      setHasMoved(false);
-      setPanStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
-      setLastViewBox({ x: viewBox.x, y: viewBox.y });
+      const newDist = dist2(e.touches[0], e.touches[1]);
+      const ratio = newDist / (ir.pinchDist0 || 1);
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, ir.pinchScale0 * ratio));
+      setScale(newScale);
+      // Also pan to follow pinch center
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      setTx(ir.startTx + (midX - ir.pinchMidX));
+      setTy(ir.startTy + (midY - ir.pinchMidY));
+    } else if (ir.isPanning && e.touches.length === 1 && !ir.isPinching) {
+      const dx = e.touches[0].clientX - ir.startX;
+      const dy = e.touches[0].clientY - ir.startY;
+      if (Math.abs(dx) + Math.abs(dy) > PAN_THRESHOLD) {
+        ir.hasMoved = true;
+      }
+      setTx(ir.startTx + dx);
+      setTy(ir.startTy + dy);
     }
-  }, [viewBox, isPinching]);
+  };
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (isPinching && e.touches.length === 2) {
-      e.preventDefault();
-      const dist = getTouchDist(e.touches);
-      if (pinchStartDist === 0) return;
-      
-      // Calculate zoom factor
-      const scale = dist / pinchStartDist;
-      const newW = Math.max(MIN_W, Math.min(MAX_W, pinchStartVB.w / scale));
-      const newH = Math.max(MIN_H, Math.min(MAX_H, pinchStartVB.h / scale));
-      
-      // Keep center fixed during pinch zoom
-      const centerX = pinchStartVB.x + pinchStartVB.w / 2;
-      const centerY = pinchStartVB.y + pinchStartVB.h / 2;
-      const newX = centerX - newW / 2;
-      const newY = centerY - newH / 2;
-      
-      setViewBox({ x: newX, y: newY, w: newW, h: newH });
-    } else if (isPanning && e.touches.length === 1 && !isPinching) {
-      e.preventDefault();
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const scaleX = viewBox.w / rect.width;
-      const scaleY = viewBox.h / rect.height;
-      const dx = (e.touches[0].clientX - panStart.x) * scaleX;
-      const dy = (e.touches[0].clientY - panStart.y) * scaleY;
-      const totalMove = Math.abs(e.touches[0].clientX - panStart.x) + Math.abs(e.touches[0].clientY - panStart.y);
-      if (totalMove > 8) setHasMoved(true);
-      setViewBox(prev => ({ ...prev, x: lastViewBox.x - dx, y: lastViewBox.y - dy }));
-    }
-  }, [isPinching, isPanning, pinchStartDist, pinchStartVB, panStart, lastViewBox, viewBox.w, viewBox.h]);
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const ir = interactionRef.current;
+    if (e.touches.length < 2) ir.isPinching = false;
+    if (e.touches.length === 0) ir.isPanning = false;
+  };
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length < 2) {
-      setIsPinching(false);
-    }
-    if (e.touches.length === 0) {
-      setIsPanning(false);
-    }
-  }, []);
-
-  // --- Mouse/pointer pan (desktop) ---
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === 'touch') return; // handled by touch events
-    if (e.button === 0) {
-      setIsPanning(true);
-      setHasMoved(false);
-      setPanStart({ x: e.clientX, y: e.clientY });
-      setLastViewBox({ x: viewBox.x, y: viewBox.y });
-    }
-  }, [viewBox]);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+  // --- Mouse/pointer pan ---
+  const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'touch') return;
-    if (!isPanning) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const scaleX = viewBox.w / rect.width;
-    const scaleY = viewBox.h / rect.height;
-    const dx = (e.clientX - panStart.x) * scaleX;
-    const dy = (e.clientY - panStart.y) * scaleY;
-    const totalMove = Math.abs(e.clientX - panStart.x) + Math.abs(e.clientY - panStart.y);
-    if (totalMove > 5) setHasMoved(true);
-    setViewBox(prev => ({ ...prev, x: lastViewBox.x - dx, y: lastViewBox.y - dy }));
-  }, [isPanning, panStart, lastViewBox, viewBox.w, viewBox.h]);
+    if (e.button !== 0) return;
+    const ir = interactionRef.current;
+    ir.isPanning = true;
+    ir.hasMoved = false;
+    ir.startX = e.clientX;
+    ir.startY = e.clientY;
+    ir.startTx = tx;
+    ir.startTy = ty;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
 
-  const handlePointerUp = useCallback(() => {
-    setIsPanning(false);
-  }, []);
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    const ir = interactionRef.current;
+    if (!ir.isPanning) return;
+    const dx = e.clientX - ir.startX;
+    const dy = e.clientY - ir.startY;
+    if (Math.abs(dx) + Math.abs(dy) > PAN_THRESHOLD) ir.hasMoved = true;
+    setTx(ir.startTx + dx);
+    setTy(ir.startTy + dy);
+  };
 
-  // --- Click handlers (only fire if not panning) ---
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    interactionRef.current.isPanning = false;
+  };
+
+  // --- Wheel zoom ---
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.88 : 1.14;
+    setScale(s => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor)));
+  };
+
+  // --- Click handlers (only if no pan) ---
   const handleTerritoryClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!hasMoved) {
+    if (!interactionRef.current.hasMoved) {
       selectTerritory(id === selectedTerritory ? null : id);
     }
   };
 
   const handleSeaClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!hasMoved) {
+    if (!interactionRef.current.hasMoved) {
       selectSeaZone(id === selectedSeaZone ? null : id);
     }
   };
 
+  // --- Rendering helpers ---
   const getTerritoryColor = (territoryId: string): string => {
     const territory = game.territories[territoryId];
     if (!territory) return '#334155';
     if (territory.nuked) return '#1e1b4b';
-    if (territory.owner) {
-      return SUPERPOWERS[territory.owner].color;
-    }
+    if (territory.owner) return SUPERPOWERS[territory.owner].color;
     return '#475569';
   };
 
@@ -203,28 +187,35 @@ export default function WorldMap() {
     return total;
   };
 
-  // Zoom level indicator
-  const zoomLevel = Math.round((1000 / viewBox.w) * 100);
-
   return (
     <div
       ref={containerRef}
-      className="w-full h-full select-none relative bg-slate-950"
+      className="w-full h-full select-none relative bg-slate-950 overflow-hidden"
       style={{ touchAction: 'none' }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onWheel={handleWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onWheel={onWheel}
     >
-      {/* SVG Map */}
+      {/* SVG Map - uses slice to fill container, no blank areas */}
       <svg
-        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
-        className="w-full h-full"
-        style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
+        viewBox="0 0 1000 500"
+        className="absolute inset-0 w-full h-full"
+        preserveAspectRatio="xMidYMid slice"
+        style={{
+          cursor: interactionRef.current.isPanning ? 'grabbing' : 'grab',
+          transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+          transformOrigin: 'center center',
+          willChange: 'transform',
+          transition: interactionRef.current.isPanning || interactionRef.current.isPinching ? 'none' : 'transform 0.1s ease-out',
+        }}
       >
+        {/* Background ocean */}
+        <rect x="0" y="0" width="1000" height="500" fill="#0a1628" />
+
         {/* Sea zones */}
         {Object.entries(game.seaZones).map(([seaId, sea]) => (
           <path
@@ -232,8 +223,8 @@ export default function WorldMap() {
             d={sea.svgPath}
             fill={getSeaColor(seaId)}
             stroke={selectedSeaZone === seaId ? '#fbbf24' : '#1e40af'}
-            strokeWidth={selectedSeaZone === seaId ? 3 : 1}
-            opacity={0.6}
+            strokeWidth={selectedSeaZone === seaId ? 2.5 : 0.5}
+            opacity={0.7}
             onClick={(e) => handleSeaClick(seaId, e as any)}
             style={{ cursor: 'pointer' }}
           />
@@ -245,21 +236,23 @@ export default function WorldMap() {
             <path
               d={territory.svgPath}
               fill={getTerritoryColor(territoryId)}
-              stroke={selectedTerritory === territoryId ? '#fbbf24' : '#475569'}
+              stroke={selectedTerritory === territoryId ? '#fbbf24' : '#64748b'}
               strokeWidth={selectedTerritory === territoryId ? 2 : 0.5}
               onClick={(e) => handleTerritoryClick(territoryId, e as any)}
               style={{ cursor: 'pointer' }}
             />
-            {/* Army count label */}
+            {/* Army count */}
             {getArmyCount(territoryId) > 0 && (
               <text
                 x={territory.labelPos.x}
                 y={territory.labelPos.y}
                 fill="#fef3c7"
-                fontSize="12"
+                fontSize="11"
                 fontWeight="bold"
                 textAnchor="middle"
+                dominantBaseline="central"
                 pointerEvents="none"
+                style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}
               >
                 {getArmyCount(territoryId)}
               </text>
@@ -280,42 +273,40 @@ export default function WorldMap() {
               fontSize="10"
               fontWeight="bold"
               textAnchor="middle"
+              dominantBaseline="central"
               pointerEvents="none"
             >
-              ⚓ {count}
+              ⚓{count}
             </text>
           );
         })}
       </svg>
 
       {/* Zoom Controls - Bottom Right */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+      <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-30">
         <button
-          onClick={() => zoomBy(0.87)}
-          className="w-10 h-10 rounded bg-primary/80 hover:bg-primary text-primary-foreground flex items-center justify-center active:scale-[0.9] transition-all"
-          title="Zoom out"
-        >
-          <Minus size={18} />
-        </button>
-        <button
-          onClick={() => zoomBy(1.15)}
-          className="w-10 h-10 rounded bg-primary/80 hover:bg-primary text-primary-foreground flex items-center justify-center active:scale-[0.9] transition-all"
-          title="Zoom in"
+          onClick={zoomIn}
+          className="w-10 h-10 rounded-lg bg-slate-800/90 backdrop-blur-sm hover:bg-slate-700 text-white flex items-center justify-center active:scale-[0.9] transition-all shadow-lg border border-slate-600/50"
         >
           <Plus size={18} />
         </button>
         <button
-          onClick={resetZoom}
-          className="w-10 h-10 rounded bg-secondary/80 hover:bg-secondary text-secondary-foreground flex items-center justify-center active:scale-[0.9] transition-all"
-          title="Reset zoom"
+          onClick={zoomOut}
+          className="w-10 h-10 rounded-lg bg-slate-800/90 backdrop-blur-sm hover:bg-slate-700 text-white flex items-center justify-center active:scale-[0.9] transition-all shadow-lg border border-slate-600/50"
         >
-          <Maximize2 size={18} />
+          <Minus size={18} />
+        </button>
+        <button
+          onClick={resetZoom}
+          className="w-10 h-10 rounded-lg bg-slate-800/90 backdrop-blur-sm hover:bg-slate-700 text-white flex items-center justify-center active:scale-[0.9] transition-all shadow-lg border border-slate-600/50"
+        >
+          <Maximize2 size={16} />
         </button>
       </div>
 
-      {/* Zoom Level Indicator */}
-      <div className="absolute bottom-4 left-4 px-3 py-2 rounded bg-background/80 backdrop-blur-sm border border-border text-xs font-mono text-muted-foreground">
-        {zoomLevel}%
+      {/* Zoom Level */}
+      <div className="absolute bottom-4 left-4 px-2.5 py-1 rounded-md bg-slate-800/80 backdrop-blur-sm text-[11px] font-mono text-slate-300 z-30 border border-slate-600/30">
+        {Math.round(scale * 100)}%
       </div>
     </div>
   );
