@@ -83,6 +83,7 @@ export interface TurnState {
   currentPlayerIndex: number;
   isFirstTurn: boolean;
   stageComplete: boolean;
+  attackedFrom: string[]; // origin ids (territory/sea) that already attacked this turn
 }
 
 export interface MarketState {
@@ -97,6 +98,7 @@ export interface CombatState {
   active: boolean;
   attackerId: SuperpowerId | null;
   defenderId: SuperpowerId | null;
+  fromId: string | null; // origin territory/sea zone of the attacker
   targetId: string | null; // territory or sea zone
   targetType: 'territory' | 'sea';
   attackerUnits: number;
@@ -180,4 +182,5 @@ export type GameAction =
   | { type: 'CPU_TURN' }
   | { type: 'LOAD_GAME'; state: GameState }
   | { type: 'SELECT_OPTIONAL_STAGE'; stage: TurnStage }
+  | { type: 'SET_ARMY_PLACEMENT'; placement: Record<string, number> }
   | { type: 'DECLARE_DETENTE' };

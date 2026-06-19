@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
@@ -8,7 +8,18 @@ import { Plus, Minus } from 'lucide-react';
 export default function SetupScreen() {
   const [, setLocation] = useLocation();
   const { game, dispatch } = useGameStore();
-  const [armyPlacement, setArmyPlacement] = useState<Record<string, number>>({});
+
+  // Lazy-init placement from the starting armies (avoids setState-during-render)
+  const [armyPlacement, setArmyPlacement] = useState<Record<string, number>>(() => {
+    const g = useGameStore.getState().game;
+    const human = g ? Object.values(g.players).find(p => p.isHuman) : null;
+    if (!g || !human) return {};
+    const initial: Record<string, number> = {};
+    SUPERPOWERS[human.id].territories.forEach(t => {
+      initial[t] = g.players[human.id].armies[t] || 0;
+    });
+    return initial;
+  });
 
   if (!game) {
     setLocation('/');
@@ -24,17 +35,10 @@ export default function SetupScreen() {
   const sp = SUPERPOWERS[humanPlayer.id];
   const homelands = sp.territories;
 
-  // Initialize placement
-  if (Object.keys(armyPlacement).length === 0) {
-    const initial: Record<string, number> = {};
-    homelands.forEach(t => {
-      initial[t] = game.players[humanPlayer.id].armies[t] || 0;
-    });
-    setArmyPlacement(initial);
-  }
-
   const totalArmies = Object.values(armyPlacement).reduce((a, b) => a + b, 0);
-  const maxArmies = 5; // Starting armies per player
+  // Total starting armies = number of homelands (1 per territory by default);
+  // the player redistributes them without changing the total.
+  const maxArmies = homelands.length;
 
   const handleAddArmy = (territory: string) => {
     if (totalArmies < maxArmies) {
@@ -59,8 +63,8 @@ export default function SetupScreen() {
   const handleStartGame = () => {
     if (totalArmies === maxArmies) {
       playSound('turn-start', 0.7);
-      // Start the game - armies are already placed in the store
-      dispatch({ type: 'START_GAME' });
+      // Apply the chosen distribution to the store, then enter the game
+      dispatch({ type: 'SET_ARMY_PLACEMENT', placement: armyPlacement });
       setLocation('/game');
     }
   };

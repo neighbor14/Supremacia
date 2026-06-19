@@ -8,7 +8,11 @@ export default function CombatModal() {
   const { combat } = game;
   const attacker = combat.attackerId ? SUPERPOWERS[combat.attackerId] : null;
   const defender = combat.defenderId ? SUPERPOWERS[combat.defenderId] : null;
-  const targetName = combat.targetId ? game.territories[combat.targetId]?.name || combat.targetId : '';
+  const targetName = combat.targetId
+    ? (combat.targetType === 'territory'
+        ? game.territories[combat.targetId]?.name
+        : game.seaZones[combat.targetId]?.name) || combat.targetId
+    : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">

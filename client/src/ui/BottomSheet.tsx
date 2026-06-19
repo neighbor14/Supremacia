@@ -66,15 +66,15 @@ export default function BottomSheet() {
 
         {/* Resource cards linked to this territory */}
         {game.resourceCards && (() => {
-          const linkedCards = Object.values(game.resourceCards).filter((c: any) => c.locationId === selectedTerritory && c.owner === currentPlayer.id);
+          const linkedCards = Object.values(game.resourceCards).filter(c => c.territoryId === selectedTerritory && c.ownerId === currentPlayer.id);
           if (linkedCards.length === 0) return null;
           return (
             <div className="mt-1">
               <p className="text-[10px] text-muted-foreground uppercase mb-1">Cartas neste território:</p>
               <div className="flex flex-wrap gap-1">
-                {linkedCards.map((card: any) => (
+                {linkedCards.map(card => (
                   <span key={card.id} className="text-[10px] px-1.5 py-0.5 bg-secondary rounded">
-                    {card.resourceType === 'grain' ? '🌾' : card.resourceType === 'oil' ? '🛢️' : '⛏️'} {card.companyName} (+{card.production})
+                    {card.type === 'grain' ? '🌾' : card.type === 'oil' ? '🛢️' : '⛏️'} {card.companyName} (+{card.production})
                   </span>
                 ))}
               </div>
@@ -268,6 +268,14 @@ function BuildPanel() {
     .filter(Boolean);
 
   const allBuildLocations = [...homeTs, ...foreignTs];
+
+  // Navies are built in sea zones adjacent to a port the player controls
+  const navalZoneIds = new Set<string>();
+  [...homeTs, ...foreignTs].forEach(t => {
+    if (t.hasPort) t.adjacentSeas.forEach(s => navalZoneIds.add(s));
+  });
+  const navalZones = Array.from(navalZoneIds).map(id => game.seaZones[id]).filter(Boolean);
+
   const hasSupplies = player.supplies.grain >= 1 && player.supplies.oil >= 1 && player.supplies.mineral >= 1;
   const hasMoney = player.money >= RULES.UNIT_COST;
   const canBuild = hasSupplies && hasMoney;
@@ -275,6 +283,11 @@ function BuildPanel() {
   const handleBuild = (territoryId: string) => {
     playSound('button-click', 0.5);
     dispatch({ type: 'BUILD_UNITS', units: [{ type: 'army', locationId: territoryId }] });
+  };
+
+  const handleBuildNavy = (seaZoneId: string) => {
+    playSound('button-click', 0.5);
+    dispatch({ type: 'BUILD_UNITS', units: [{ type: 'navy', locationId: seaZoneId }] });
   };
 
   return (
@@ -290,7 +303,7 @@ function BuildPanel() {
         <span className="text-[9px]">(Custo: $1.000 + 1 set por 3 unid.)</span>
       </div>
 
-      {/* Build armies */}
+      {/* Build armies + navies */}
       {canBuild ? (
         <div className="mb-3">
           <p className="text-[10px] text-emerald-400 mb-1.5 font-medium">Selecione onde construir exércitos:</p>
@@ -305,6 +318,23 @@ function BuildPanel() {
               </button>
             ))}
           </div>
+
+          {navalZones.length > 0 && (
+            <>
+              <p className="text-[10px] text-blue-300 mt-2.5 mb-1.5 font-medium">Construir esquadras (zonas com porto):</p>
+              <div className="flex flex-wrap gap-1.5">
+                {navalZones.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleBuildNavy(s.id)}
+                    className="text-[11px] px-2.5 py-1.5 bg-blue-600/20 text-blue-300 rounded-md hover:bg-blue-600/30 active:scale-[0.95] border border-blue-600/30 transition-all"
+                  >
+                    +1 ⚓ {s.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="mb-3 p-2 bg-destructive/10 rounded-md border border-destructive/20">
@@ -372,11 +402,12 @@ function BuildPanel() {
 // ============================================================
 
 function MovePanel() {
-  const { game, selectedTerritory } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone } = useGameStore();
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
   const myTerritories = Object.entries(player.armies).filter(([, count]) => count > 0);
+  const myNavies = Object.entries(player.navies).filter(([, count]) => count > 0);
 
   return (
     <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto">
@@ -384,12 +415,13 @@ function MovePanel() {
         🚀 Movimento
       </h3>
       <p className="text-[10px] text-muted-foreground mb-2">
-        Toque em um território com seus exércitos para ver destinos.
-        Custo: 1 cereal por território | 2 petróleo por voo.
+        Toque em um território (exércitos) ou zona marítima (esquadras) para ver destinos.
+        Custo: 1 cereal/território | 2 petróleo/voo | 1 petróleo/mar.
       </p>
 
-      {/* Show selected territory actions */}
+      {/* Show selected territory/sea actions */}
       {selectedTerritory && <SelectedTerritoryMoveActions />}
+      {selectedSeaZone && <SelectedSeaZoneMoveActions />}
 
       {/* List of territories with armies */}
       <div className="flex flex-wrap gap-1 mt-2">
@@ -401,6 +433,19 @@ function MovePanel() {
           </span>
         ))}
       </div>
+
+      {/* List of sea zones with navies */}
+      {myNavies.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {myNavies.map(([sid, count]) => (
+            <span key={sid} className={`text-[10px] px-1.5 py-0.5 rounded ${
+              selectedSeaZone === sid ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-secondary'
+            }`}>
+              ⚓ {game.seaZones[sid]?.name}: {count}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -440,12 +485,45 @@ function SelectedTerritoryMoveActions() {
   );
 }
 
+function SelectedSeaZoneMoveActions() {
+  const { game, selectedSeaZone, dispatch } = useGameStore();
+  if (!game || !selectedSeaZone) return null;
+
+  const player = game.players[game.turn.currentPlayer];
+  const sea = game.seaZones[selectedSeaZone];
+  const myNavies = player.navies[selectedSeaZone] || 0;
+
+  if (myNavies === 0 || !sea) return null;
+
+  return (
+    <div className="bg-secondary/50 rounded-md p-2 mb-2">
+      <p className="text-[10px] text-foreground font-medium mb-1">
+        Mover de <strong>{sea.name}</strong> ({myNavies} esquadra(s)):
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {sea.adjacentSeas.map(adjId => (
+          <button
+            key={adjId}
+            onClick={() => {
+              playSound('button-click', 0.5);
+              dispatch({ type: 'MOVE_NAVY', from: selectedSeaZone, to: adjId, count: 1 });
+            }}
+            className="text-[10px] px-2 py-1 bg-blue-500/20 text-blue-300 rounded hover:bg-blue-500/30 active:scale-[0.95] border border-blue-500/20"
+          >
+            → {game.seaZones[adjId]?.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // ATTACK PANEL
 // ============================================================
 
 function AttackPanel() {
-  const { game, selectedTerritory, dispatch } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone, dispatch } = useGameStore();
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -456,12 +534,13 @@ function AttackPanel() {
         ⚔️ Fase de Ataque
       </h3>
       <p className="text-[10px] text-muted-foreground mb-2">
-        Selecione um território com 2+ exércitos para atacar adjacentes.
+        Território com 2+ exércitos ataca adjacentes; zona marítima com esquadras ataca mares vizinhos.
         Custo: 1 de cada suprimento por batalha.
       </p>
 
-      {/* Show attack options for selected territory */}
+      {/* Show attack options for selected territory/sea */}
       {selectedTerritory && <SelectedTerritoryAttackActions />}
+      {selectedSeaZone && <SelectedSeaZoneAttackActions />}
 
       {player.nukes > 0 && (
         <p className="text-[10px] text-destructive mt-2 p-1.5 bg-destructive/10 rounded">
@@ -532,4 +611,44 @@ function SelectedTerritoryAttackActions() {
   }
 
   return null;
+}
+
+function SelectedSeaZoneAttackActions() {
+  const { game, selectedSeaZone, dispatch } = useGameStore();
+  if (!game || !selectedSeaZone) return null;
+
+  const player = game.players[game.turn.currentPlayer];
+  const sea = game.seaZones[selectedSeaZone];
+  const myNavies = player.navies[selectedSeaZone] || 0;
+
+  if (myNavies < 1 || !sea) return null;
+
+  // Adjacent sea zones that hold enemy navies
+  const targets = sea.adjacentSeas.filter(sid =>
+    Object.entries(game.players).some(([pid, p]) => pid !== player.id && (p.navies[sid] || 0) > 0)
+  );
+
+  if (targets.length === 0) return null;
+
+  return (
+    <div className="bg-destructive/10 rounded-md p-2 mb-2">
+      <p className="text-[10px] text-foreground font-medium mb-1">
+        Atacar de <strong>{sea.name}</strong> ({myNavies} esquadra(s)):
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {targets.map(targetId => (
+          <button
+            key={targetId}
+            onClick={() => {
+              playSound('combat-start', 0.7);
+              dispatch({ type: 'ATTACK_SEA', from: selectedSeaZone, target: targetId });
+            }}
+            className="text-[10px] px-2 py-1 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
+          >
+            ⚔ {game.seaZones[targetId]?.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }

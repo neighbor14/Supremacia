@@ -76,11 +76,12 @@ export function createInitialGameState(humanPlayer: SuperpowerId = 'usa'): GameS
     currentPlayerIndex: 0,
     isFirstTurn: true,
     stageComplete: false,
+    attackedFrom: [],
   };
 
   // Combat
   const combat: CombatState = {
-    active: false, attackerId: null, defenderId: null, targetId: null,
+    active: false, attackerId: null, defenderId: null, fromId: null, targetId: null,
     targetType: 'territory', attackerUnits: 0, defenderUnits: 0,
     attackerDice: [], defenderDice: [], attackerLosses: 0, defenderLosses: 0,
     phase: 'select_target', defenderChoice: null,
