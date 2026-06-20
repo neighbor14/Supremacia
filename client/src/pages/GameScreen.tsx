@@ -147,7 +147,7 @@ export default function GameScreen() {
 
     const delay = presentation.skipRequested
       ? 0
-      : presentation.speed === 'fast' ? 2000 : (currentStep.event.durationMs ?? 5000);
+      : presentation.speed === 'fast' ? 1500 : (currentStep.event.durationMs ?? 3000);
 
     const timer = setTimeout(() => {
       dispatch({ type: 'APPLY_AI_STEP', state: currentStep.stateAfter });

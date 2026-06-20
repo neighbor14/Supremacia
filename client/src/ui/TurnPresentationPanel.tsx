@@ -1,7 +1,8 @@
+import { useEffect, useRef, useState } from 'react';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { usePresentationStore } from '../stores/presentationStore';
-import { ActionEventType, PlayerActionEvent, TurnStage } from '../game/types';
-import { Pause, Play, SkipForward, Zap, Clock } from 'lucide-react';
+import { ActionEventType, TurnStage } from '../game/types';
+import { SkipForward, Zap, Clock, Pause, Play } from 'lucide-react';
 
 const STAGE_NAMES: Record<TurnStage, string> = {
   1: 'Salários',
@@ -14,22 +15,22 @@ const STAGE_NAMES: Record<TurnStage, string> = {
 };
 
 const ACTION_ICONS: Record<ActionEventType, string> = {
-  pay_salaries: '💸',
-  transfer_production: '🏭',
-  sell_resource: '📦',
-  buy_resource: '🛒',
-  build_armies: '⚔️',
-  build_navies: '🚢',
+  pay_salaries:          '💸',
+  transfer_production:   '🏭',
+  sell_resource:         '📦',
+  buy_resource:          '🛒',
+  build_armies:          '⚔️',
+  build_navies:          '🚢',
   attack_result_victory: '🏆',
-  attack_result_defeat: '💥',
-  research: '☢️',
-  end_turn: '🔁',
+  attack_result_defeat:  '💥',
+  research:              '☢️',
+  end_turn:              '🔁',
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
-  money: 'M$',
-  grain: 'cereal',
-  oil: 'petróleo',
+  money:   'M$',
+  grain:   'cereal',
+  oil:     'petróleo',
   mineral: 'minério',
 };
 
@@ -38,29 +39,41 @@ function ResourceBadge({ label, value }: { label: string; value: number }) {
   const positive = value > 0;
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-full ${
+      className={`inline-flex items-center gap-1 text-[12px] font-mono px-2.5 py-1 rounded-full font-semibold ${
         positive
-          ? 'bg-green-500/15 text-green-400 border border-green-500/20'
-          : 'bg-red-500/15 text-red-400 border border-red-500/20'
+          ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+          : 'bg-red-500/20 text-red-300 border border-red-500/30'
       }`}
     >
-      {positive ? '+' : ''}{label === 'M$' ? value.toLocaleString() : value} {label}
+      {positive ? '+' : ''}
+      {label === 'M$' ? value.toLocaleString() : value} {label}
     </span>
   );
 }
 
-function CompletedMiniLog({ events }: { events: PlayerActionEvent[] }) {
-  if (events.length === 0) return null;
-  const recent = events.slice(-3);
+// Animated countdown bar that resets each time `key` changes
+function CountdownBar({ durationMs, color }: { durationMs: number; color: string }) {
+  const [width, setWidth] = useState(100);
+  const startTime = useRef(Date.now());
+
+  useEffect(() => {
+    startTime.current = Date.now();
+    setWidth(100);
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime.current;
+      const remaining = Math.max(0, 100 - (elapsed / durationMs) * 100);
+      setWidth(remaining);
+      if (remaining <= 0) clearInterval(interval);
+    }, 50);
+    return () => clearInterval(interval);
+  }, [durationMs]);
+
   return (
-    <div className="border-t border-border/30 px-4 pt-2 pb-1">
-      {recent.map(ev => (
-        <div key={ev.id} className="flex items-center gap-1.5 py-0.5">
-          <span className="text-xs opacity-60">{ACTION_ICONS[ev.actionType]}</span>
-          <span className="text-[11px] text-muted-foreground truncate">{ev.title.split(' — ')[1] ?? ev.title}</span>
-          <span className="text-[10px] text-muted-foreground/50 ml-auto shrink-0">✓</span>
-        </div>
-      ))}
+    <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+      <div
+        className="h-full rounded-full transition-none"
+        style={{ width: `${width}%`, backgroundColor: color }}
+      />
     </div>
   );
 }
@@ -78,136 +91,181 @@ export default function TurnPresentationPanel() {
 
   const ev = currentStep.event;
   const sp = SUPERPOWERS[ev.playerId];
-  const progress = steps.length > 0 ? (currentIndex / steps.length) * 100 : 0;
+
+  // How long this event actually lasts (used for countdown bar)
+  const actualDuration = speed === 'fast' ? 2000 : (ev.durationMs ?? 3000);
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-40 pointer-events-auto animate-in slide-in-from-bottom duration-300">
-      {/* Completed actions mini-log */}
-      <div className="bg-card/90 backdrop-blur-md border-t border-border/40">
-        <CompletedMiniLog events={completedEvents} />
+    /* Full-screen dim overlay — blocks map interaction while AI is "thinking out loud" */
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-auto">
+      {/* Darkened backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
 
-        {/* Main action card */}
-        <div className="px-4 py-3">
-          {/* Header: player + phase */}
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
-            <span
-              className="text-xs font-bold uppercase tracking-wider"
-              style={{ color: sp.color, fontFamily: 'var(--font-display)' }}
-            >
-              {sp.shortName}
-            </span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              — Fase {ev.phase}: {STAGE_NAMES[ev.phase]}
-            </span>
-            <div className="ml-auto flex items-center gap-1">
+      {/* Announcement card — centered */}
+      <div
+        key={`${ev.id}-${currentIndex}`}
+        className="relative w-full max-w-sm mx-4 animate-in zoom-in-95 fade-in duration-200"
+      >
+        <div
+          className="bg-card/97 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden"
+          style={{ borderWidth: 2, borderStyle: 'solid', borderColor: `${sp.color}60` }}
+        >
+          {/* Countdown bar at top */}
+          {!isPaused && (
+            <CountdownBar
+              key={`bar-${ev.id}-${currentIndex}-${speed}`}
+              durationMs={actualDuration}
+              color={sp.color}
+            />
+          )}
+
+          <div className="px-6 py-5">
+            {/* Player identity row */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
               <span
-                className="text-[9px] px-1.5 py-0.5 rounded uppercase font-bold"
+                className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: sp.color, fontFamily: 'var(--font-display)' }}
+              >
+                {sp.name}
+              </span>
+              <span
+                className="ml-auto text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider"
                 style={{ backgroundColor: `${sp.color}22`, color: sp.color, fontFamily: 'var(--font-display)' }}
               >
-                IA
+                IA · Fase {ev.phase}: {STAGE_NAMES[ev.phase]}
               </span>
             </div>
-          </div>
 
-          {/* Action content */}
-          <div className="flex items-start gap-3">
-            <span className="text-2xl leading-none mt-0.5 shrink-0">{ACTION_ICONS[ev.actionType]}</span>
-            <div className="min-w-0">
+            {/* Big icon + action */}
+            <div className="flex flex-col items-center text-center gap-2 mb-4">
+              <span className="text-5xl leading-none">{ACTION_ICONS[ev.actionType]}</span>
+
+              {/* Title — the main announcement text */}
               <p
-                className="text-sm font-bold text-foreground leading-snug"
+                className="text-xl font-bold text-foreground leading-tight mt-1"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                {ev.title.split(' — ')[1] ?? ev.title}
+                {/* Strip player prefix if present */}
+                {ev.title.includes(' — ')
+                  ? ev.title.split(' — ').slice(1).join(' — ')
+                  : ev.title}
               </p>
-              <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+
+              {/* Description — the "where / how much / result" detail */}
+              <p className="text-sm text-muted-foreground leading-relaxed">
                 {ev.description}
               </p>
-              {/* Resource changes */}
-              {ev.resourceChanges && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {Object.entries(ev.resourceChanges).map(([key, val]) =>
-                    val !== undefined && val !== 0 ? (
-                      <ResourceBadge key={key} label={RESOURCE_LABELS[key] ?? key} value={val} />
-                    ) : null
-                  )}
-                  {(ev.armyDelta ?? 0) !== 0 && (
-                    <ResourceBadge label="exércitos" value={ev.armyDelta!} />
-                  )}
-                  {(ev.navyDelta ?? 0) !== 0 && (
-                    <ResourceBadge label="esquadras" value={ev.navyDelta!} />
-                  )}
-                </div>
-              )}
             </div>
-          </div>
-        </div>
 
-        {/* Progress bar + controls */}
-        <div className="px-4 pb-3">
-          {/* Progress bar */}
-          <div className="w-full bg-border/30 rounded-full h-0.5 mb-3">
-            <div
-              className="h-0.5 rounded-full transition-all duration-1000 ease-linear"
-              style={{ width: `${progress}%`, backgroundColor: sp.color }}
-            />
-          </div>
+            {/* Resource change badges */}
+            {ev.resourceChanges && Object.entries(ev.resourceChanges).some(([, v]) => v && v !== 0) && (
+              <div className="flex flex-wrap justify-center gap-2 mb-4">
+                {Object.entries(ev.resourceChanges).map(([key, val]) =>
+                  val !== undefined && val !== 0 ? (
+                    <ResourceBadge key={key} label={RESOURCE_LABELS[key] ?? key} value={val} />
+                  ) : null
+                )}
+                {(ev.armyDelta ?? 0) !== 0 && (
+                  <ResourceBadge label="exércitos" value={ev.armyDelta!} />
+                )}
+                {(ev.navyDelta ?? 0) !== 0 && (
+                  <ResourceBadge label="esquadras" value={ev.navyDelta!} />
+                )}
+              </div>
+            )}
 
-          {/* Controls */}
-          <div className="flex items-center gap-2">
-            {/* Pause / Resume */}
-            <button
-              onClick={isPaused ? resume : pause}
-              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors"
+            {/* Step progress dots */}
+            <div className="flex justify-center gap-1.5 mb-4">
+              {steps.map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-full transition-all duration-300"
+                  style={{
+                    width: i === currentIndex ? 16 : 6,
+                    height: 6,
+                    backgroundColor:
+                      i < currentIndex
+                        ? `${sp.color}60`
+                        : i === currentIndex
+                        ? sp.color
+                        : 'rgba(255,255,255,0.15)',
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center gap-2">
+              {/* Pause / Resume */}
+              <button
+                onClick={isPaused ? resume : pause}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors"
+              >
+                {isPaused ? <Play size={13} /> : <Pause size={13} />}
+                {isPaused ? 'Retomar' : 'Pausar'}
+              </button>
+
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button
+                  onClick={() => setSpeed('normal')}
+                  title="3 segundos por ação"
+                  className={`flex items-center gap-1 text-xs px-2.5 py-2 rounded-lg transition-colors ${
+                    speed === 'normal'
+                      ? 'text-primary-foreground'
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                  style={speed === 'normal' ? { backgroundColor: sp.color } : {}}
+                >
+                  <Clock size={11} /> 3s
+                </button>
+                <button
+                  onClick={() => setSpeed('fast')}
+                  title="1.5 segundos por ação"
+                  className={`flex items-center gap-1 text-xs px-2.5 py-2 rounded-lg transition-colors ${
+                    speed === 'fast'
+                      ? 'text-primary-foreground'
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                  style={speed === 'fast' ? { backgroundColor: sp.color } : {}}
+                >
+                  <Zap size={11} /> 1.5s
+                </button>
+                <button
+                  onClick={skip}
+                  title="Pular o turno inteiro"
+                  className="flex items-center gap-1 text-xs px-2.5 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                >
+                  <SkipForward size={11} /> Pular
+                </button>
+              </div>
+            </div>
+
+            {/* Completed mini-log */}
+            {completedEvents.length > 0 && (
+              <div className="mt-4 border-t border-border/30 pt-3 space-y-1">
+                {completedEvents.slice(-3).map(cev => (
+                  <div key={cev.id} className="flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                    <span className="shrink-0">{ACTION_ICONS[cev.actionType]}</span>
+                    <span className="truncate">
+                      {cev.title.includes(' — ')
+                        ? cev.title.split(' — ').slice(1).join(' — ')
+                        : cev.title}
+                    </span>
+                    <span className="ml-auto shrink-0 text-green-500/60">✓</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Step counter */}
+            <p
+              className="text-center text-[10px] text-muted-foreground/40 mt-3"
+              style={{ fontFamily: 'var(--font-display)' }}
             >
-              {isPaused ? <Play size={12} /> : <Pause size={12} />}
-              {isPaused ? 'Retomar' : 'Pausar'}
-            </button>
-
-            <div className="flex items-center gap-1 ml-auto">
-              {/* Speed: Normal */}
-              <button
-                onClick={() => setSpeed('normal')}
-                title="Velocidade normal: 5 segundos por ação"
-                className={`flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-md transition-colors ${
-                  speed === 'normal'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }`}
-              >
-                <Clock size={11} />
-                5s
-              </button>
-              {/* Speed: Fast */}
-              <button
-                onClick={() => setSpeed('fast')}
-                title="Velocidade rápida: 2 segundos por ação"
-                className={`flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-md transition-colors ${
-                  speed === 'fast'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }`}
-              >
-                <Zap size={11} />
-                2s
-              </button>
-              {/* Skip */}
-              <button
-                onClick={skip}
-                title="Pular apresentação — aplicar turno imediatamente"
-                className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-              >
-                <SkipForward size={11} />
-                Pular
-              </button>
-            </div>
+              {currentIndex + 1} / {steps.length}{isPaused ? ' · PAUSADO' : ''}
+            </p>
           </div>
-
-          {/* Step counter */}
-          <p className="text-[10px] text-muted-foreground/60 text-center mt-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-            {currentIndex + 1} / {steps.length}
-            {isPaused && ' · PAUSADO'}
-          </p>
         </div>
       </div>
     </div>

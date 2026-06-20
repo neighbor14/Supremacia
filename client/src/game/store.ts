@@ -1308,9 +1308,10 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   if (player.isHuman || player.isEliminated) return steps;
 
   const sp = SUPERPOWERS[playerId];
+  const STEP_MS = 3000; // 3 s per announcement (matches user expectation)
 
-  // Snapshot the working clone. drawnCard is excluded from intermediate
-  // snapshots to prevent modals from re-opening when steps are replayed.
+  // Snapshot the working clone — drawnCard excluded from intermediate steps
+  // to prevent modals from re-opening when steps are replayed.
   const snap = (): GameState => {
     const s = JSON.parse(JSON.stringify(state)) as GameState;
     s.drawnCard = null;
@@ -1342,13 +1343,13 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   pushStep({
     phase: 1,
     actionType: 'pay_salaries',
-    title: `${sp.shortName} — Salários`,
+    title: 'Pagou salários',
     description: salaryCost > 0
-      ? `Pagou ${salaryCost.toLocaleString()} (${unitCount} unidades · ${player.resourceCards.length} companhias)`
+      ? `${salaryCost.toLocaleString()} — ${unitCount} unidades e ${player.resourceCards.length} companhias`
       : 'Nenhum custo de upkeep neste turno.',
     resourceChanges: { money: -salaryCost },
     soundKey: salaryCost > 0 ? 'resource-loss' : undefined,
-    durationMs: 5000,
+    durationMs: STEP_MS,
   });
 
   // ── Stage 2: Transfer production ─────────────────────────
@@ -1362,13 +1363,13 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   pushStep({
     phase: 2,
     actionType: 'transfer_production',
-    title: `${sp.shortName} — Produção`,
+    title: 'Recebeu produção',
     description: totalProduced > 0
-      ? `Recebeu: ${grainGained} cereal · ${oilGained} petróleo · ${mineralGained} minério`
-      : 'Nenhuma produção disponível.',
+      ? `+${grainGained} cereal · +${oilGained} petróleo · +${mineralGained} minério`
+      : 'Nenhuma produção disponível neste turno.',
     resourceChanges: { grain: grainGained, oil: oilGained, mineral: mineralGained },
     soundKey: totalProduced > 0 ? 'resource-gain' : undefined,
-    durationMs: 5000,
+    durationMs: STEP_MS,
   });
 
   // ── Choose optional stages (mirrors cpuTurn logic exactly) ─
@@ -1394,32 +1395,30 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
     state.turn.stage = stage;
 
     switch (stage) {
-      case 3: { // Sell
-        const moneyBefore3 = state.players[playerId].money;
-        const supBefore3 = { ...state.players[playerId].supplies };
-        cpuSell(state, state.players[playerId]);
-        const moneyGained3 = state.players[playerId].money - moneyBefore3;
-        const grainSold = supBefore3.grain - state.players[playerId].supplies.grain;
-        const oilSold = supBefore3.oil - state.players[playerId].supplies.oil;
-        const mineralSold = supBefore3.mineral - state.players[playerId].supplies.mineral;
-        if (moneyGained3 > 0) {
-          const parts: string[] = [];
-          if (grainSold > 0) parts.push(`${grainSold} cereal`);
-          if (oilSold > 0) parts.push(`${oilSold} petróleo`);
-          if (mineralSold > 0) parts.push(`${mineralSold} minério`);
-          pushStep({
-            phase: 3,
-            actionType: 'sell_resource',
-            title: `${sp.shortName} — Vende Recursos`,
-            description: `Vendeu ${parts.join(', ')} · recebeu ${moneyGained3.toLocaleString()}.`,
-            resourceChanges: { money: moneyGained3, grain: -grainSold, oil: -oilSold, mineral: -mineralSold },
-            soundKey: 'resource-gain',
-            durationMs: 5000,
-          });
+      case 3: { // Sell — one announcement per resource type
+        const resources: ResourceType[] = ['grain', 'oil', 'mineral'];
+        const RESOURCE_PT: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
+        for (const r of resources) {
+          if (state.players[playerId].supplies[r] > 4) {
+            const qty = state.players[playerId].supplies[r] - 3;
+            const moneyBefore = state.players[playerId].money;
+            sellResource(state, r, qty);
+            const revenue = state.players[playerId].money - moneyBefore;
+            pushStep({
+              phase: 3,
+              actionType: 'sell_resource',
+              title: `Vendeu ${qty} ${RESOURCE_PT[r]}`,
+              description: `Recebeu ${revenue.toLocaleString()} no mercado`,
+              resourceChanges: { money: revenue, [r]: -qty },
+              soundKey: 'resource-gain',
+              durationMs: STEP_MS,
+            });
+          }
         }
         break;
       }
-      case 4: { // Attack — capture target details before mutation
+
+      case 4: { // Attack — capture target before mutation
         let attackFromId: string | null = null;
         let attackTargetId: string | null = null;
         let attackDefenderId: SuperpowerId | null = null;
@@ -1448,72 +1447,93 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
         if (attackFromId && attackTargetId) {
           const fromName = state.territories[attackFromId]?.name || attackFromId;
           const targetName = state.territories[attackTargetId]?.name || attackTargetId;
-          const defName = attackDefenderId ? SUPERPOWERS[attackDefenderId]?.shortName : '';
+          const defName = attackDefenderId ? SUPERPOWERS[attackDefenderId]?.shortName : 'neutro';
           cpuAttack(state, state.players[playerId]);
           const won = state.territories[attackTargetId]?.owner === playerId;
           pushStep({
             phase: 4,
             actionType: won ? 'attack_result_victory' : 'attack_result_defeat',
-            title: `${sp.shortName} — ${won ? 'Vitória' : 'Ataque'}: ${targetName}`,
+            title: won ? `Conquistou ${targetName}!` : `Ataque em ${targetName} falhou`,
             description: won
-              ? `Atacou ${targetName} (${defName}) a partir de ${fromName} e conquistou o território!`
-              : `Atacou ${targetName} (${defName}) a partir de ${fromName}, mas o ataque falhou.`,
+              ? `Avançou de ${fromName} e derrotou ${defName}`
+              : `Avançou de ${fromName} contra ${defName} — resistiu`,
             fromId: attackFromId,
             toId: attackTargetId,
             soundKey: won ? 'territory-conquered' : 'combat-hit',
-            durationMs: 5000,
+            durationMs: STEP_MS,
           });
         }
         break;
       }
-      case 6: { // Build
-        const armiesBefore6 = Object.values(state.players[playerId].armies).reduce((a: number, b: number) => a + b, 0);
-        const naviesBefore6 = Object.values(state.players[playerId].navies).reduce((a: number, b: number) => a + b, 0);
+
+      case 6: { // Build — one announcement per territory/sea zone
+        const armiesBefore: Record<string, number> = JSON.parse(JSON.stringify(state.players[playerId].armies));
+        const naviesBefore: Record<string, number> = JSON.parse(JSON.stringify(state.players[playerId].navies));
         const moneyBefore6 = state.players[playerId].money;
         cpuBuild(state, state.players[playerId]);
-        const armiesBuilt = Object.values(state.players[playerId].armies).reduce((a: number, b: number) => a + b, 0) - armiesBefore6;
-        const naviesBuilt = Object.values(state.players[playerId].navies).reduce((a: number, b: number) => a + b, 0) - naviesBefore6;
         const moneySpent6 = moneyBefore6 - state.players[playerId].money;
-        if (armiesBuilt + naviesBuilt > 0) {
-          const parts: string[] = [];
-          if (armiesBuilt > 0) parts.push(`${armiesBuilt} exército(s)`);
-          if (naviesBuilt > 0) parts.push(`${naviesBuilt} esquadra(s)`);
-          pushStep({
-            phase: 6,
-            actionType: armiesBuilt > 0 ? 'build_armies' : 'build_navies',
-            title: `${sp.shortName} — Construção`,
-            description: `Construiu ${parts.join(' e ')} por ${moneySpent6.toLocaleString()}.`,
-            resourceChanges: { money: -moneySpent6 },
-            armyDelta: armiesBuilt,
-            navyDelta: naviesBuilt,
-            soundKey: 'resource-gain',
-            durationMs: 5000,
-          });
+
+        // Diff armies: which territories got new armies?
+        for (const [loc, newCount] of Object.entries(state.players[playerId].armies)) {
+          const built = newCount - (armiesBefore[loc] || 0);
+          if (built > 0) {
+            const tName = state.territories[loc]?.name || loc;
+            pushStep({
+              phase: 6,
+              actionType: 'build_armies',
+              title: `Construiu ${built} exército${built > 1 ? 's' : ''}`,
+              description: `em ${tName}`,
+              toId: loc,
+              armyDelta: built,
+              resourceChanges: built === Object.values(state.players[playerId].armies).reduce((s: number, v: number) => s + v, 0) - Object.values(armiesBefore).reduce((s: number, v: number) => s + v, 0)
+                ? { money: -moneySpent6 } : undefined,
+              soundKey: 'resource-gain',
+              durationMs: STEP_MS,
+            });
+          }
+        }
+        // Diff navies: which sea zones got new fleets?
+        for (const [loc, newCount] of Object.entries(state.players[playerId].navies)) {
+          const built = newCount - (naviesBefore[loc] || 0);
+          if (built > 0) {
+            const sName = state.seaZones[loc]?.name || loc;
+            pushStep({
+              phase: 6,
+              actionType: 'build_navies',
+              title: `Construiu ${built} esquadra${built > 1 ? 's' : ''}`,
+              description: `em ${sName}`,
+              toId: loc,
+              navyDelta: built,
+              soundKey: 'resource-gain',
+              durationMs: STEP_MS,
+            });
+          }
         }
         break;
       }
-      case 7: { // Buy
-        const moneyBefore7 = state.players[playerId].money;
-        const supBefore7 = { ...state.players[playerId].supplies };
-        cpuBuy(state, state.players[playerId]);
-        const moneySpent7 = moneyBefore7 - state.players[playerId].money;
-        const grainBought = state.players[playerId].supplies.grain - supBefore7.grain;
-        const oilBought = state.players[playerId].supplies.oil - supBefore7.oil;
-        const mineralBought = state.players[playerId].supplies.mineral - supBefore7.mineral;
-        if (moneySpent7 > 0) {
-          const parts: string[] = [];
-          if (grainBought > 0) parts.push(`${grainBought} cereal`);
-          if (oilBought > 0) parts.push(`${oilBought} petróleo`);
-          if (mineralBought > 0) parts.push(`${mineralBought} minério`);
-          pushStep({
-            phase: 7,
-            actionType: 'buy_resource',
-            title: `${sp.shortName} — Compra Recursos`,
-            description: `Comprou ${parts.join(', ')} por ${moneySpent7.toLocaleString()}.`,
-            resourceChanges: { money: -moneySpent7, grain: grainBought, oil: oilBought, mineral: mineralBought },
-            soundKey: 'resource-gain',
-            durationMs: 5000,
-          });
+
+      case 7: { // Buy — one announcement per resource type
+        const resources7: ResourceType[] = ['grain', 'oil', 'mineral'];
+        const RESOURCE_PT7: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
+        for (const r of resources7) {
+          if (state.players[playerId].supplies[r] < 3 && state.players[playerId].money > state.market.prices[r] * 2) {
+            const supBefore = state.players[playerId].supplies[r];
+            const moneyBefore = state.players[playerId].money;
+            buyResource(state, r, 2);
+            const bought = state.players[playerId].supplies[r] - supBefore;
+            const spent = moneyBefore - state.players[playerId].money;
+            if (bought > 0) {
+              pushStep({
+                phase: 7,
+                actionType: 'buy_resource',
+                title: `Comprou ${bought} ${RESOURCE_PT7[r]}`,
+                description: `Pagou ${spent.toLocaleString()} no mercado`,
+                resourceChanges: { money: -spent, [r]: bought },
+                soundKey: 'resource-gain',
+                durationMs: STEP_MS,
+              });
+            }
+          }
         }
         break;
       }
@@ -1529,21 +1549,19 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
       pushStep({
         phase: 6,
         actionType: 'research',
-        title: `${sp.shortName} — Pesquisa Nuclear!`,
+        title: 'Pesquisa Nuclear concluída!',
         description: builtNuke
-          ? 'Programa nuclear concluído. Primeira ogiva construída!'
-          : 'Tecnologia nuclear desbloqueada. Ogiva será construída em breve.',
+          ? 'Primeira ogiva nuclear construída'
+          : 'Tecnologia nuclear desbloqueada',
         soundKey: 'missile-launch',
-        durationMs: 5000,
+        durationMs: STEP_MS,
       });
     }
-    // Clear drawnCard from clone so it doesn't bleed into end_turn snapshot
     state.drawnCard = null;
   }
 
   // ── End turn ─────────────────────────────────────────────
   advanceToNextPlayer(state);
-  // Final snapshot includes drawnCard from any research that happened
   steps.push({
     event: {
       id: nanoid(8),
@@ -1552,8 +1570,8 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
       playerType: 'ai',
       phase: 1,
       actionType: 'end_turn',
-      title: `${sp.shortName} — Fim de Turno`,
-      description: `Turno de ${sp.name} concluído.`,
+      title: 'Fim de turno',
+      description: `Turno de ${sp.name} concluído`,
       durationMs: 1500,
     } as PlayerActionEvent,
     stateAfter: JSON.parse(JSON.stringify(state)),
