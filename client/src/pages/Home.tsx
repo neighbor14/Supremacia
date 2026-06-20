@@ -228,8 +228,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modo tela cheia — only relevant on mobile (hidden on desktop) */}
-      {pwa.isMobile && !pwa.isStandalone && (
+      {/* Modo tela cheia — only on main menu step and mobile, hidden on desktop/standalone */}
+      {step === 'menu' && pwa.isMobile && !pwa.isStandalone && (
         <button
           onClick={() => setFullscreenHelpOpen(true)}
           className="mt-8 flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors uppercase tracking-wider"

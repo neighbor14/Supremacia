@@ -27,7 +27,9 @@ function detectPlatform(): { platform: Platform; isMobile: boolean } {
     !(window as unknown as { MSStream?: unknown }).MSStream;
 
   const isAndroid = /Android/.test(ua);
-  const isMobileByTouch = 'ontouchstart' in window && window.innerWidth < 1024;
+  // Require both touch capability AND a mobile UA to avoid false positives on
+  // touch-screen laptops (Surface, Chromebook) and 2-in-1 desktops.
+  const isMobileByTouch = 'ontouchstart' in window && /Mobi|Android/i.test(ua);
   const isMobile = isIos || isAndroid || isMobileByTouch;
 
   let platform: Platform;

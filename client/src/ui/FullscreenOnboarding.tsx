@@ -38,14 +38,14 @@ function IosOpenAppIcon() {
 
 function IosStep({ num, icon, label, sub }: { num: number; icon: React.ReactNode; label: string; sub?: string }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-slate-800/60">
+    <div className="flex items-start gap-3 px-3 py-2.5 rounded-md bg-slate-800/60">
       <span
-        className="flex-none w-5 h-5 rounded-full border border-primary/40 bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center"
+        className="flex-none mt-0.5 w-5 h-5 rounded-full border border-primary/40 bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center"
         style={{ fontFamily: 'var(--font-mono)' }}
       >
         {num}
       </span>
-      <span className="flex-none text-primary">{icon}</span>
+      <span className="flex-none mt-0.5 text-primary">{icon}</span>
       <div>
         <span className="text-sm text-slate-200 leading-tight">{label}</span>
         {sub && <span className="block text-[11px] text-slate-500 mt-0.5">{sub}</span>}
@@ -247,8 +247,8 @@ export default function FullscreenOnboarding({ externalOpen, onExternalClose }: 
       <CornerDecor pos="bl" />
       <CornerDecor pos="br" />
 
-      {/* Card */}
-      <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-lg overflow-hidden animate-in slide-in-from-bottom-4 zoom-in-95 duration-300">
+      {/* Card — max-h + overflow-y-auto prevents clipping on short landscape viewports */}
+      <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-lg overflow-hidden animate-in slide-in-from-bottom-4 duration-300 max-h-[90dvh] overflow-y-auto">
 
         {/* Subtle top accent line */}
         <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
@@ -292,8 +292,8 @@ export default function FullscreenOnboarding({ externalOpen, onExternalClose }: 
           {pwa.platform === 'other-mobile' && <OtherMobileContent />}
         </div>
 
-        {/* Footer actions */}
-        <div className="px-5 pb-5 space-y-2">
+        {/* Footer actions — pb accounts for iOS home indicator safe area */}
+        <div className="px-5 space-y-2" style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
           {/* Fullscreen API — only for platforms that support it (not iOS) */}
           {pwa.supportsFullscreen && (
             <button
