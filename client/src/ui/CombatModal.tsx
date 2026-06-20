@@ -1,8 +1,21 @@
+import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
+import { playSound } from '../game/audio';
 
 export default function CombatModal() {
   const { game, dispatch } = useGameStore();
+  const prevPhaseRef = useRef<string>('');
+
+  useEffect(() => {
+    if (!game?.combat.active) return;
+    const phase = game.combat.phase;
+    if (phase !== prevPhaseRef.current) {
+      if (phase === 'result') playSound('combat-hit', 0.8);
+      prevPhaseRef.current = phase;
+    }
+  }, [game?.combat.phase, game?.combat.active]);
+
   if (!game || !game.combat.active) return null;
 
   const { combat } = game;
@@ -71,7 +84,7 @@ export default function CombatModal() {
         <div className="flex gap-2 justify-center">
           {combat.phase === 'confirm' && (
             <button
-              onClick={() => dispatch({ type: 'ROLL_COMBAT' })}
+              onClick={() => { playSound('dice-roll', 0.9); dispatch({ type: 'ROLL_COMBAT' }); }}
               className="px-4 py-2 bg-destructive text-destructive-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
@@ -80,7 +93,7 @@ export default function CombatModal() {
           )}
           {combat.phase === 'occupy' && (
             <button
-              onClick={() => dispatch({ type: 'OCCUPY_TERRITORY' })}
+              onClick={() => { playSound('territory-conquered'); dispatch({ type: 'OCCUPY_TERRITORY' }); }}
               className="px-4 py-2 bg-primary text-primary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
@@ -89,7 +102,7 @@ export default function CombatModal() {
           )}
           {combat.phase === 'result' && (
             <button
-              onClick={() => dispatch({ type: 'OCCUPY_TERRITORY' })}
+              onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'OCCUPY_TERRITORY' }); }}
               className="px-4 py-2 bg-secondary text-secondary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >

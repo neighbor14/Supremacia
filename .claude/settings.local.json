@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "mcp__71a6cda4-d0d8-43eb-a6b3-371631599183__netlify-project-services-reader",
+      "mcp__71a6cda4-d0d8-43eb-a6b3-371631599183__netlify-deploy-services-reader",
+      "Bash(pnpm check *)",
+      "Bash(git -C /Users/danielmatias/Downloads/Supremacia diff --stat)",
+      "Bash(git -C /Users/danielmatias/Downloads/Supremacia add netlify.toml client/src/ui/PlayerStatusBar.tsx client/src/ui/ProspectPanel.tsx client/src/ui/ResourceCardsPanel.tsx)",
+      "Bash(git -C /Users/danielmatias/Downloads/Supremacia commit -m ' *)"
+    ]
+  }
+}

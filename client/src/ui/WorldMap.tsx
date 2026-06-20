@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
+import { playSound } from '../game/audio';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
 
 /**
@@ -13,12 +14,26 @@ const MIN_SCALE = 0.8;
 const MAX_SCALE = 6;
 const PAN_THRESHOLD = 6; // pixels before considering it a drag
 
+// In portrait the 2:1 viewBox letterboxes heavily. Start zoomed so the map fills
+// the container height instead, letting the user pan to navigate.
+function getInitialScale(): number {
+  if (typeof window === 'undefined') return 1;
+  const cw = window.innerWidth;
+  // Approximate map area height (minus TurnPhaseBar ~56px)
+  const mapH = window.innerHeight * 0.75;
+  // With "meet" and 2:1 viewBox, map renders at cw × cw/2 (width-constrained)
+  if (mapH > cw * 0.65) {
+    return Math.min(mapH / (cw / 2), MAX_SCALE);
+  }
+  return 1;
+}
+
 export default function WorldMap() {
   const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone } = useGameStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Transform state
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(getInitialScale);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
 
@@ -42,7 +57,7 @@ export default function WorldMap() {
   // --- Zoom helpers ---
   const zoomIn = () => setScale(s => Math.min(MAX_SCALE, s * 1.4));
   const zoomOut = () => setScale(s => Math.max(MIN_SCALE, s / 1.4));
-  const resetZoom = () => { setScale(1); setTx(0); setTy(0); };
+  const resetZoom = () => { setScale(getInitialScale()); setTx(0); setTy(0); };
 
   // --- Touch distance ---
   const dist2 = (t1: React.Touch, t2: React.Touch) => {
@@ -145,6 +160,7 @@ export default function WorldMap() {
   const handleTerritoryClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!interactionRef.current.hasMoved) {
+      if (id !== selectedTerritory) playSound('button-click', 0.35);
       selectTerritory(id === selectedTerritory ? null : id);
     }
   };
@@ -152,6 +168,7 @@ export default function WorldMap() {
   const handleSeaClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!interactionRef.current.hasMoved) {
+      if (id !== selectedSeaZone) playSound('button-click', 0.35);
       selectSeaZone(id === selectedSeaZone ? null : id);
     }
   };
@@ -282,8 +299,8 @@ export default function WorldMap() {
         })}
       </svg>
 
-      {/* Zoom Controls - Bottom Right */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-30">
+      {/* Zoom Controls - above ticker */}
+      <div className="absolute bottom-9 right-4 flex flex-col gap-2 z-30">
         <button
           onClick={zoomIn}
           className="w-10 h-10 rounded-lg bg-slate-800/90 backdrop-blur-sm hover:bg-slate-700 text-white flex items-center justify-center active:scale-[0.9] transition-all shadow-lg border border-slate-600/50"
@@ -304,8 +321,8 @@ export default function WorldMap() {
         </button>
       </div>
 
-      {/* Zoom Level */}
-      <div className="absolute bottom-4 left-4 px-2.5 py-1 rounded-md bg-slate-800/80 backdrop-blur-sm text-[11px] font-mono text-slate-300 z-30 border border-slate-600/30">
+      {/* Zoom Level - above ticker */}
+      <div className="absolute bottom-9 left-4 px-2.5 py-1 rounded-md bg-slate-800/80 backdrop-blur-sm text-[11px] font-mono text-slate-300 z-30 border border-slate-600/30">
         {Math.round(scale * 100)}%
       </div>
     </div>

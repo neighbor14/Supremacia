@@ -80,13 +80,13 @@ export default function ProspectPanel() {
             >
               <div className="text-center">
                 <div className="text-2xl opacity-40 select-none">🂠</div>
-                <div className="text-[8px] text-muted-foreground mt-0.5">{deckLeft}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">{deckLeft}</div>
               </div>
             </div>
           ) : (
             <div className="absolute rounded-lg border border-dashed border-border/40 flex items-center justify-center"
               style={{ width: 52, height: 72, top: 0, left: 0 }}>
-              <span className="text-[8px] text-muted-foreground text-center leading-tight">Baralho<br/>vazio</span>
+              <span className="text-[10px] text-muted-foreground text-center leading-tight">Baralho<br/>vazio</span>
             </div>
           )}
         </div>
@@ -105,7 +105,7 @@ export default function ProspectPanel() {
           >
             {flipping ? '⏳ Virando...' : `Virar Carta  $${cost.toLocaleString()}`}
           </button>
-          <p className="text-[9px] text-muted-foreground leading-snug">
+          <p className="text-[10px] text-muted-foreground leading-snug">
             Pague ${cost.toLocaleString()} e veja qual carta sai do baralho.
           </p>
         </div>

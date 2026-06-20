@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { RULES } from '../game/rulesConfig';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { useDraggable } from '../hooks/useDraggable';
 
 const RESOURCE_CONFIG = [
   { key: 'grain' as const,   label: 'Cereal',   icon: '🌾', color: '#eab308', bg: '#eab30840' },
@@ -15,6 +16,10 @@ const MAX = RULES.MAX_SUPPLY; // 12
 export default function PlayerStatusBar() {
   const { game } = useGameStore();
   const [expanded, setExpanded] = useState(true);
+  const { containerRef, dragHandleProps, containerStyle } = useDraggable(() => ({
+    x: 8,
+    y: Math.max(60, window.innerHeight * 0.33 - 80),
+  }));
 
   if (!game) return null;
 
@@ -24,7 +29,7 @@ export default function PlayerStatusBar() {
   const sp = SUPERPOWERS[humanPlayer.id];
 
   return (
-    <div className="absolute left-2 top-1/3 -translate-y-1/2 z-20 flex items-start gap-0">
+    <div ref={containerRef} style={{ ...containerStyle, zIndex: 20 }} className="flex items-start gap-0">
       {/* Main panel */}
       <div
         className="bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-xl overflow-hidden transition-all duration-200"
@@ -32,6 +37,14 @@ export default function PlayerStatusBar() {
       >
         {expanded ? (
           <div className="p-2.5">
+            {/* Drag handle */}
+            <div
+              {...dragHandleProps}
+              className="flex items-center justify-center -mt-1 mb-1.5 opacity-40 hover:opacity-70 transition-opacity"
+              title="Arrastar painel"
+            >
+              <GripVertical size={10} className="text-muted-foreground rotate-90" />
+            </div>
             {/* Money */}
             <div className="flex items-center gap-1.5 mb-2.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">$</span>
@@ -41,7 +54,7 @@ export default function PlayerStatusBar() {
                   : humanPlayer.money.toLocaleString()}
               </span>
               {humanPlayer.loans > 0 && (
-                <span className="text-[9px] text-destructive font-mono ml-auto">-{(humanPlayer.loans / 1000).toFixed(0)}k dív</span>
+                <span className="text-[10px] text-destructive font-mono ml-auto">-{(humanPlayer.loans / 1000).toFixed(0)}k dív</span>
               )}
             </div>
 
@@ -52,7 +65,7 @@ export default function PlayerStatusBar() {
                 return (
                   <div key={key}>
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[9px] text-muted-foreground uppercase tracking-wider flex items-center gap-0.5">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-0.5">
                         {icon} {label}
                       </span>
                       <span className="text-[10px] font-bold font-mono" style={{ color }}>
@@ -96,6 +109,14 @@ export default function PlayerStatusBar() {
         ) : (
           /* Collapsed: vertical stack of resource dots + money */
           <div className="py-2.5 px-1 flex flex-col items-center gap-1.5">
+            {/* Drag handle */}
+            <div
+              {...dragHandleProps}
+              className="opacity-40 hover:opacity-70 transition-opacity"
+              title="Arrastar painel"
+            >
+              <GripVertical size={10} className="text-muted-foreground rotate-90" />
+            </div>
             <span className="text-[9px] font-bold font-mono" style={{ color: sp.color }}>
               {humanPlayer.money >= 1000 ? `${Math.floor(humanPlayer.money / 1000)}k` : humanPlayer.money}
             </span>

@@ -1,8 +1,27 @@
+import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
+import { playSound } from '../game/audio';
 
 export default function NuclearModal() {
   const { game, dispatch } = useGameStore();
+  const prevPhaseRef = useRef<string>('');
+
+  useEffect(() => {
+    if (!game?.nuclearAttack.active) return;
+    const { phase, intercepted } = game.nuclearAttack;
+    if (phase !== prevPhaseRef.current) {
+      if (phase === 'result') {
+        if (intercepted) {
+          playSound('diplomacy-alert', 0.9);
+        } else {
+          playSound('explosion', 1.0);
+        }
+      }
+      prevPhaseRef.current = phase;
+    }
+  }, [game?.nuclearAttack.phase, game?.nuclearAttack.active, game?.nuclearAttack.intercepted]);
+
   if (!game || !game.nuclearAttack.active) return null;
 
   const { nuclearAttack } = game;

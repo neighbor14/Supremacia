@@ -35,7 +35,10 @@ export default function BottomSheet() {
     }
 
     return (
-      <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto">
+      <div
+        className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             {ownerSp && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ownerSp.color }} />}
@@ -96,7 +99,10 @@ function BuyAndProspectPanel() {
   const [mode, setMode] = useState<'buy' | 'prospect'>('buy');
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[45vh] overflow-y-auto">
+    <div
+      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[45vh] overflow-y-auto"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
       {/* Tab toggle */}
       <div className="flex border-b border-border">
         <button
@@ -215,14 +221,14 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
               <div className="flex items-center gap-0.5 shrink-0">
                 <button
                   onClick={() => { playSound('button-click', 0.5); adjustQty(r, -1); }}
-                  className="w-6 h-6 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
+                  className="w-8 h-8 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
                 >
                   <MinusIcon size={10} />
                 </button>
                 <span className="text-[11px] font-mono w-4 text-center">{quantities[r]}</span>
                 <button
                   onClick={() => { playSound('button-click', 0.5); adjustQty(r, 1); }}
-                  className="w-6 h-6 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
+                  className="w-8 h-8 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
                 >
                   <Plus size={10} />
                 </button>
@@ -291,7 +297,10 @@ function BuildPanel() {
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[45vh] overflow-y-auto">
+    <div
+      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[45vh] overflow-y-auto"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+    >
       <h3 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)' }}>
         🏗️ Construção
       </h3>
@@ -359,7 +368,7 @@ function BuildPanel() {
           )}
           {player.hasResearchedNuke && player.money >= RULES.NUKE_COST && player.supplies.mineral >= RULES.NUKE_MINERAL_COST && (
             <button
-              onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'BUILD_NUKE' }); }}
+              onClick={() => { playSound('missile-launch', 0.5); dispatch({ type: 'BUILD_NUKE' }); }}
               className="text-[10px] px-2.5 py-1.5 bg-destructive/20 text-destructive rounded-md hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
             >
               ☢️ Construir Bomba ($5.000 + 1⛏️)
@@ -380,7 +389,7 @@ function BuildPanel() {
           )}
           {player.hasResearchedLaserStar && player.money >= RULES.LASER_STAR_COST && player.supplies.mineral >= RULES.LASER_STAR_MINERAL_COST && (
             <button
-              onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'BUILD_LASER_STAR' }); }}
+              onClick={() => { playSound('diplomacy-alert', 0.8); dispatch({ type: 'BUILD_LASER_STAR' }); }}
               className="text-[10px] px-2.5 py-1.5 bg-blue-600/20 text-blue-300 rounded-md hover:bg-blue-600/30 active:scale-[0.95] border border-blue-600/30"
             >
               🛡️ Construir Laser-Star ($10.000 + 2⛏️)
@@ -410,7 +419,10 @@ function MovePanel() {
   const myNavies = Object.entries(player.navies).filter(([, count]) => count > 0);
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto">
+    <div
+      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+    >
       <h3 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)' }}>
         🚀 Movimento
       </h3>
@@ -475,7 +487,7 @@ function SelectedTerritoryMoveActions() {
               playSound('button-click', 0.5);
               dispatch({ type: 'MOVE_ARMY', from: selectedTerritory, to: adjId, count: 1 });
             }}
-            className="text-[10px] px-2 py-1 bg-primary/20 text-primary rounded hover:bg-primary/30 active:scale-[0.95] border border-primary/20"
+            className="text-[10px] px-2 py-2 bg-primary/20 text-primary rounded hover:bg-primary/30 active:scale-[0.95] border border-primary/20"
           >
             → {game.territories[adjId]?.name}
           </button>
@@ -508,7 +520,7 @@ function SelectedSeaZoneMoveActions() {
               playSound('button-click', 0.5);
               dispatch({ type: 'MOVE_NAVY', from: selectedSeaZone, to: adjId, count: 1 });
             }}
-            className="text-[10px] px-2 py-1 bg-blue-500/20 text-blue-300 rounded hover:bg-blue-500/30 active:scale-[0.95] border border-blue-500/20"
+            className="text-[10px] px-2 py-2 bg-blue-500/20 text-blue-300 rounded hover:bg-blue-500/30 active:scale-[0.95] border border-blue-500/20"
           >
             → {game.seaZones[adjId]?.name}
           </button>
@@ -529,7 +541,10 @@ function AttackPanel() {
   const player = game.players[game.turn.currentPlayer];
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto">
+    <div
+      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+    >
       <h3 className="text-xs font-semibold uppercase tracking-wider mb-1 text-destructive" style={{ fontFamily: 'var(--font-display)' }}>
         ⚔️ Fase de Ataque
       </h3>
@@ -581,7 +596,7 @@ function SelectedTerritoryAttackActions() {
                   playSound('combat-start', 0.7);
                   dispatch({ type: 'ATTACK_TERRITORY', from: selectedTerritory, target: targetId });
                 }}
-                className="text-[10px] px-2 py-1 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
+                className="text-[10px] px-2 py-2 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
               >
                 ⚔ {game.territories[targetId]?.name}
               </button>
@@ -643,7 +658,7 @@ function SelectedSeaZoneAttackActions() {
               playSound('combat-start', 0.7);
               dispatch({ type: 'ATTACK_SEA', from: selectedSeaZone, target: targetId });
             }}
-            className="text-[10px] px-2 py-1 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
+            className="text-[10px] px-2 py-2 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
           >
             ⚔ {game.seaZones[targetId]?.name}
           </button>

@@ -16,6 +16,7 @@ import EventLogDrawer from '../ui/EventLogDrawer';
 import CpuTurnOverlay from '../ui/CpuTurnOverlay';
 import AudioControls from '../ui/AudioControls';
 import ResourceCardsPanel from '../ui/ResourceCardsPanel';
+import NewsTicker from '../ui/NewsTicker';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
@@ -27,6 +28,10 @@ export default function GameScreen() {
   const prevCombatRef = useRef<boolean>(false);
   const prevNukeRef = useRef<boolean>(false);
   const prevGameOverRef = useRef<boolean>(false);
+  const prevResearchedNukeRef = useRef<boolean>(false);
+  const prevResearchedLaserRef = useRef<boolean>(false);
+  const prevNukeCountRef = useRef<number>(0);
+  const prevLaserCountRef = useRef<number>(0);
 
   useEffect(() => {
     if (!game) {
@@ -40,6 +45,7 @@ export default function GameScreen() {
 
     const currentPlayer = game.turn.currentPlayer;
     const isHumanTurn = game.players[currentPlayer]?.isHuman;
+    const human = Object.values(game.players).find(p => p.isHuman);
 
     // Turn changed to human player
     if (isHumanTurn && prevPlayerRef.current !== currentPlayer) {
@@ -59,10 +65,35 @@ export default function GameScreen() {
     }
     prevNukeRef.current = game.nuclearAttack.active;
 
+    if (human) {
+      // Human researched nuke for the first time
+      if (human.hasResearchedNuke && !prevResearchedNukeRef.current) {
+        playSound('missile-launch', 0.65);
+      }
+      prevResearchedNukeRef.current = human.hasResearchedNuke;
+
+      // Human researched laser star for the first time
+      if (human.hasResearchedLaserStar && !prevResearchedLaserRef.current) {
+        playSound('diplomacy-alert', 0.9);
+      }
+      prevResearchedLaserRef.current = human.hasResearchedLaserStar;
+
+      // Human built a new nuke
+      if (human.nukes > prevNukeCountRef.current) {
+        playSound('explosion', 0.45);
+      }
+      prevNukeCountRef.current = human.nukes;
+
+      // Human built a new laser star
+      if (human.laserStars > prevLaserCountRef.current) {
+        playSound('territory-conquered', 0.65);
+      }
+      prevLaserCountRef.current = human.laserStars;
+    }
+
     // Game over
     if (game.gameOver && !prevGameOverRef.current) {
-      const humanPlayer = Object.values(game.players).find(p => p.isHuman);
-      if (humanPlayer && game.winner === humanPlayer.id) {
+      if (human && game.winner === human.id) {
         playSound('victory');
       } else {
         playSound('defeat');
@@ -106,6 +137,7 @@ export default function GameScreen() {
           <EventLogDrawer />
           <CpuTurnOverlay />
           <PlayerStatusBar />
+          <NewsTicker />
         </div>
 
         {/* Bottom Sheet for territory/action details - only shows when needed */}
