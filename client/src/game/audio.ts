@@ -108,10 +108,9 @@ function getOrCreateMusic(track: MusicTrack): HTMLAudioElement | null {
       audio.loop = true;
       audio.volume = 0;
       audio.preload = 'auto';
-      audio.crossOrigin = 'anonymous';
-      // Handle load errors silently but allow retry
       audio.addEventListener('error', () => {
         console.warn(`[Supremacia Audio] Failed to load track: ${track}`);
+        musicElements.delete(track);
       }, { once: true });
       musicElements.set(track, audio);
     } catch (e) {
@@ -375,20 +374,32 @@ export function playMusic(track: MusicTrack, fadeDurationMs = 1500): void {
   nextEl.volume = 0;
   nextEl.currentTime = 0;
 
-  // Ensure audio can play - use Promise API if available
-  const playPromise = nextEl.play();
-  if (playPromise !== undefined) {
-    playPromise
-      .then(() => {
-        console.log(`[Supremacia Audio] Now playing: ${track}`);
-        fadeAudio(nextEl, 0, effectiveMusicVol(), fadeDurationMs);
-      })
-      .catch((err) => {
-        console.warn(`[Supremacia Audio] playback failed for ${track}:`, err);
-      });
+  const targetVol = effectiveMusicVol();
+
+  const startPlayback = () => {
+    const playPromise = nextEl.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          console.log(`[Supremacia Audio] Now playing: ${track} @ vol=${targetVol}`);
+          fadeAudio(nextEl, 0, targetVol, fadeDurationMs);
+        })
+        .catch((err) => {
+          console.warn(`[Supremacia Audio] playback failed for ${track}:`, err);
+        });
+    } else {
+      fadeAudio(nextEl, 0, targetVol, fadeDurationMs);
+    }
+  };
+
+  // If the element is still in a "pausing" state from unlock, wait a tick
+  if (nextEl.paused) {
+    startPlayback();
   } else {
-    // Fallback for older browsers
-    fadeAudio(nextEl, 0, effectiveMusicVol(), fadeDurationMs);
+    // Already playing (shouldn't happen since we reset currentTime), just fade in
+    nextEl.pause();
+    nextEl.currentTime = 0;
+    setTimeout(startPlayback, 50);
   }
 
   if (prevAudio) {
@@ -505,6 +516,23 @@ export function initAudio(): void {
   if (savedMuted !== null) masterMuted = savedMuted === 'true';
 
   console.log(`[Supremacia Audio] Prefs: music=${musicEnabled}@${Math.round(musicVolume*100)}%, sfx=${sfxEnabled}@${Math.round(sfxVolume*100)}%, muted=${masterMuted}`);
+
+  // iOS/Safari require audio.play() to be called synchronously within a user gesture.
+  // We unlock all three tracks here (play→pause at vol=0) so later async plays work.
+  const tracks: MusicTrack[] = ['menu', 'gameplay', 'battle'];
+  for (const t of tracks) {
+    const el = getOrCreateMusic(t);
+    if (!el) continue;
+    el.volume = 0;
+    const p = el.play();
+    if (p) {
+      p.then(() => {
+        el.pause();
+        el.currentTime = 0;
+        console.log(`[Supremacia Audio] Unlocked track: ${t}`);
+      }).catch(() => {});
+    }
+  }
 
   // Start any track that was requested before init
   if (currentTrack) {
