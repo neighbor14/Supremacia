@@ -6,6 +6,7 @@ import { ResourceType, TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Search } from 'lucide-react';
 import ProspectPanel from './ProspectPanel';
+import { getTechCounts, formatOdds } from '../game/researchDeck';
 
 export default function BottomSheet() {
   const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory, selectSeaZone } = useGameStore();
@@ -517,6 +518,12 @@ function BuildPanel() {
     if (mineral < RULES.LASER_STAR_MINERAL_COST) laserBuildMissing.push(`${RULES.LASER_STAR_MINERAL_COST - mineral} minério`);
   }
 
+  // Real-time research odds derived from the actual deck
+  const { nukeCount, laserCount, total: deckTotal } = getTechCounts(game.resourceDeck);
+  const nukeOdds = deckTotal > 0 ? formatOdds(nukeCount / deckTotal) : '0,00%';
+  const laserOdds = deckTotal > 0 ? formatOdds(laserCount / deckTotal) : '0,00%';
+  const deckInfo = `Baralho: ${deckTotal} ${deckTotal === 1 ? 'carta' : 'cartas'} · ☢️ ${nukeCount} · 🛡️ ${laserCount}`;
+
   return (
     <div
       className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[55vh] overflow-y-auto"
@@ -592,13 +599,15 @@ function BuildPanel() {
           <p className="text-[10px] text-muted-foreground uppercase mb-2 tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
             Armas Especiais
           </p>
+          {/* Deck composition info */}
+          <p className="text-[10px] text-muted-foreground mb-2 font-mono">{deckInfo}</p>
           <div className="space-y-2">
             {/* Research Nuke */}
             {!player.hasResearchedNuke && (
               <BuildActionCard
                 icon="🔬"
                 title="Pesquisar Bomba Atômica"
-                costLabel={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()} · 33% de chance por tentativa`}
+                costLabel={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()} por carta · chance próxima: ${nukeOdds}`}
                 canAfford={canResearchNuke}
                 missing={nukeResearchMissing}
                 action={{ label: 'Pesquisar', onClick: () => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_NUKE', cardId: '' }); } }}
@@ -626,7 +635,7 @@ function BuildPanel() {
               <BuildActionCard
                 icon="🔬"
                 title="Pesquisar Laser-Star"
-                costLabel={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()} · 25% de chance por tentativa`}
+                costLabel={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()} por carta · chance próxima: ${laserOdds}`}
                 canAfford={canResearchLaser}
                 missing={laserResearchMissing}
                 action={{ label: 'Pesquisar', onClick: () => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_LASER_STAR', cardId: '' }); } }}

@@ -23,7 +23,7 @@ export default function ProspectPanel() {
   const deckLeft = game.resourceDeck.length;
   const canProspect = player.money >= cost && deckLeft > 0 && !flipping;
 
-  // Detect newly added cards after each dispatch
+  // Detect newly added resource cards after each dispatch
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     const currentIds = new Set(player.resourceCards);
@@ -40,6 +40,12 @@ export default function ProspectPanel() {
     }
     prevCardIds.current = currentIds;
   }, [player.resourceCards, game.resourceCards]);
+
+  // Also reset flipping when any DrawnCardModal fires (covers tech-card-in-deck scenario)
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (game.drawnCard?.active) setFlipping(false);
+  }, [game.drawnCard?.active, game.drawnCard?.cardId]);
 
   const handleFlip = () => {
     if (!canProspect) return;

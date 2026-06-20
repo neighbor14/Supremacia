@@ -143,6 +143,25 @@ export interface DrawnCardReveal {
   cardEffect: string;
   context: string;
   cardId?: string;
+  // Resource card details (populated when revealing a resource card during research)
+  resourceType?: ResourceType;
+  companyName?: string;
+  production?: number;
+  // Research session snapshot — present when this reveal came from a research action
+  researchTarget?: 'nuke' | 'laser';
+  researchCardsDrawn?: number;
+  researchCostSoFar?: number;
+  deckRemaining?: number;
+  nukeCardsRemaining?: number;
+  laserCardsRemaining?: number;
+}
+
+// Tracks an active research session across multiple card draws
+export interface ResearchSession {
+  target: 'nuke' | 'laser';
+  cardsRevealed: string[];
+  found: boolean;
+  totalCost: number;
 }
 
 export interface EventLogEntry {
@@ -161,12 +180,13 @@ export interface GameState {
   territories: Record<string, Territory>;
   seaZones: Record<string, SeaZone>;
   resourceCards: Record<string, ResourceCard>;
-  resourceDeck: string[]; // unowned card IDs in deck
+  resourceDeck: string[]; // unified deck: resource card IDs + tech card IDs ('nuke_0', 'laser_0', …)
   market: MarketState;
   turn: TurnState;
   combat: CombatState;
   nuclearAttack: NuclearAttackState;
   drawnCard: DrawnCardReveal | null;
+  researchSession: ResearchSession | null;
   eventLog: EventLogEntry[];
   nukedTerritoryCount: number;
   gameOver: boolean;
@@ -267,4 +287,6 @@ export type GameAction =
   | { type: 'SET_ARMY_PLACEMENT'; placement: Record<string, number> }
   | { type: 'DECLARE_DETENTE' }
   | { type: 'DISMISS_DRAWN_CARD' }
+  | { type: 'DRAW_RESEARCH_CARD' }
+  | { type: 'STOP_RESEARCH' }
   | { type: 'APPLY_AI_STEP'; state: GameState };

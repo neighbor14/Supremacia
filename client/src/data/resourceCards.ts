@@ -107,3 +107,7 @@ export const TOTAL_OIL_CARDS = 20;
 export const TOTAL_MINERAL_CARDS = 20;
 export const TOTAL_NUKE_CARDS = 3;
 export const TOTAL_LASER_STAR_CARDS = 2;
+
+// IDs for tech cards mixed into the unified game deck
+export const NUKE_CARD_IDS = ['nuke_0', 'nuke_1', 'nuke_2'] as const;
+export const LASER_CARD_IDS = ['laser_0', 'laser_1'] as const;

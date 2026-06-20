@@ -5,6 +5,7 @@ import { RULES } from './rulesConfig';
 import { rollDice, sumDice, shuffleArray } from './rng';
 import { SUPERPOWER_IDS, SUPERPOWERS } from '../data/initialPlayers';
 import { nanoid } from 'nanoid';
+import { isNukeCard, isLaserCard, isTechCard, getTechCounts } from './researchDeck';
 
 interface GameStore {
   game: GameState | null;
@@ -207,9 +208,27 @@ function prospect(state: GameState): void {
     return;
   }
 
-  // Pay the flip cost and draw the top card from the (shuffled) deck
   player.money -= RULES.RESEARCH_COST_PER_CARD;
   const cardId = state.resourceDeck.shift()!;
+
+  // Tech cards can't be acquired via prospecting — return to bottom of deck, refund cost
+  if (isTechCard(cardId)) {
+    state.resourceDeck.push(cardId);
+    player.money += RULES.RESEARCH_COST_PER_CARD;
+    const techName = isNukeCard(cardId) ? 'Ogiva Nuclear' : 'Estrela Laser';
+    addEvent(state, player.id, `Prospecção: carta de ${techName} encontrada, devolvida ao baralho.`, 'info');
+    state.drawnCard = {
+      active: true,
+      type: isNukeCard(cardId) ? 'nuke' : 'laser',
+      success: false,
+      cardName: techName,
+      cardEffect: 'Cartas de tecnologia só podem ser obtidas por pesquisa (Estágio 6). Devolvida ao baralho sem custo.',
+      context: 'Prospecção de Recursos',
+      cardId,
+    };
+    return;
+  }
+
   const card = state.resourceCards[cardId];
   if (card) {
     card.ownerId = player.id;
@@ -245,7 +264,21 @@ function startNewRound(state: GameState): void {
   }
 }
 
+// Returns all cards drawn during a research session to the deck and reshuffles.
+// Called whenever a research session ends (found, stopped, or forced).
+function finalizeResearch(state: GameState): void {
+  const session = state.researchSession;
+  if (!session) return;
+  if (session.cardsRevealed.length > 0) {
+    state.resourceDeck.push(...session.cardsRevealed);
+    state.resourceDeck = shuffleArray(state.resourceDeck);
+  }
+  state.researchSession = null;
+}
+
 function advanceToNextPlayer(state: GameState): void {
+  // Clear any orphaned research session before changing players
+  if (state.researchSession) finalizeResearch(state);
   // Reset per-turn attack tracking
   state.turn.attackedFrom = [];
 
@@ -1046,91 +1079,185 @@ function buildLaserStar(state: GameState): void {
   addEvent(state, player.id, `Construiu Laser-Star (total: ${player.laserStars})`, 'build');
 }
 
-function researchNuke(state: GameState, cardId: string): void {
+// ── Research: deck-based card draw system ─────────────────────────────────────
+
+function drawResearchCardInternal(state: GameState): void {
+  const session = state.researchSession;
+  if (!session || session.found) return;
+
   const player = state.players[state.turn.currentPlayer];
-  if (player.hasResearchedNuke) return;
-  if (player.money < RULES.RESEARCH_COST_PER_CARD) return;
+
+  if (state.resourceDeck.length === 0) {
+    addEvent(state, player.id, 'Baralho esgotado — pesquisa encerrada. Cartas devolvidas ao baralho.', 'build');
+    finalizeResearch(state);
+    return;
+  }
+  if (player.money < RULES.RESEARCH_COST_PER_CARD) {
+    addEvent(state, player.id, 'Dinheiro insuficiente para continuar a pesquisa. Cartas devolvidas ao baralho.', 'build');
+    finalizeResearch(state);
+    return;
+  }
 
   player.money -= RULES.RESEARCH_COST_PER_CARD;
+  session.totalCost += RULES.RESEARCH_COST_PER_CARD;
+  const cardId = state.resourceDeck.shift()!;
+  session.cardsRevealed.push(cardId);
 
-  // Simulate finding a nuke card in the deck (simplified)
-  // In the real game, you flip cards paying per flip until you find a nuke
-  // Here we simplify: 33% chance per attempt (3 nuke cards in ~60 card deck)
-  const found = Math.random() < 0.33;
-  if (found) {
-    player.hasResearchedNuke = true;
-    let built = false;
-    if (player.money >= RULES.NUKE_COST && player.supplies.mineral >= RULES.NUKE_MINERAL_COST) {
-      player.money -= RULES.NUKE_COST;
-      player.supplies.mineral -= RULES.NUKE_MINERAL_COST;
-      player.nukes++;
-      built = true;
+  const foundNuke = isNukeCard(cardId);
+  const foundLaser = isLaserCard(cardId);
+  const foundTarget =
+    (session.target === 'nuke' && foundNuke) ||
+    (session.target === 'laser' && foundLaser);
+
+  const { nukeCount, laserCount } = getTechCounts(state.resourceDeck);
+  const targetName = session.target === 'nuke' ? 'Bomba Atômica' : 'Laser-Star';
+  const cardContext = `Pesquisa de ${targetName} — carta ${session.cardsRevealed.length}`;
+
+  if (foundTarget) {
+    session.found = true;
+    if (session.target === 'nuke') {
+      player.hasResearchedNuke = true;
+    } else {
+      player.hasResearchedLaserStar = true;
     }
-    addEvent(state, player.id, built
-      ? 'Pesquisa nuclear concluída! Primeira bomba construída.'
-      : 'Pesquisa nuclear concluída! (recursos insuficientes para construir a bomba agora)', 'build');
+    addEvent(state, player.id, `Pesquisa: encontrou ${targetName}! (${session.cardsRevealed.length} carta(s) virada(s), custo $${session.totalCost.toLocaleString()})`, 'build');
     state.drawnCard = {
       active: true,
-      type: 'nuke',
+      type: session.target,
       success: true,
-      cardName: 'Ogiva Nuclear',
-      cardEffect: built
-        ? 'Tecnologia desbloqueada! Primeira bomba construída automaticamente.'
-        : 'Tecnologia desbloqueada! Construa sua primeira bomba na fase de Construção.',
-      context: 'Pesquisa de Bomba Atômica',
+      cardName: session.target === 'nuke' ? 'Ogiva Nuclear' : 'Estrela Laser',
+      cardEffect: `Tecnologia desbloqueada! Agora você pode construir ${targetName} na fase de Construção.`,
+      context: cardContext,
+      cardId,
+      researchTarget: session.target,
+      researchCardsDrawn: session.cardsRevealed.length,
+      researchCostSoFar: session.totalCost,
+      deckRemaining: state.resourceDeck.length,
+      nukeCardsRemaining: nukeCount,
+      laserCardsRemaining: laserCount,
     };
-  } else {
-    addEvent(state, player.id, 'Pesquisa nuclear: carta virada, bomba não encontrada.', 'build');
+    // Session is kept alive; finalizeResearch() is called in DISMISS_DRAWN_CARD
+    // so the found tech card + all drawn cards return to the deck (per manual).
+    return;
+  }
+
+  // Drew a tech card that isn't the target — discard it (consumed from deck)
+  if (isTechCard(cardId)) {
+    const otherName = foundNuke ? 'Ogiva Nuclear' : 'Estrela Laser';
+    addEvent(state, player.id, `Pesquisa: ${otherName} encontrada (não é o alvo) — devolvida ao baralho.`, 'build');
     state.drawnCard = {
       active: true,
-      type: 'nuke',
+      type: foundNuke ? 'nuke' : 'laser',
       success: false,
-      cardName: 'Carta de Recurso',
-      cardEffect: 'Nenhuma ogiva nuclear neste baralho. Tente novamente.',
-      context: 'Pesquisa de Bomba Atômica',
+      cardName: otherName,
+      cardEffect: `Carta de tecnologia diferente encontrada — devolvida ao baralho. Continue procurando ${targetName}.`,
+      context: cardContext,
+      cardId,
+      researchTarget: session.target,
+      researchCardsDrawn: session.cardsRevealed.length,
+      researchCostSoFar: session.totalCost,
+      deckRemaining: state.resourceDeck.length,
+      nukeCardsRemaining: nukeCount,
+      laserCardsRemaining: laserCount,
     };
+    return;
+  }
+
+  // Regular resource card — reveal and discard
+  const card = state.resourceCards[cardId];
+  const resourceLabel = card
+    ? (card.type === 'grain' ? 'Cereal' : card.type === 'oil' ? 'Petróleo' : 'Minério')
+    : 'Recurso';
+  addEvent(state, player.id,
+    `Pesquisa: ${card?.companyName ?? cardId} (${resourceLabel}) — voltará ao baralho. Procurando ${targetName}.`, 'build');
+  state.drawnCard = {
+    active: true,
+    type: 'resource',
+    success: false,
+    cardName: card?.companyName ?? 'Carta de Recurso',
+    cardEffect: card
+      ? `${resourceLabel} · produção ${card.production} · ${state.territories[card.territoryId]?.name ?? card.territoryId}`
+      : 'Carta de recurso — voltará ao baralho.',
+    context: cardContext,
+    cardId,
+    resourceType: card?.type,
+    companyName: card?.companyName,
+    production: card?.production,
+    researchTarget: session.target,
+    researchCardsDrawn: session.cardsRevealed.length,
+    researchCostSoFar: session.totalCost,
+    deckRemaining: state.resourceDeck.length,
+    nukeCardsRemaining: nukeCount,
+    laserCardsRemaining: laserCount,
+  };
+}
+
+function startResearch(state: GameState, target: 'nuke' | 'laser'): void {
+  const player = state.players[state.turn.currentPlayer];
+  const alreadyFound = target === 'nuke' ? player.hasResearchedNuke : player.hasResearchedLaserStar;
+  if (alreadyFound) return;
+  if (player.money < RULES.RESEARCH_COST_PER_CARD) return;
+
+  if (!state.researchSession) {
+    state.researchSession = { target, cardsRevealed: [], found: false, totalCost: 0 };
+  }
+
+  drawResearchCardInternal(state);
+}
+
+// AI-only: draw cards until the target tech card is found or money/deck runs out.
+// All drawn cards return to the deck afterwards (per manual).
+function researchInstant(state: GameState, target: 'nuke' | 'laser'): void {
+  const player = state.players[state.turn.currentPlayer];
+  const alreadyFound = target === 'nuke' ? player.hasResearchedNuke : player.hasResearchedLaserStar;
+  if (alreadyFound) return;
+
+  const techName = target === 'nuke' ? 'Bomba Atômica' : 'Laser-Star';
+  const drawnCardIds: string[] = [];
+  let totalCost = 0;
+  let found = false;
+
+  while (
+    state.resourceDeck.length > 0 &&
+    player.money >= RULES.RESEARCH_COST_PER_CARD
+  ) {
+    player.money -= RULES.RESEARCH_COST_PER_CARD;
+    totalCost += RULES.RESEARCH_COST_PER_CARD;
+    const cardId = state.resourceDeck.shift()!;
+    drawnCardIds.push(cardId);
+
+    const foundTarget =
+      (target === 'nuke' && isNukeCard(cardId)) ||
+      (target === 'laser' && isLaserCard(cardId));
+
+    if (foundTarget) {
+      if (target === 'nuke') player.hasResearchedNuke = true;
+      else player.hasResearchedLaserStar = true;
+      addEvent(state, player.id,
+        `Pesquisa IA: ${techName} descoberta em ${drawnCardIds.length} carta(s) — $${totalCost.toLocaleString()}.`, 'build');
+      found = true;
+      break;
+    }
+  }
+
+  // Return all drawn cards to deck and reshuffle (per manual: cards always return)
+  if (drawnCardIds.length > 0) {
+    state.resourceDeck.push(...drawnCardIds);
+    state.resourceDeck = shuffleArray(state.resourceDeck);
+  }
+
+  if (!found && drawnCardIds.length > 0) {
+    addEvent(state, player.id,
+      `Pesquisa IA: ${techName} não encontrada (${drawnCardIds.length} carta(s), $${totalCost.toLocaleString()} gastos). Cartas devolvidas ao baralho.`, 'build');
   }
 }
 
-function researchLaserStar(state: GameState, cardId: string): void {
-  const player = state.players[state.turn.currentPlayer];
-  if (player.hasResearchedLaserStar) return;
-  if (player.money < RULES.RESEARCH_COST_PER_CARD) return;
+function researchNuke(state: GameState, _cardId: string): void {
+  startResearch(state, 'nuke');
+}
 
-  player.money -= RULES.RESEARCH_COST_PER_CARD;
-
-  const found = Math.random() < 0.25; // 2 L-star cards in ~60 card deck
-  if (found) {
-    player.hasResearchedLaserStar = true;
-    let built = false;
-    if (player.money >= RULES.LASER_STAR_COST && player.supplies.mineral >= RULES.LASER_STAR_MINERAL_COST) {
-      player.money -= RULES.LASER_STAR_COST;
-      player.supplies.mineral -= RULES.LASER_STAR_MINERAL_COST;
-      player.laserStars++;
-      built = true;
-    }
-    addEvent(state, player.id, 'Pesquisa Laser-Star concluída!', 'build');
-    state.drawnCard = {
-      active: true,
-      type: 'laser',
-      success: true,
-      cardName: 'Estrela Laser',
-      cardEffect: built
-        ? 'Guerra nas Estrelas desbloqueada! Primeira Laser-Star construída automaticamente.'
-        : 'Guerra nas Estrelas desbloqueada! Construa sua Laser-Star na fase de Construção.',
-      context: 'Pesquisa de Guerra nas Estrelas',
-    };
-  } else {
-    addEvent(state, player.id, 'Pesquisa Laser-Star: carta virada, não encontrada.', 'build');
-    state.drawnCard = {
-      active: true,
-      type: 'laser',
-      success: false,
-      cardName: 'Carta de Recurso',
-      cardEffect: 'Nenhuma Estrela Laser neste baralho. Tente novamente.',
-      context: 'Pesquisa de Guerra nas Estrelas',
-    };
-  }
+function researchLaserStar(state: GameState, _cardId: string): void {
+  startResearch(state, 'laser');
 }
 
 function takeLoan(state: GameState, amount: number): void {
@@ -1234,9 +1361,9 @@ function cpuTurn(state: GameState): void {
     }
   }
 
-  // Research nukes if affordable and not yet researched
+  // Research nukes if affordable and not yet researched (AI instant resolve)
   if (!player.hasResearchedNuke && player.money > 15000 && sorted.includes(6)) {
-    researchNuke(state, '');
+    researchInstant(state, 'nuke');
   }
 
   // End turn
@@ -1631,10 +1758,10 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
     }
   }
 
-  // ── Research nukes (mirrors cpuTurn) ─────────────────────
+  // ── Research nukes (AI instant resolve — no UI modals) ───────
   if (!player.hasResearchedNuke && state.players[playerId].money > 15000 && sorted.includes(6)) {
     const hadNuke = state.players[playerId].hasResearchedNuke;
-    researchNuke(state, '');
+    researchInstant(state, 'nuke');
     if (!hadNuke && state.players[playerId].hasResearchedNuke) {
       const builtNuke = state.players[playerId].nukes > 0;
       pushStep({
@@ -1803,6 +1930,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
         cpuTurn(state);
         break;
       case 'DISMISS_DRAWN_CARD':
+        finalizeResearch(state); // Returns drawn cards to deck if session active
+        state.drawnCard = null;
+        break;
+      case 'DRAW_RESEARCH_CARD':
+        state.drawnCard = null;
+        drawResearchCardInternal(state);
+        break;
+      case 'STOP_RESEARCH':
+        finalizeResearch(state); // Return all drawn cards to deck + reshuffle
         state.drawnCard = null;
         break;
       case 'APPLY_AI_STEP':
@@ -1823,9 +1959,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
         state.winner = winner;
         break;
       }
-      case 'LOAD_GAME':
-        set({ game: action.state });
+      case 'LOAD_GAME': {
+        // Migrate saves that pre-date researchSession field
+        const loaded = action.state;
+        if (loaded.researchSession === undefined) loaded.researchSession = null;
+        set({ game: loaded });
         return;
+      }
     }
 
     set({ game: state });

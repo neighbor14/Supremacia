@@ -1,6 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
+import { formatOdds } from '../game/researchDeck';
+import { RULES } from '../game/rulesConfig';
+
+const RESOURCE_CONFIG = {
+  grain:   { icon: '🌾', label: 'Cereal',    color: '#eab308', bg: 'bg-yellow-900/20 border-yellow-500/40' },
+  oil:     { icon: '🛢️',  label: 'Petróleo',  color: '#ef4444', bg: 'bg-red-900/20 border-red-500/40' },
+  mineral: { icon: '⛏️',  label: 'Minério',   color: '#a855f7', bg: 'bg-purple-900/20 border-purple-500/40' },
+};
 
 const TYPE_CONFIG = {
   nuke: {
@@ -31,45 +39,82 @@ export default function DrawnCardModal() {
   const soundPlayedRef = useRef(false);
 
   const drawnCard = game?.drawnCard;
+  const isResearch = !!drawnCard?.researchTarget;
+  const researchFound = isResearch && drawnCard?.success;
+
+  // Can the player continue searching?
+  const currentPlayer = game?.players[game.turn.currentPlayer];
+  const canContinue =
+    isResearch &&
+    !researchFound &&
+    !!currentPlayer &&
+    currentPlayer.money >= RULES.RESEARCH_COST_PER_CARD &&
+    (game?.resourceDeck.length ?? 0) > 0;
 
   useEffect(() => {
     if (!drawnCard?.active || soundPlayedRef.current) return;
     soundPlayedRef.current = true;
 
-    if (drawnCard.type === 'resource') {
-      playSound('resource-gain', 0.9);
-    } else if (drawnCard.success) {
-      // Victory fanfare — found the special card!
+    if (drawnCard.success && isResearch) {
       playSound('territory-conquered', 1.0);
-      // Short delay then a second accent tone
       setTimeout(() => playSound('diplomacy-alert', 0.7), 600);
+    } else if (drawnCard.type === 'resource') {
+      playSound('resource-gain', 0.9);
     } else {
-      playSound('error', 0.8);
+      playSound('error', 0.6);
     }
-  }, [drawnCard?.active]);
+  }, [drawnCard?.active, drawnCard?.cardId]);
 
-  // Reset sound flag when modal closes
   useEffect(() => {
-    if (!drawnCard?.active) {
-      soundPlayedRef.current = false;
-    }
+    if (!drawnCard?.active) soundPlayedRef.current = false;
   }, [drawnCard?.active]);
 
   if (!game || !drawnCard?.active) return null;
 
   const cfg = TYPE_CONFIG[drawnCard.type];
 
+  // For resource cards revealed during research, overlay the resource color
+  const resourceCfg = drawnCard.resourceType ? RESOURCE_CONFIG[drawnCard.resourceType] : null;
+  const cardBg = resourceCfg ? resourceCfg.bg : cfg.bgClass;
+  const cardIcon = resourceCfg ? resourceCfg.icon : cfg.icon;
+  const cardLabel = resourceCfg ? resourceCfg.label : cfg.label;
+  const cardLabelClass = resourceCfg ? '' : cfg.labelClass;
+  const cardLabelStyle = resourceCfg ? { color: resourceCfg.color } : {};
+
   const handleContinue = () => {
+    playSound('button-click', 0.5);
+    dispatch({ type: 'DRAW_RESEARCH_CARD' });
+  };
+
+  const handleStop = () => {
+    playSound('button-click', 0.3);
+    dispatch({ type: 'STOP_RESEARCH' });
+  };
+
+  const handleDismiss = () => {
     playSound('button-click', 0.5);
     dispatch({ type: 'DISMISS_DRAWN_CARD' });
   };
 
+  const targetName = drawnCard.researchTarget === 'nuke' ? 'Bomba Atômica' : 'Laser-Star';
+
+  // Updated odds after this draw
+  const deckLeft = drawnCard.deckRemaining ?? 0;
+  const nukeLeft = drawnCard.nukeCardsRemaining ?? 0;
+  const laserLeft = drawnCard.laserCardsRemaining ?? 0;
+  const nextOdds = drawnCard.researchTarget && deckLeft > 0
+    ? formatOdds(
+        drawnCard.researchTarget === 'nuke'
+          ? nukeLeft / deckLeft
+          : laserLeft / deckLeft
+      )
+    : null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) handleContinue(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) handleDismiss(); }}
     >
-      {/* Card panel — bottom sheet on mobile, centered modal on sm+ */}
       <div
         className={`
           w-full sm:max-w-sm
@@ -92,59 +137,121 @@ export default function DrawnCardModal() {
           </p>
 
           {/* Card visual */}
-          <div className={`rounded-xl border p-4 mb-4 ${cfg.bgClass}`}>
-            {/* Card type badge */}
+          <div className={`rounded-xl border p-4 mb-3 ${cardBg}`}>
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xl ${cfg.iconBgClass}`}>
-                {cfg.icon}
+                {cardIcon}
               </div>
               <div>
-                <p className={`text-[10px] uppercase tracking-wider font-semibold ${cfg.labelClass}`}
-                  style={{ fontFamily: 'var(--font-display)' }}>
-                  {cfg.label}
+                <p className={`text-[10px] uppercase tracking-wider font-semibold ${cardLabelClass}`}
+                  style={{ fontFamily: 'var(--font-display)', ...cardLabelStyle }}>
+                  {cardLabel}
                 </p>
-                <p className="text-xs text-muted-foreground">Carta sorteada do baralho</p>
+                <p className="text-xs text-muted-foreground">
+                  {isResearch ? 'Carta revelada do baralho' : 'Carta sorteada do baralho'}
+                </p>
               </div>
             </div>
 
-            {/* Card name */}
             <h3 className="text-base font-bold text-foreground mb-1" style={{ fontFamily: 'var(--font-display)' }}>
               {drawnCard.cardName}
             </h3>
 
-            {/* Card effect */}
             <p className="text-xs text-muted-foreground leading-relaxed">
               {drawnCard.cardEffect}
             </p>
+
+            {/* Resource card details during research */}
+            {resourceCfg && drawnCard.production && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-lg">{resourceCfg.icon}</span>
+                <span className="text-xs font-mono font-semibold" style={{ color: resourceCfg.color }}>
+                  +{drawnCard.production} por turno
+                </span>
+                <span className="text-xs text-muted-foreground">· voltará ao baralho</span>
+              </div>
+            )}
           </div>
+
+          {/* Research session progress */}
+          {isResearch && (
+            <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 mb-3 space-y-1">
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Procurando: <strong className="text-foreground">{targetName}</strong></span>
+                <span className="font-mono">${drawnCard.researchCostSoFar?.toLocaleString() ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Cartas viradas: <strong className="text-foreground">{drawnCard.researchCardsDrawn}</strong></span>
+                <span>Baralho: <strong className="text-foreground">{deckLeft} restantes</strong></span>
+              </div>
+              {nextOdds && !researchFound && (
+                <div className="text-[10px] text-muted-foreground">
+                  Chance na próxima carta:{' '}
+                  <strong className="text-amber-400">{nextOdds}</strong>
+                  {' '}({drawnCard.researchTarget === 'nuke' ? nukeLeft : laserLeft} {targetName}(s) restante(s))
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Result badge */}
-          <div className={`flex items-center gap-2 rounded-lg px-3 py-2 mb-4 ${
-            drawnCard.success
-              ? 'bg-emerald-500/10 border border-emerald-500/30'
-              : 'bg-secondary border border-border'
-          }`}>
-            <span className="text-lg">{drawnCard.success ? '✅' : '❌'}</span>
-            <p className={`text-xs font-semibold ${drawnCard.success ? 'text-emerald-400' : 'text-muted-foreground'}`}>
-              {drawnCard.success ? 'Descoberta com sucesso!' : 'Não encontrada desta vez.'}
-            </p>
-          </div>
+          {(!isResearch || researchFound) && (
+            <div className={`flex items-center gap-2 rounded-lg px-3 py-2 mb-4 ${
+              drawnCard.success
+                ? 'bg-emerald-500/10 border border-emerald-500/30'
+                : 'bg-secondary border border-border'
+            }`}>
+              <span className="text-lg">{drawnCard.success ? '✅' : (isResearch ? '🃏' : '❌')}</span>
+              <p className={`text-xs font-semibold ${drawnCard.success ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                {drawnCard.success
+                  ? `${targetName || 'Carta'} encontrada!`
+                  : (isResearch ? 'Não foi desta vez.' : 'Não encontrada desta vez.')}
+              </p>
+            </div>
+          )}
 
-          {/* Continue button — min 44px touch target */}
-          <button
-            onClick={handleContinue}
-            className={`
-              w-full py-3 rounded-xl text-sm font-semibold uppercase tracking-wider
-              transition-all active:scale-[0.97]
-              ${drawnCard.success
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                : 'bg-primary hover:bg-primary/90 text-primary-foreground'
-              }
-            `}
-            style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
-          >
-            Continuar
-          </button>
+          {/* Buttons */}
+          {isResearch && !researchFound ? (
+            <div className="flex gap-2">
+              {canContinue ? (
+                <button
+                  onClick={handleContinue}
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-all active:scale-[0.97]"
+                  style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
+                >
+                  Virar Próxima — ${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}
+                </button>
+              ) : (
+                <div className="flex-1 py-3 rounded-xl text-sm text-center text-muted-foreground bg-secondary border border-border">
+                  {(currentPlayer?.money ?? 0) < RULES.RESEARCH_COST_PER_CARD
+                    ? 'Dinheiro insuficiente'
+                    : 'Baralho esgotado'}
+                </div>
+              )}
+              <button
+                onClick={handleStop}
+                className="px-4 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-secondary hover:bg-secondary/80 text-muted-foreground transition-all active:scale-[0.97] border border-border"
+                style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
+              >
+                Parar
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleDismiss}
+              className={`
+                w-full py-3 rounded-xl text-sm font-semibold uppercase tracking-wider
+                transition-all active:scale-[0.97]
+                ${drawnCard.success
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                }
+              `}
+              style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
+            >
+              Continuar
+            </button>
+          )}
         </div>
       </div>
     </div>

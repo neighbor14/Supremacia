@@ -2,7 +2,7 @@ import { GameState, GameConfig, Player, SuperpowerId, MarketState, TurnState, Co
 import { RULES } from './rulesConfig';
 import { TERRITORIES } from '../data/territories';
 import { SEA_ZONES } from '../data/seaZones';
-import { generateResourceCards } from '../data/resourceCards';
+import { generateResourceCards, NUKE_CARD_IDS, LASER_CARD_IDS } from '../data/resourceCards';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { shuffleArray } from './rng';
 
@@ -82,10 +82,11 @@ export function createInitialGameState(
     })
   ) as typeof TERRITORIES;
 
-  // Resource deck — cards not assigned to any active player
+  // Unified game deck: unassigned resource cards + all tech cards, shuffled together
   const ownedCardIds = new Set(Object.values(players).flatMap(p => p.resourceCards));
   const deckCards = resourceCards.filter(c => !ownedCardIds.has(c.id));
-  const resourceDeck = shuffleArray(deckCards.map(c => c.id));
+  const techCardIds: string[] = [...NUKE_CARD_IDS, ...LASER_CARD_IDS];
+  const resourceDeck = shuffleArray([...deckCards.map(c => c.id), ...techCardIds]);
 
   const cardState: Record<string, typeof resourceCards[0]> = {};
   resourceCards.forEach(c => { cardState[c.id] = c; });
@@ -147,6 +148,7 @@ export function createInitialGameState(
     combat,
     nuclearAttack,
     drawnCard: null as DrawnCardReveal | null,
+    researchSession: null,
     eventLog: [],
     nukedTerritoryCount: 0,
     gameOver: false,
