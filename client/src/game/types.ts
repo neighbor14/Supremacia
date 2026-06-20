@@ -113,6 +113,9 @@ export interface CombatState {
   targetType: 'territory' | 'sea';
   attackerUnits: number;
   defenderUnits: number;
+  attackerUnitsAfter: number;
+  defenderUnitsAfter: number;
+  conquered: boolean;
   attackerDice: number[];
   defenderDice: number[];
   attackerLosses: number;
@@ -189,6 +192,21 @@ export type ActionEventType =
   | 'research'
   | 'end_turn';
 
+export interface CombatDetails {
+  fromId: string | null;
+  toId: string | null;
+  attackerUnitsInitial: number;
+  defenderUnitsInitial: number;
+  attackerDice: number[];
+  defenderDice: number[];
+  attackerLosses: number;
+  defenderLosses: number;
+  attackerUnitsAfter: number;
+  defenderUnitsAfter: number;
+  conquered: boolean;
+  defenderName: string;
+}
+
 export interface PlayerActionEvent {
   id: string;
   playerId: SuperpowerId;
@@ -205,6 +223,7 @@ export interface PlayerActionEvent {
   navyDelta?: number;
   soundKey?: string;
   durationMs: number;
+  combatDetails?: CombatDetails;
 }
 
 export interface PlannedStep {
@@ -236,7 +255,7 @@ export type GameAction =
   | { type: 'ATTACK_SEA'; from: string; target: string }
   | { type: 'RESOLVE_COMBAT'; defenderChoice: 'resist' | 'retreat' | 'surrender' }
   | { type: 'ROLL_COMBAT' }
-  | { type: 'OCCUPY_TERRITORY' }
+  | { type: 'OCCUPY_TERRITORY'; count?: number }
   | { type: 'LAUNCH_NUKE'; target: string; targetType: 'territory' | 'sea' }
   | { type: 'DEFEND_NUKE' }
   | { type: 'RESOLVE_NUKE' }

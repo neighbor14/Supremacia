@@ -116,6 +116,7 @@ export function createInitialGameState(
   const combat: CombatState = {
     active: false, attackerId: null, defenderId: null, fromId: null, targetId: null,
     targetType: 'territory', attackerUnits: 0, defenderUnits: 0,
+    attackerUnitsAfter: 0, defenderUnitsAfter: 0, conquered: false,
     attackerDice: [], defenderDice: [], attackerLosses: 0, defenderLosses: 0,
     phase: 'select_target', defenderChoice: null,
   };
