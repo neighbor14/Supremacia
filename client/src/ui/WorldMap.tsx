@@ -429,7 +429,7 @@ export default function WorldMap() {
       </svg>
 
       {/* Zoom Controls - above ticker */}
-      <div className="absolute bottom-9 right-4 flex flex-col gap-2 z-30">
+      <div className="absolute bottom-9 right-4 flex flex-col gap-2 z-30 items-center">
         <button
           onClick={zoomIn}
           className="w-10 h-10 rounded-lg bg-slate-800/90 backdrop-blur-sm hover:bg-slate-700 text-white flex items-center justify-center active:scale-[0.9] transition-all shadow-lg border border-slate-600/50"
@@ -448,11 +448,9 @@ export default function WorldMap() {
         >
           <Maximize2 size={16} />
         </button>
-      </div>
-
-      {/* Zoom Level - above ticker */}
-      <div className="absolute bottom-9 left-4 px-2.5 py-1 rounded-md bg-slate-800/80 backdrop-blur-sm text-[11px] font-mono text-slate-300 z-30 border border-slate-600/30">
-        {Math.round(scale * 100)}%
+        <div className="px-1.5 py-0.5 rounded bg-slate-800/80 text-[10px] font-mono text-slate-400 border border-slate-600/30 w-10 text-center">
+          {Math.round(scale * 100)}%
+        </div>
       </div>
     </div>
   );
