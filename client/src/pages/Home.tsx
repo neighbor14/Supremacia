@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
+import { Maximize2 } from 'lucide-react';
 import { useGameStore } from '../game/store';
 import { SuperpowerId } from '../game/types';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { GameState } from '../game/types';
+import FullscreenOnboarding from '../ui/FullscreenOnboarding';
+import { usePwaInstall } from '../hooks/usePwaInstall';
 
 type Step = 'menu' | 'superpower' | 'ai_count';
 
@@ -14,6 +17,9 @@ export default function Home() {
   const [selectedSuperpower, setSelectedSuperpower] = useState<SuperpowerId | null>(null);
   const [aiCount, setAiCount] = useState(3);
 
+  const [fullscreenHelpOpen, setFullscreenHelpOpen] = useState(false);
+
+  const pwa = usePwaInstall();
   const hasSave = !!localStorage.getItem('supremacia_save');
   const maxAi = SUPERPOWER_IDS.length - 1; // 5
 
@@ -63,6 +69,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+      {/* Fullscreen / PWA onboarding — shows automatically on first mobile visit */}
+      <FullscreenOnboarding
+        externalOpen={fullscreenHelpOpen || undefined}
+        onExternalClose={() => setFullscreenHelpOpen(false)}
+      />
       {/* Logo / Title */}
       <div className="text-center mb-12">
         <div className="w-20 h-20 mx-auto mb-6 relative">
@@ -217,8 +228,20 @@ export default function Home() {
         </div>
       )}
 
+      {/* Modo tela cheia — only relevant on mobile (hidden on desktop) */}
+      {pwa.isMobile && !pwa.isStandalone && (
+        <button
+          onClick={() => setFullscreenHelpOpen(true)}
+          className="mt-8 flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors uppercase tracking-wider"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          <Maximize2 size={11} />
+          Modo tela cheia
+        </button>
+      )}
+
       {/* Footer */}
-      <p className="mt-12 text-xs text-muted-foreground/50 text-center">
+      <p className="mt-4 text-xs text-muted-foreground/50 text-center">
         Protótipo interno — 1 humano vs 1–{maxAi} CPUs
       </p>
     </div>
