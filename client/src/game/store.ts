@@ -22,6 +22,8 @@ interface GameStore {
   saveGame: () => string;
 }
 
+const RESOURCE_NAME: Record<ResourceType, string> = { grain: 'cereal', oil: 'petróleo', mineral: 'minério' };
+
 function addEvent(state: GameState, player: SuperpowerId, message: string, type: EventLogEntry['type'] = 'info'): void {
   state.eventLog.push({
     id: nanoid(8),
@@ -137,6 +139,7 @@ function sellResource(state: GameState, resource: ResourceType, quantity: number
   const toSell = Math.min(quantity, available);
   if (toSell <= 0) return;
 
+  const previousPrice = state.market.prices[resource];
   let totalRevenue = 0;
   for (let i = 0; i < toSell; i++) {
     totalRevenue += state.market.prices[resource];
@@ -145,14 +148,24 @@ function sellResource(state: GameState, resource: ResourceType, quantity: number
       state.market.prices[resource] - state.market.priceStep
     );
   }
+  const newPrice = state.market.prices[resource];
 
   player.supplies[resource] -= toSell;
   player.money += totalRevenue;
-  addEvent(state, player.id, `Vendeu ${toSell} ${resource} por ${totalRevenue.toLocaleString()}`, 'economy');
+
+  const priceTag = newPrice !== previousPrice
+    ? ` Preço do ${RESOURCE_NAME[resource]}: $${(previousPrice / 1000).toFixed(0)}k → $${(newPrice / 1000).toFixed(0)}k.`
+    : '';
+  addEvent(
+    state, player.id,
+    `Vendeu ${toSell} ${RESOURCE_NAME[resource]} por $${totalRevenue.toLocaleString()}.${priceTag}`,
+    'economy'
+  );
 }
 
 function buyResource(state: GameState, resource: ResourceType, quantity: number): void {
   const player = state.players[state.turn.currentPlayer];
+  const previousPrice = state.market.prices[resource];
   let totalCost = 0;
   let bought = 0;
 
@@ -171,7 +184,15 @@ function buyResource(state: GameState, resource: ResourceType, quantity: number)
   }
 
   if (bought > 0) {
-    addEvent(state, player.id, `Comprou ${bought} ${resource} por ${totalCost.toLocaleString()}`, 'economy');
+    const newPrice = state.market.prices[resource];
+    const priceTag = newPrice !== previousPrice
+      ? ` Preço do ${RESOURCE_NAME[resource]}: $${(previousPrice / 1000).toFixed(0)}k → $${(newPrice / 1000).toFixed(0)}k.`
+      : '';
+    addEvent(
+      state, player.id,
+      `Comprou ${bought} ${RESOURCE_NAME[resource]} por $${totalCost.toLocaleString()}.${priceTag}`,
+      'economy'
+    );
   }
 }
 
@@ -521,6 +542,12 @@ function disembark(state: GameState, seaZoneId: string, territoryId: string, cou
 function initiateAttack(state: GameState, from: string, target: string, targetType: 'territory' | 'sea'): void {
   const player = state.players[state.turn.currentPlayer];
 
+  // Attack only allowed in stage 4
+  if (state.turn.stage !== 4) {
+    addEvent(state, player.id, 'Ataque só é permitido na fase de Combate (Estágio 4).', 'info');
+    return;
+  }
+
   // One attack per origin (territory/sea zone) per turn
   if (state.turn.attackedFrom.includes(from)) {
     addEvent(state, player.id, 'Esta origem já atacou neste turno.', 'info');
@@ -542,6 +569,14 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
   if (targetType === 'territory') {
     const territory = state.territories[target];
     if (!territory) return;
+
+    // Adjacency check — engine enforces what the UI already filters
+    const fromTerritory = state.territories[from];
+    if (!fromTerritory || !fromTerritory.adjacentTerritories.includes(target)) {
+      addEvent(state, player.id, 'Ataque inválido: território alvo não é adjacente.', 'info');
+      return;
+    }
+
     for (const [pid, p] of Object.entries(state.players) as [SuperpowerId, Player][]) {
       if (pid === player.id) continue;
       if ((p.armies[target] || 0) > 0) { defenderId = pid; break; }
@@ -557,6 +592,14 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     // Naval combat — the defender holds navies in the target sea zone
     const sea = state.seaZones[target];
     if (!sea) return;
+
+    // Adjacency check for naval combat
+    const fromSea = state.seaZones[from];
+    if (!fromSea || !fromSea.adjacentSeas.includes(target)) {
+      addEvent(state, player.id, 'Ataque naval inválido: zona alvo não é adjacente.', 'info');
+      return;
+    }
+
     for (const [pid, p] of Object.entries(state.players) as [SuperpowerId, Player][]) {
       if (pid === player.id) continue;
       if ((p.navies[target] || 0) > 0) { defenderId = pid; break; }
@@ -575,6 +618,9 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     targetType,
     attackerUnits,
     defenderUnits,
+    attackerUnitsAfter: 0,
+    defenderUnitsAfter: 0,
+    conquered: false,
     attackerDice: [],
     defenderDice: [],
     attackerLosses: 0,
@@ -662,18 +708,35 @@ function rollCombat(state: GameState): void {
     dropOverCapacityEmbarked(defender, targetId);
   }
 
+  // Track post-combat unit counts for display
+  const attackerAfter = state.combat.targetType === 'territory'
+    ? (fromId ? (attacker.armies[fromId] || 0) : 0)
+    : (fromId ? (attacker.navies[fromId] || 0) : 0);
+  const defenderAfter = state.combat.targetType === 'territory'
+    ? (defender.armies[targetId] || 0)
+    : (defender.navies[targetId] || 0);
+  state.combat.attackerUnitsAfter = attackerAfter;
+  state.combat.defenderUnitsAfter = defenderAfter;
+
+  const fromName = state.combat.targetType === 'territory'
+    ? state.territories[fromId || '']?.name
+    : state.seaZones[fromId || '']?.name;
   const targetName = state.combat.targetType === 'territory'
     ? state.territories[targetId]?.name
     : state.seaZones[targetId]?.name;
   addEvent(state, attacker.id,
-    `Atacou ${targetName}: ${attackerDice.join('+')}=${attackerTotal} vs ${defenderDice.join('+')}=${defenderTotal}. Baixas: atk ${attackerLosses}, def ${defenderLosses}`,
+    `${fromName}→${targetName}: [${attackerDice.join(',')}]=${attackerTotal} vs [${defenderDice.join(',')}]=${defenderTotal} — baixas atk -${attackerLosses} def -${defenderLosses}`,
     'combat'
   );
 
   // Only land territories can be occupied; naval battles just resolve.
   if (state.combat.targetType === 'territory') {
-    if (!defender.armies[targetId] || defender.armies[targetId] <= 0) {
-      state.combat.phase = 'occupy';
+    if (defenderAfter <= 0) {
+      // Pyrrhic: if attacker also wiped out, no occupation possible
+      if (attackerAfter > 0) {
+        state.combat.phase = 'occupy';
+      }
+      // else: both wiped out → stays at 'result', territory uncontested but attacker can't advance
     }
   }
 }
@@ -682,12 +745,13 @@ function resetCombat(state: GameState): void {
   state.combat = {
     active: false, attackerId: null, defenderId: null, fromId: null, targetId: null,
     targetType: 'territory', attackerUnits: 0, defenderUnits: 0,
+    attackerUnitsAfter: 0, defenderUnitsAfter: 0, conquered: false,
     attackerDice: [], defenderDice: [], attackerLosses: 0, defenderLosses: 0,
     phase: 'select_target', defenderChoice: null,
   };
 }
 
-function occupyTerritory(state: GameState): void {
+function occupyTerritory(state: GameState, count: number = 1): void {
   if (!state.combat.active) return;
   const combat = state.combat;
 
@@ -711,17 +775,26 @@ function occupyTerritory(state: GameState): void {
     return;
   }
 
-  // Move 1 army from the attacking origin into the conquered territory
+  // Move armies from the attacking origin into the conquered territory.
+  // Per the original rules, normal movement costs (1 cereal/territory) apply.
+  // TODO: confirmar regra original para caso sem cereal — por ora avança sem bloquear.
   const fromId = combat.fromId;
-  if (fromId && (attacker.armies[fromId] || 0) > 0) {
-    attacker.armies[fromId]--;
+  if (fromId) {
+    const available = attacker.armies[fromId] || 0;
+    const toMove = Math.max(1, Math.min(count, available));
+    // Pay grain cost (1 per army moved; territory is always adjacent = 1 hop)
+    const grainCost = Math.min(toMove * RULES.LAND_MOVE_GRAIN_COST, attacker.supplies.grain);
+    attacker.supplies.grain -= grainCost;
+
+    attacker.armies[fromId] = available - toMove;
     if (attacker.armies[fromId] <= 0) delete attacker.armies[fromId];
-    attacker.armies[targetId] = (attacker.armies[targetId] || 0) + 1;
+    attacker.armies[targetId] = (attacker.armies[targetId] || 0) + toMove;
   }
 
   // Transfer territory ownership
   const previousOwner = territory.owner;
   territory.owner = attacker.id;
+  state.combat.conquered = true;
 
   // Capture resource cards in this territory
   if (previousOwner) {
@@ -742,7 +815,8 @@ function occupyTerritory(state: GameState): void {
     }
   }
 
-  addEvent(state, attacker.id, `Ocupou ${territory.name}`, 'combat');
+  const movedCount = fromId ? (attacker.armies[targetId] || 0) : 1;
+  addEvent(state, attacker.id, `Ocupou ${territory.name} com ${movedCount} exército(s)`, 'combat');
   resetCombat(state);
 }
 
@@ -1203,8 +1277,25 @@ function cpuSell(state: GameState, player: typeof state.players[SuperpowerId]): 
   }
 }
 
-function cpuAttack(state: GameState, player: typeof state.players[SuperpowerId]): void {
-  if (player.supplies.grain < 1 || player.supplies.oil < 1 || player.supplies.mineral < 1) return;
+interface CpuAttackResult {
+  fromId: string;
+  targetId: string;
+  fromName: string;
+  targetName: string;
+  defenderName: string;
+  attackerDice: number[];
+  defenderDice: number[];
+  attackerLosses: number;
+  defenderLosses: number;
+  attackerUnitsInitial: number;
+  defenderUnitsInitial: number;
+  attackerUnitsAfter: number;
+  defenderUnitsAfter: number;
+  conquered: boolean;
+}
+
+function cpuAttack(state: GameState, player: typeof state.players[SuperpowerId]): CpuAttackResult | null {
+  if (player.supplies.grain < 1 || player.supplies.oil < 1 || player.supplies.mineral < 1) return null;
 
   for (const [territoryId, armyCount] of Object.entries(player.armies)) {
     if (armyCount < 3) continue;
@@ -1220,35 +1311,47 @@ function cpuAttack(state: GameState, player: typeof state.players[SuperpowerId])
       let defenderId: SuperpowerId | null = null;
       for (const [pid, p] of Object.entries(state.players)) {
         if (pid === player.id) continue;
-        const forces = (p as any).armies[adjId] || 0;
-        if (forces > 0) {
-          enemyForces += forces;
-          defenderId = pid as SuperpowerId;
-        }
+        const forces = (p as Player).armies[adjId] || 0;
+        if (forces > 0) { enemyForces += forces; defenderId = pid as SuperpowerId; }
       }
 
       if (armyCount > enemyForces + 1 && defenderId) {
-        // Execute attack directly
-        state.combat.attackerId = player.id;
-        state.combat.defenderId = defenderId;
-        state.combat.fromId = territoryId;
-        state.combat.targetId = adjId;
-        state.combat.targetType = 'territory';
-        state.combat.attackerUnits = armyCount;
-        state.combat.defenderUnits = enemyForces;
-        state.combat.active = true;
+        const attackerUnitsInitial = armyCount;
+        const defenderUnitsInitial = enemyForces;
+
+        // Use the same shared path as the human player
+        initiateAttack(state, territoryId, adjId, 'territory');
+        if (!state.combat.active) return null;
         rollCombat(state);
 
-        // Auto-occupy if won
+        const result: CpuAttackResult = {
+          fromId: territoryId,
+          targetId: adjId,
+          fromName: territory.name,
+          targetName: adjTerritory.name,
+          defenderName: SUPERPOWERS[defenderId]?.shortName ?? 'desconhecido',
+          attackerDice: [...state.combat.attackerDice],
+          defenderDice: [...state.combat.defenderDice],
+          attackerLosses: state.combat.attackerLosses,
+          defenderLosses: state.combat.defenderLosses,
+          attackerUnitsInitial,
+          defenderUnitsInitial,
+          attackerUnitsAfter: state.combat.attackerUnitsAfter,
+          defenderUnitsAfter: state.combat.defenderUnitsAfter,
+          conquered: false,
+        };
+
         if (state.combat.phase === 'occupy') {
-          occupyTerritory(state);
+          occupyTerritory(state, 1); // AI always advances 1 army
+          result.conquered = state.territories[adjId]?.owner === player.id;
         } else {
           resetCombat(state);
         }
-        return; // One attack per turn for CPU
+        return result; // One attack per turn for CPU
       }
     }
   }
+  return null;
 }
 
 function cpuBuild(state: GameState, player: typeof state.players[SuperpowerId]): void {
@@ -1418,49 +1521,37 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
         break;
       }
 
-      case 4: { // Attack — capture target before mutation
-        let attackFromId: string | null = null;
-        let attackTargetId: string | null = null;
-        let attackDefenderId: SuperpowerId | null = null;
-        outer: for (const [territoryId, armyCount] of Object.entries(state.players[playerId].armies)) {
-          if (armyCount < 3) continue;
-          const territory = state.territories[territoryId];
-          if (!territory) continue;
-          for (const adjId of territory.adjacentTerritories) {
-            const adjT = state.territories[adjId];
-            if (!adjT || adjT.nuked || adjT.owner === playerId) continue;
-            let enemyForces = 0;
-            let defenderId: SuperpowerId | null = null;
-            for (const [pid, pp] of Object.entries(state.players)) {
-              if (pid === playerId) continue;
-              const forces = (pp as Player).armies[adjId] || 0;
-              if (forces > 0) { enemyForces += forces; defenderId = pid as SuperpowerId; }
-            }
-            if (armyCount > enemyForces + 1 && defenderId) {
-              attackFromId = territoryId;
-              attackTargetId = adjId;
-              attackDefenderId = defenderId;
-              break outer;
-            }
-          }
-        }
-        if (attackFromId && attackTargetId) {
-          const fromName = state.territories[attackFromId]?.name || attackFromId;
-          const targetName = state.territories[attackTargetId]?.name || attackTargetId;
-          const defName = attackDefenderId ? SUPERPOWERS[attackDefenderId]?.shortName : 'neutro';
-          cpuAttack(state, state.players[playerId]);
-          const won = state.territories[attackTargetId]?.owner === playerId;
+      case 4: { // Attack — cpuAttack returns full result for rich presentation
+        const attackResult = cpuAttack(state, state.players[playerId]);
+        if (attackResult) {
+          const { fromName, targetName, defenderName, conquered } = attackResult;
+          const attackerTotal = attackResult.attackerDice.reduce((a, b) => a + b, 0);
+          const defenderTotal = attackResult.defenderDice.reduce((a, b) => a + b, 0);
           pushStep({
             phase: 4,
-            actionType: won ? 'attack_result_victory' : 'attack_result_defeat',
-            title: won ? `Conquistou ${targetName}!` : `Ataque em ${targetName} falhou`,
-            description: won
-              ? `Avançou de ${fromName} e derrotou ${defName}`
-              : `Avançou de ${fromName} contra ${defName} — resistiu`,
-            fromId: attackFromId,
-            toId: attackTargetId,
-            soundKey: won ? 'territory-conquered' : 'combat-hit',
+            actionType: conquered ? 'attack_result_victory' : 'attack_result_defeat',
+            title: conquered ? `Conquistou ${targetName}!` : `Ataque em ${targetName} falhou`,
+            description: conquered
+              ? `[${attackResult.attackerDice.join(',')}]=${attackerTotal} vs [${attackResult.defenderDice.join(',')}]=${defenderTotal} — derrotou ${defenderName}`
+              : `[${attackResult.attackerDice.join(',')}]=${attackerTotal} vs [${attackResult.defenderDice.join(',')}]=${defenderTotal} — ${defenderName} resistiu`,
+            fromId: attackResult.fromId,
+            toId: attackResult.targetId,
+            soundKey: conquered ? 'territory-conquered' : 'combat-hit',
             durationMs: STEP_MS,
+            combatDetails: {
+              fromId: attackResult.fromId,
+              toId: attackResult.targetId,
+              attackerUnitsInitial: attackResult.attackerUnitsInitial,
+              defenderUnitsInitial: attackResult.defenderUnitsInitial,
+              attackerDice: attackResult.attackerDice,
+              defenderDice: attackResult.defenderDice,
+              attackerLosses: attackResult.attackerLosses,
+              defenderLosses: attackResult.defenderLosses,
+              attackerUnitsAfter: attackResult.attackerUnitsAfter,
+              defenderUnitsAfter: attackResult.defenderUnitsAfter,
+              conquered,
+              defenderName,
+            },
           });
         }
         break;
@@ -1691,7 +1782,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         rollCombat(state);
         break;
       case 'OCCUPY_TERRITORY':
-        occupyTerritory(state);
+        occupyTerritory(state, action.count ?? 1);
         break;
       case 'LAUNCH_NUKE':
         launchNuke(state, action.target, action.targetType);

@@ -3,6 +3,7 @@ import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import type { ResourceType } from '../game/types';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, X, LineChart } from 'lucide-react';
+import { SUPERPOWERS } from '../data/initialPlayers';
 
 const RESOURCES: { key: ResourceType; label: string; icon: string; color: string }[] = [
   { key: 'grain', label: 'Cereal', icon: '🌾', color: '#eab308' },
@@ -147,6 +148,36 @@ export default function MarketDrawer() {
               Histórico começa ao fim da 1ª rodada.
             </p>
           )}
+
+          {/* Recent market transactions */}
+          {(() => {
+            const txEvents = game.eventLog
+              .filter(e => e.type === 'economy' && (e.message.startsWith('Vendeu') || e.message.startsWith('Comprou')))
+              .slice(-5)
+              .reverse();
+            if (txEvents.length === 0) return null;
+            return (
+              <div className="border-t border-border/40 px-3 py-2">
+                <p className="text-[9px] uppercase tracking-wider text-muted-foreground mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+                  Últimas transações
+                </p>
+                <div className="space-y-1">
+                  {txEvents.map(e => {
+                    const sp = SUPERPOWERS[e.player];
+                    const isSell = e.message.startsWith('Vendeu');
+                    return (
+                      <div key={e.id} className="flex items-start gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: sp.color }} />
+                        <span className={`text-[9px] font-mono leading-snug ${isSell ? 'text-red-300' : 'text-emerald-300'}`}>
+                          {isSell ? '▼' : '▲'} {e.message}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </>

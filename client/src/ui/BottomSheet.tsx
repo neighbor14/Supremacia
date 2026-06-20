@@ -219,13 +219,40 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
 
   const history = game.market.priceHistory;
 
+  // Compares the live current price with the last end-of-round snapshot so the
+  // arrow reflects transactions that already happened within this round.
   const getTrend = (resource: ResourceType): 'up' | 'down' | 'flat' => {
-    if (history.length < 2) return 'flat';
-    const prev = history[history.length - 2][resource];
-    const curr = history[history.length - 1][resource];
-    if (curr > prev) return 'up';
-    if (curr < prev) return 'down';
+    if (history.length === 0) return 'flat';
+    const roundStartPrice = history[history.length - 1][resource];
+    const currentPrice = game.market.prices[resource];
+    if (currentPrice > roundStartPrice) return 'up';
+    if (currentPrice < roundStartPrice) return 'down';
     return 'flat';
+  };
+
+  // Price the resource will reach after `qty` units are traded.
+  const previewPriceAfter = (resource: ResourceType, qty: number): number => {
+    let p = game.market.prices[resource];
+    const { minPrice, maxPrice, priceStep } = game.market;
+    for (let i = 0; i < qty; i++) {
+      if (mode === 'sell') p = Math.max(minPrice, p - priceStep);
+      else p = Math.min(maxPrice, p + priceStep);
+    }
+    return p;
+  };
+
+  // Total money received (sell) or spent (buy) for `qty` units, accounting for
+  // the sliding price per unit.
+  const previewTotal = (resource: ResourceType, qty: number): number => {
+    let p = game.market.prices[resource];
+    const { minPrice, maxPrice, priceStep } = game.market;
+    let total = 0;
+    for (let i = 0; i < qty; i++) {
+      total += p;
+      if (mode === 'sell') p = Math.max(minPrice, p - priceStep);
+      else p = Math.min(maxPrice, p + priceStep);
+    }
+    return total;
   };
 
   const adjustQty = (resource: ResourceType, delta: number) => {
@@ -264,8 +291,11 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
           const trend = getTrend(r);
           const price = game.market.prices[r];
           const stock = player.supplies[r];
-          const canSell = mode === 'sell' && stock >= quantities[r];
-          const canBuy = mode === 'buy' && player.money >= price * quantities[r] && stock + quantities[r] <= player.maxSupply;
+          const qty = quantities[r];
+          const priceAfter = previewPriceAfter(r, qty);
+          const total = previewTotal(r, qty);
+          const canSell = mode === 'sell' && stock >= qty;
+          const canBuy = mode === 'buy' && player.money >= total && stock + qty <= player.maxSupply;
 
           return (
             <div key={r} className="flex items-center gap-2">
@@ -275,13 +305,24 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
                 <span className="text-[11px] font-medium">{labels[r]}</span>
               </div>
 
-              {/* Price + trend */}
-              <div className="flex items-center gap-1 w-16 shrink-0">
-                <span className="text-xs font-bold font-mono" style={{ color: colors[r] }}>
-                  ${price.toLocaleString()}
-                </span>
-                {trend === 'up' && <TrendingUp size={10} className="text-emerald-400" />}
-                {trend === 'down' && <TrendingDown size={10} className="text-red-400" />}
+              {/* Price + trend + impact preview */}
+              <div className="flex flex-col gap-0.5 w-20 shrink-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-bold font-mono" style={{ color: colors[r] }}>
+                    ${price.toLocaleString()}
+                  </span>
+                  {trend === 'up' && <TrendingUp size={10} className="text-emerald-400" />}
+                  {trend === 'down' && <TrendingDown size={10} className="text-red-400" />}
+                  {trend === 'flat' && <MinusIcon size={10} className="text-muted-foreground/40" />}
+                </div>
+                {priceAfter !== price && (
+                  <span className={`text-[9px] font-mono flex items-center gap-0.5 ${
+                    mode === 'sell' ? 'text-red-400' : 'text-emerald-400'
+                  }`}>
+                    {mode === 'sell' ? <TrendingDown size={8} /> : <TrendingUp size={8} />}
+                    ${priceAfter.toLocaleString()}
+                  </span>
+                )}
               </div>
 
               {/* Stock */}
@@ -297,7 +338,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
                 >
                   <MinusIcon size={10} />
                 </button>
-                <span className="text-[11px] font-mono w-4 text-center">{quantities[r]}</span>
+                <span className="text-[11px] font-mono w-4 text-center">{qty}</span>
                 <button
                   onClick={() => { playSound('button-click', 0.5); adjustQty(r, 1); }}
                   className="w-8 h-8 rounded bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground active:scale-[0.9]"
@@ -306,12 +347,12 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
                 </button>
               </div>
 
-              {/* Action button */}
+              {/* Action button — shows total value of the transaction */}
               <button
                 onClick={() => handleTransaction(r)}
                 disabled={mode === 'sell' ? !canSell : !canBuy}
                 className={`
-                  text-[10px] px-3 py-1.5 rounded uppercase tracking-wider font-semibold
+                  flex flex-col items-center text-[10px] px-2 py-1 rounded uppercase tracking-wider font-semibold
                   active:scale-[0.95] transition-all shrink-0
                   ${mode === 'sell'
                     ? 'bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-30 disabled:cursor-not-allowed'
@@ -320,7 +361,10 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
                 `}
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                {mode === 'sell' ? 'Vender' : 'Comprar'}
+                <span>{mode === 'sell' ? 'Vender' : 'Comprar'}</span>
+                <span className="text-[8px] font-mono normal-case tracking-normal opacity-80">
+                  {mode === 'sell' ? '+' : '-'}${total.toLocaleString()}
+                </span>
               </button>
             </div>
           );
