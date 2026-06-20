@@ -1,52 +1,126 @@
 import { useEffect, useCallback, useState } from 'react';
-import { initAudio, playSound, setVolume, getVolume, toggleMute, getMuted, type SoundEffect } from '../game/audio';
+import {
+  initAudio,
+  isAudioEnabled,
+  playSound,
+  playMusic,
+  stopMusic,
+  setSfxVolume,
+  getSfxVolume,
+  setSfxEnabled,
+  getSfxEnabled,
+  setMusicVolume,
+  getMusicVolume,
+  setMusicEnabled,
+  getMusicEnabled,
+  setMasterMuted,
+  getMasterMuted,
+  type SoundEffect,
+  type MusicTrack,
+} from '../game/audio';
 
 /**
- * Hook to initialize audio system on first user interaction
+ * Hook to initialize audio on first user interaction.
+ * Returns { initialized, activate } — activate() can be wired to an explicit button.
  */
 export function useAudioInit() {
-  const [initialized, setInitialized] = useState(false);
+  const [initialized, setInitialized] = useState(isAudioEnabled());
+
+  const activate = useCallback(() => {
+    if (initialized) return;
+    initAudio();
+    setInitialized(true);
+  }, [initialized]);
 
   useEffect(() => {
     if (initialized) return;
 
-    const handleInteraction = () => {
+    const handle = () => {
       initAudio();
       setInitialized(true);
-      document.removeEventListener('click', handleInteraction);
-      document.removeEventListener('touchstart', handleInteraction);
+      document.removeEventListener('click', handle);
+      document.removeEventListener('touchstart', handle);
     };
 
-    document.addEventListener('click', handleInteraction);
-    document.addEventListener('touchstart', handleInteraction);
+    document.addEventListener('click', handle);
+    document.addEventListener('touchstart', handle);
 
     return () => {
-      document.removeEventListener('click', handleInteraction);
-      document.removeEventListener('touchstart', handleInteraction);
+      document.removeEventListener('click', handle);
+      document.removeEventListener('touchstart', handle);
     };
   }, [initialized]);
 
-  return initialized;
+  return { initialized, activate };
 }
 
 /**
- * Hook for audio controls (volume, mute)
+ * Full audio controls: master mute, music toggle, SFX toggle, volume sliders.
  */
 export function useAudioControls() {
-  const [volume, setVol] = useState(getVolume());
-  const [muted, setMuted] = useState(getMuted());
+  const [masterMuted, setMasterMutedState] = useState(getMasterMuted());
+  const [musicEnabled, setMusicEnabledState] = useState(getMusicEnabled());
+  const [sfxEnabled, setSfxEnabledState] = useState(getSfxEnabled());
+  const [musicVol, setMusicVol] = useState(getMusicVolume());
+  const [sfxVol, setSfxVol] = useState(getSfxVolume());
 
+  const toggleMasterMute = useCallback(() => {
+    const next = !getMasterMuted();
+    setMasterMuted(next);
+    setMasterMutedState(next);
+  }, []);
+
+  const toggleMusic = useCallback(() => {
+    const next = !getMusicEnabled();
+    setMusicEnabled(next);
+    setMusicEnabledState(next);
+  }, []);
+
+  const toggleSfx = useCallback(() => {
+    const next = !getSfxEnabled();
+    setSfxEnabled(next);
+    setSfxEnabledState(next);
+  }, []);
+
+  const changeMusicVolume = useCallback((v: number) => {
+    setMusicVolume(v);
+    setMusicVol(v);
+  }, []);
+
+  const changeSfxVolume = useCallback((v: number) => {
+    setSfxVolume(v);
+    setSfxVol(v);
+  }, []);
+
+  // Legacy compat: single "volume" / "muted" for components not yet updated
   const changeVolume = useCallback((v: number) => {
-    setVolume(v);
-    setVol(v);
+    setSfxVolume(v);
+    setSfxVol(v);
   }, []);
 
-  const toggle = useCallback(() => {
-    const newMuted = toggleMute();
-    setMuted(newMuted);
+  const toggleMute = useCallback(() => {
+    const next = !getMasterMuted();
+    setMasterMuted(next);
+    setMasterMutedState(next);
   }, []);
 
-  return { volume, muted, changeVolume, toggleMute: toggle };
+  return {
+    masterMuted,
+    musicEnabled,
+    sfxEnabled,
+    musicVol,
+    sfxVol,
+    toggleMasterMute,
+    toggleMusic,
+    toggleSfx,
+    changeMusicVolume,
+    changeSfxVolume,
+    // legacy
+    volume: sfxVol,
+    muted: masterMuted,
+    changeVolume,
+    toggleMute,
+  };
 }
 
 /**
@@ -56,4 +130,19 @@ export function usePlaySound() {
   return useCallback((effect: SoundEffect, volume?: number) => {
     playSound(effect, volume);
   }, []);
+}
+
+/**
+ * Hook for controlling background music
+ */
+export function useMusicPlayer() {
+  const play = useCallback((track: MusicTrack, fadeDurationMs?: number) => {
+    playMusic(track, fadeDurationMs);
+  }, []);
+
+  const stop = useCallback((fadeDurationMs?: number) => {
+    stopMusic(fadeDurationMs);
+  }, []);
+
+  return { play, stop };
 }

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
+import { Volume2 } from 'lucide-react';
 import { useGameStore } from '../game/store';
 import { SuperpowerId } from '../game/types';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { GameState } from '../game/types';
+import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
 
 type Step = 'menu' | 'superpower' | 'ai_count';
 
@@ -14,8 +16,23 @@ export default function Home() {
   const [selectedSuperpower, setSelectedSuperpower] = useState<SuperpowerId | null>(null);
   const [aiCount, setAiCount] = useState(3);
 
+  const { initialized, activate } = useAudioInit();
+  const { play } = useMusicPlayer();
+
   const hasSave = !!localStorage.getItem('supremacia_save');
-  const maxAi = SUPERPOWER_IDS.length - 1; // 5
+  const maxAi = SUPERPOWER_IDS.length - 1;
+
+  // Start menu music as soon as audio is available
+  useEffect(() => {
+    if (initialized) {
+      play('menu');
+    }
+  }, [initialized, play]);
+
+  const handleActivateSound = () => {
+    activate();
+    play('menu');
+  };
 
   const handleSelectSuperpower = (id: SuperpowerId) => {
     setSelectedSuperpower(id);
@@ -83,6 +100,18 @@ export default function Home() {
         </p>
       </div>
 
+      {/* "Ativar som" — shown before first interaction */}
+      {!initialized && (
+        <button
+          onClick={handleActivateSound}
+          className="flex items-center gap-2 mb-6 px-4 py-2 rounded-md border border-primary/40 text-primary/80 text-xs uppercase tracking-widest hover:bg-primary/10 transition-colors active:scale-[0.97] animate-pulse"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          <Volume2 size={14} />
+          Ativar som
+        </button>
+      )}
+
       {/* Step: main menu */}
       {step === 'menu' && (
         <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -148,7 +177,6 @@ export default function Home() {
       {/* Step: choose AI count */}
       {step === 'ai_count' && sp && (
         <div className="w-full max-w-sm">
-          {/* Selected superpower badge */}
           <div className="flex items-center justify-center gap-2 mb-6">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sp.color }} />
             <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: sp.color, fontFamily: 'var(--font-display)' }}>
@@ -163,7 +191,6 @@ export default function Home() {
             Mínimo 1 — Máximo {maxAi}
           </p>
 
-          {/* AI count selector */}
           <div className="flex justify-center gap-2 mb-6">
             {Array.from({ length: maxAi }, (_, i) => i + 1).map(n => (
               <button
@@ -181,7 +208,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Info card */}
           <div className="bg-secondary/50 rounded-lg p-4 mb-6 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Jogadores ativos</span>

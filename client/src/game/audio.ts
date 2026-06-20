@@ -1,8 +1,10 @@
 /**
  * Audio System — Supremacia Digital
- * All sounds are synthesized in-browser via Web Audio API.
- * No external files required; works offline and on any host.
+ * SFX: synthesized via Web Audio API (no external files)
+ * Music: HTML Audio elements — menu.mp3, gameplay.mp3, batalha.mp3
  */
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SoundEffect =
   | 'button-click'
@@ -22,12 +24,25 @@ export type SoundEffect =
   | 'defeat'
   | 'dice-roll';
 
-let audioCtx: AudioContext | null = null;
-let globalVolume = 0.5;
-let isMuted = false;
-let audioEnabled = false; // set true after first user interaction
+export type MusicTrack = 'menu' | 'gameplay' | 'battle';
 
-// Per-sound debounce — prevents audio spam on rapid taps
+// ─── State ────────────────────────────────────────────────────────────────────
+
+let audioCtx: AudioContext | null = null;
+let audioEnabled = false;
+
+// SFX
+let sfxVolume = 0.5;
+let sfxEnabled = true;
+
+// Music
+let musicVolume = 0.2;
+let musicEnabled = true;
+
+// Master mute
+let masterMuted = false;
+
+// Per-sound debounce
 const lastPlayedAt = new Map<SoundEffect, number>();
 const COOLDOWN_MS: Partial<Record<SoundEffect, number>> = {
   'button-click': 80,
@@ -38,11 +53,77 @@ const COOLDOWN_MS: Partial<Record<SoundEffect, number>> = {
   'error': 300,
 };
 
-// Per-call volume scale, set before each synth call and reset after
 let callVolume = 1.0;
 
+// Music playback state
+let currentTrack: MusicTrack | null = null;
+let currentAudio: HTMLAudioElement | null = null;
+const musicElements = new Map<MusicTrack, HTMLAudioElement>();
+// rafId per audio element so fades don't stomp each other
+const activeFades = new WeakMap<HTMLAudioElement, number>();
+
+const MUSIC_PATHS: Record<MusicTrack, string> = {
+  menu: '/audio/menu.mp3',
+  gameplay: '/audio/gameplay.mp3',
+  battle: '/audio/batalha.mp3',
+};
+
+// ─── Fade helper ─────────────────────────────────────────────────────────────
+
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
+
+function fadeAudio(
+  audio: HTMLAudioElement,
+  fromVol: number,
+  toVol: number,
+  durationMs: number,
+  onDone?: () => void,
+): void {
+  const existing = activeFades.get(audio);
+  if (existing != null) cancelAnimationFrame(existing);
+
+  const start = performance.now();
+
+  function step() {
+    const t = Math.min((performance.now() - start) / durationMs, 1);
+    audio.volume = Math.max(0, Math.min(1, fromVol + (toVol - fromVol) * easeInOut(t)));
+    if (t < 1) {
+      activeFades.set(audio, requestAnimationFrame(step));
+    } else {
+      activeFades.delete(audio);
+      onDone?.();
+    }
+  }
+  activeFades.set(audio, requestAnimationFrame(step));
+}
+
+// ─── Music internals ─────────────────────────────────────────────────────────
+
+function getOrCreateMusic(track: MusicTrack): HTMLAudioElement | null {
+  if (!musicElements.has(track)) {
+    try {
+      const audio = new Audio(MUSIC_PATHS[track]);
+      audio.loop = true;
+      audio.volume = 0;
+      audio.preload = 'none';
+      musicElements.set(track, audio);
+    } catch {
+      return null;
+    }
+  }
+  return musicElements.get(track) ?? null;
+}
+
+function effectiveMusicVol(): number {
+  return masterMuted || !musicEnabled ? 0 : musicVolume;
+}
+
+// ─── SFX internals ───────────────────────────────────────────────────────────
+
 function getCtx(): AudioContext | null {
-  if (!audioEnabled || isMuted) return null;
+  if (!audioEnabled || masterMuted || !sfxEnabled) return null;
   if (!audioCtx) {
     try {
       audioCtx = new AudioContext();
@@ -50,9 +131,7 @@ function getCtx(): AudioContext | null {
       return null;
     }
   }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
-  }
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
   return audioCtx;
 }
 
@@ -72,7 +151,7 @@ interface ToneOpts {
 
 function tone(c: AudioContext, freq: number, dur: number, opts: ToneOpts = {}): void {
   const { type = 'sine', vol = 0.5, freqEnd, attack = 0.006, startAt = 0 } = opts;
-  const peak = vol * globalVolume * callVolume;
+  const peak = vol * sfxVolume * callVolume;
   const g = makeGain(c);
   const o = c.createOscillator();
   o.type = type;
@@ -105,7 +184,7 @@ function burst(c: AudioContext, dur: number, opts: BurstOpts = {}): void {
     attack = 0.003,
     startAt = 0,
   } = opts;
-  const peak = vol * globalVolume * callVolume;
+  const peak = vol * sfxVolume * callVolume;
   const sampleRate = c.sampleRate;
   const len = Math.ceil(sampleRate * (dur + 0.06));
   const buf = c.createBuffer(1, len, sampleRate);
@@ -149,7 +228,6 @@ const SOUNDS: Record<SoundEffect, (c: AudioContext) => void> = {
   },
 
   'turn-start': (c) => {
-    // Ascending triad: C5 E5 G5
     tone(c, 523, 0.22, { vol: 0.30 });
     tone(c, 659, 0.22, { vol: 0.30, startAt: 0.16 });
     tone(c, 784, 0.32, { vol: 0.30, startAt: 0.32 });
@@ -165,7 +243,6 @@ const SOUNDS: Record<SoundEffect, (c: AudioContext) => void> = {
   },
 
   'diplomacy-alert': (c) => {
-    // Double beep
     tone(c, 660, 0.09, { vol: 0.28, type: 'square' });
     tone(c, 880, 0.09, { vol: 0.28, type: 'square', startAt: 0.15 });
   },
@@ -187,20 +264,17 @@ const SOUNDS: Record<SoundEffect, (c: AudioContext) => void> = {
   },
 
   'missile-launch': (c) => {
-    // Rising sawtooth sweep with noise
     tone(c, 80, 0.62, { freqEnd: 1400, vol: 0.38, type: 'sawtooth' });
     burst(c, 0.58, { vol: 0.20, filterFreq: 2200 });
   },
 
   'explosion': (c) => {
-    // Low boom + high-frequency crack + sub rumble
     burst(c, 0.82, { vol: 0.62, filterFreq: 480 });
     tone(c, 60, 0.52, { freqEnd: 32, vol: 0.38, type: 'sawtooth' });
     burst(c, 0.28, { vol: 0.42, filterFreq: 9000, filterType: 'highpass', startAt: 0.05 });
   },
 
   'territory-conquered': (c) => {
-    // Mini fanfare: C5 E5 G5 C6
     tone(c, 523, 0.16, { vol: 0.34 });
     tone(c, 659, 0.16, { vol: 0.34, startAt: 0.14 });
     tone(c, 784, 0.16, { vol: 0.34, startAt: 0.28 });
@@ -208,32 +282,29 @@ const SOUNDS: Record<SoundEffect, (c: AudioContext) => void> = {
   },
 
   'error': (c) => {
-    // Two descending buzz tones
     tone(c, 360, 0.11, { type: 'square', vol: 0.28 });
     tone(c, 210, 0.11, { type: 'square', vol: 0.28, startAt: 0.14 });
   },
 
   'victory': (c) => {
-    // Triumphant ascending scale: C E G C E
     const notes = [523, 659, 784, 1047, 1319];
     notes.forEach((f, i) =>
-      tone(c, f, i < 4 ? 0.18 : 0.40, { vol: 0.36, startAt: i * 0.13 })
+      tone(c, f, i < 4 ? 0.18 : 0.40, { vol: 0.36, startAt: i * 0.13 }),
     );
   },
 
   'defeat': (c) => {
-    // Descending minor: G F Eb D
     const notes = [392, 349, 311, 293];
     notes.forEach((f, i) =>
-      tone(c, f, i < 3 ? 0.24 : 0.44, { vol: 0.30, startAt: i * 0.19 })
+      tone(c, f, i < 3 ? 0.24 : 0.44, { vol: 0.30, startAt: i * 0.19 }),
     );
   },
 };
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Public API: SFX ─────────────────────────────────────────────────────────
 
 export function playSound(effect: SoundEffect, volumeScale = 1.0): void {
-  if (isMuted || !audioEnabled) return;
+  if (!audioEnabled || masterMuted || !sfxEnabled) return;
 
   const cd = COOLDOWN_MS[effect];
   if (cd) {
@@ -249,42 +320,171 @@ export function playSound(effect: SoundEffect, volumeScale = 1.0): void {
   try {
     SOUNDS[effect](c);
   } catch {
-    // Silently swallow any synthesis error
+    // Silently swallow synthesis errors
   }
   callVolume = 1.0;
 }
 
-export function setVolume(vol: number): void {
-  globalVolume = Math.max(0, Math.min(1, vol));
-  localStorage.setItem('supremacia-volume', String(globalVolume));
+export function setSfxVolume(vol: number): void {
+  sfxVolume = Math.max(0, Math.min(1, vol));
+  localStorage.setItem('supremacia-sfx-volume', String(sfxVolume));
 }
 
-export function getVolume(): number {
-  return globalVolume;
+export function getSfxVolume(): number {
+  return sfxVolume;
 }
 
+export function setSfxEnabled(enabled: boolean): void {
+  sfxEnabled = enabled;
+  localStorage.setItem('supremacia-sfx-enabled', String(enabled));
+}
+
+export function getSfxEnabled(): boolean {
+  return sfxEnabled;
+}
+
+// Legacy compat aliases (used by existing components)
+export function setVolume(vol: number): void { setSfxVolume(vol); }
+export function getVolume(): number { return sfxVolume; }
+
+// ─── Public API: Music ────────────────────────────────────────────────────────
+
+export function playMusic(track: MusicTrack, fadeDurationMs = 1500): void {
+  if (currentTrack === track) return;
+
+  const prevAudio = currentAudio;
+  currentTrack = track;
+
+  if (!audioEnabled) return; // deferred until initAudio() is called
+
+  const nextEl = getOrCreateMusic(track);
+  if (!nextEl) return;
+
+  nextEl.volume = 0;
+  nextEl.currentTime = 0;
+  nextEl.play().catch(() => {}); // non-blocking; silence failure
+
+  fadeAudio(nextEl, 0, effectiveMusicVol(), fadeDurationMs);
+
+  if (prevAudio) {
+    const prev = prevAudio;
+    const prevVol = prev.volume;
+    fadeAudio(prev, prevVol, 0, fadeDurationMs, () => {
+      prev.pause();
+    });
+  }
+
+  currentAudio = nextEl;
+}
+
+export function stopMusic(fadeDurationMs = 800): void {
+  currentTrack = null;
+  if (currentAudio) {
+    const audio = currentAudio;
+    currentAudio = null;
+    fadeAudio(audio, audio.volume, 0, fadeDurationMs, () => {
+      audio.pause();
+    });
+  }
+}
+
+export function getCurrentTrack(): MusicTrack | null {
+  return currentTrack;
+}
+
+export function setMusicVolume(vol: number): void {
+  musicVolume = Math.max(0, Math.min(1, vol));
+  localStorage.setItem('supremacia-music-volume', String(musicVolume));
+  if (currentAudio && !masterMuted && musicEnabled) {
+    currentAudio.volume = musicVolume;
+  }
+}
+
+export function getMusicVolume(): number {
+  return musicVolume;
+}
+
+export function setMusicEnabled(enabled: boolean): void {
+  musicEnabled = enabled;
+  localStorage.setItem('supremacia-music-enabled', String(enabled));
+  if (currentAudio) {
+    const target = (!enabled || masterMuted) ? 0 : musicVolume;
+    fadeAudio(currentAudio, currentAudio.volume, target, 500);
+  }
+}
+
+export function getMusicEnabled(): boolean {
+  return musicEnabled;
+}
+
+// ─── Public API: Master mute ─────────────────────────────────────────────────
+
+export function setMasterMuted(muted: boolean): void {
+  masterMuted = muted;
+  localStorage.setItem('supremacia-master-muted', String(muted));
+  if (currentAudio) {
+    const target = muted ? 0 : effectiveMusicVol();
+    fadeAudio(currentAudio, currentAudio.volume, target, 300);
+  }
+}
+
+export function getMasterMuted(): boolean {
+  return masterMuted;
+}
+
+// Legacy: toggleMute / getMuted now map to master mute
 export function toggleMute(): boolean {
-  isMuted = !isMuted;
-  localStorage.setItem('supremacia-muted', String(isMuted));
-  return isMuted;
+  setMasterMuted(!masterMuted);
+  return masterMuted;
 }
 
 export function getMuted(): boolean {
-  return isMuted;
+  return masterMuted;
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+export function isAudioEnabled(): boolean {
+  return audioEnabled;
 }
 
 export function initAudio(): void {
+  if (audioEnabled) return;
   audioEnabled = true;
-  const savedVolume = localStorage.getItem('supremacia-volume');
-  if (savedVolume !== null) {
-    const v = parseFloat(savedVolume);
-    if (!isNaN(v)) globalVolume = v;
+
+  // Restore user preferences
+  const savedSfxVol =
+    localStorage.getItem('supremacia-sfx-volume') ??
+    localStorage.getItem('supremacia-volume'); // migrate old key
+  if (savedSfxVol !== null) {
+    const v = parseFloat(savedSfxVol);
+    if (!isNaN(v)) sfxVolume = v;
   }
-  const savedMuted = localStorage.getItem('supremacia-muted');
-  if (savedMuted !== null) {
-    isMuted = savedMuted === 'true';
+
+  const savedMusicVol = localStorage.getItem('supremacia-music-volume');
+  if (savedMusicVol !== null) {
+    const v = parseFloat(savedMusicVol);
+    if (!isNaN(v)) musicVolume = v;
+  }
+
+  const savedSfxEnabled = localStorage.getItem('supremacia-sfx-enabled');
+  if (savedSfxEnabled !== null) sfxEnabled = savedSfxEnabled !== 'false';
+
+  const savedMusicEnabled = localStorage.getItem('supremacia-music-enabled');
+  if (savedMusicEnabled !== null) musicEnabled = savedMusicEnabled !== 'false';
+
+  const savedMuted =
+    localStorage.getItem('supremacia-master-muted') ??
+    localStorage.getItem('supremacia-muted'); // migrate old key
+  if (savedMuted !== null) masterMuted = savedMuted === 'true';
+
+  // Start any track that was requested before init
+  if (currentTrack) {
+    const track = currentTrack;
+    currentTrack = null; // reset so playMusic sees it as new
+    playMusic(track);
   }
 }
 
-/** No-op: synthesis needs no preloading */
+/** No-op: synthesis needs no preloading; music loads on demand */
 export function preloadAudio(): void {}

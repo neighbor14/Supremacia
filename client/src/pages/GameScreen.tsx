@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useGameStore, planAiTurn } from '../game/store';
 import { playSound, SoundEffect } from '../game/audio';
-import { useAudioInit } from '../hooks/useAudio';
+import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
 import { usePresentationStore } from '../stores/presentationStore';
 import WorldMap from '../ui/WorldMap';
 import TurnPhaseBar from '../ui/TurnPhaseBar';
@@ -25,7 +25,8 @@ export default function GameScreen() {
   const [, setLocation] = useLocation();
   const { game, dispatch } = useGameStore();
   const presentation = usePresentationStore();
-  useAudioInit();
+  const { initialized } = useAudioInit();
+  const { play: playMusicTrack, stop: stopMusicTrack } = useMusicPlayer();
 
   // Track previous state for sound triggers
   const prevPlayerRef = useRef<string>('');
@@ -100,6 +101,18 @@ export default function GameScreen() {
     }
     prevGameOverRef.current = !!game.gameOver;
   }, [game]);
+
+  // ── Background music: gameplay ↔ battle ↔ stop on game over ─────────────────
+  useEffect(() => {
+    if (!game || !initialized) return;
+    if (game.gameOver) {
+      stopMusicTrack(1200);
+    } else if (game.combat.active) {
+      playMusicTrack('battle');
+    } else {
+      playMusicTrack('gameplay');
+    }
+  }, [game?.combat.active, game?.gameOver, initialized, playMusicTrack, stopMusicTrack]);
 
   // ── AI Turn: start presentation when it's an AI player's turn ──────────────
   useEffect(() => {
