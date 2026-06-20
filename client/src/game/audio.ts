@@ -107,9 +107,15 @@ function getOrCreateMusic(track: MusicTrack): HTMLAudioElement | null {
       const audio = new Audio(MUSIC_PATHS[track]);
       audio.loop = true;
       audio.volume = 0;
-      audio.preload = 'none';
+      audio.preload = 'auto';
+      audio.crossOrigin = 'anonymous';
+      // Handle load errors silently but allow retry
+      audio.addEventListener('error', () => {
+        console.warn(`[Supremacia Audio] Failed to load track: ${track}`);
+      }, { once: true });
       musicElements.set(track, audio);
-    } catch {
+    } catch (e) {
+      console.warn(`[Supremacia Audio] Exception creating audio element for ${track}:`, e);
       return null;
     }
   }
@@ -355,16 +361,35 @@ export function playMusic(track: MusicTrack, fadeDurationMs = 1500): void {
   const prevAudio = currentAudio;
   currentTrack = track;
 
-  if (!audioEnabled) return; // deferred until initAudio() is called
+  if (!audioEnabled) {
+    // deferred until initAudio() is called - will retry in initAudio()
+    return;
+  }
 
   const nextEl = getOrCreateMusic(track);
-  if (!nextEl) return;
+  if (!nextEl) {
+    console.warn(`[Supremacia Audio] Could not create audio element for track: ${track}`);
+    return;
+  }
 
   nextEl.volume = 0;
   nextEl.currentTime = 0;
-  nextEl.play().catch(() => {}); // non-blocking; silence failure
 
-  fadeAudio(nextEl, 0, effectiveMusicVol(), fadeDurationMs);
+  // Ensure audio can play - use Promise API if available
+  const playPromise = nextEl.play();
+  if (playPromise !== undefined) {
+    playPromise
+      .then(() => {
+        console.log(`[Supremacia Audio] Now playing: ${track}`);
+        fadeAudio(nextEl, 0, effectiveMusicVol(), fadeDurationMs);
+      })
+      .catch((err) => {
+        console.warn(`[Supremacia Audio] playback failed for ${track}:`, err);
+      });
+  } else {
+    // Fallback for older browsers
+    fadeAudio(nextEl, 0, effectiveMusicVol(), fadeDurationMs);
+  }
 
   if (prevAudio) {
     const prev = prevAudio;
@@ -451,6 +476,7 @@ export function isAudioEnabled(): boolean {
 export function initAudio(): void {
   if (audioEnabled) return;
   audioEnabled = true;
+  console.log('[Supremacia Audio] Initializing audio system');
 
   // Restore user preferences
   const savedSfxVol =
@@ -478,9 +504,12 @@ export function initAudio(): void {
     localStorage.getItem('supremacia-muted'); // migrate old key
   if (savedMuted !== null) masterMuted = savedMuted === 'true';
 
+  console.log(`[Supremacia Audio] Prefs: music=${musicEnabled}@${Math.round(musicVolume*100)}%, sfx=${sfxEnabled}@${Math.round(sfxVolume*100)}%, muted=${masterMuted}`);
+
   // Start any track that was requested before init
   if (currentTrack) {
     const track = currentTrack;
+    console.log(`[Supremacia Audio] Playing deferred track: ${track}`);
     currentTrack = null; // reset so playMusic sees it as new
     playMusic(track);
   }

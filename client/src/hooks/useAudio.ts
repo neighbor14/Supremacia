@@ -27,15 +27,24 @@ export function useAudioInit() {
   const [initialized, setInitialized] = useState(isAudioEnabled());
 
   const activate = useCallback(() => {
-    if (initialized) return;
+    if (initialized) {
+      console.log('[Supremacia Audio] activate() called but already initialized');
+      return;
+    }
+    console.log('[Supremacia Audio] activate() called, initializing audio');
     initAudio();
     setInitialized(true);
   }, [initialized]);
 
   useEffect(() => {
-    if (initialized) return;
+    if (initialized) {
+      console.log('[Supremacia Audio] useAudioInit: already initialized, skipping listener setup');
+      return;
+    }
 
+    console.log('[Supremacia Audio] useAudioInit: setting up click/touch listener');
     const handle = () => {
+      console.log('[Supremacia Audio] useAudioInit: user interaction detected, initializing audio');
       initAudio();
       setInitialized(true);
       document.removeEventListener('click', handle);
@@ -137,10 +146,12 @@ export function usePlaySound() {
  */
 export function useMusicPlayer() {
   const play = useCallback((track: MusicTrack, fadeDurationMs?: number) => {
+    console.log(`[Supremacia Audio] useMusicPlayer.play('${track}')`);
     playMusic(track, fadeDurationMs);
   }, []);
 
   const stop = useCallback((fadeDurationMs?: number) => {
+    console.log('[Supremacia Audio] useMusicPlayer.stop()');
     stopMusic(fadeDurationMs);
   }, []);
 
