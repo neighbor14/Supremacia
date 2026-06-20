@@ -171,6 +171,47 @@ export interface GameState {
   endCondition: 'supremacy' | 'detente' | 'holocaust' | null;
 }
 
+// ============================================================
+// TURN PRESENTATION LAYER — shared protocol for AI, local human,
+// and future remote_human players. All action representations go
+// through this structure so multiplayer can reuse the same UI.
+// ============================================================
+
+export type ActionEventType =
+  | 'pay_salaries'
+  | 'transfer_production'
+  | 'sell_resource'
+  | 'buy_resource'
+  | 'build_armies'
+  | 'build_navies'
+  | 'attack_result_victory'
+  | 'attack_result_defeat'
+  | 'research'
+  | 'end_turn';
+
+export interface PlayerActionEvent {
+  id: string;
+  playerId: SuperpowerId;
+  playerName: string;
+  playerType: PlayerType;
+  phase: TurnStage;
+  actionType: ActionEventType;
+  title: string;
+  description: string;
+  fromId?: string;
+  toId?: string;
+  resourceChanges?: Partial<Record<ResourceType | 'money', number>>;
+  armyDelta?: number;
+  navyDelta?: number;
+  soundKey?: string;
+  durationMs: number;
+}
+
+export interface PlannedStep {
+  event: PlayerActionEvent;
+  stateAfter: GameState;
+}
+
 export type GameAction =
   | { type: 'START_GAME' }
   | { type: 'NEXT_STAGE' }
@@ -206,4 +247,5 @@ export type GameAction =
   | { type: 'SELECT_OPTIONAL_STAGE'; stage: TurnStage }
   | { type: 'SET_ARMY_PLACEMENT'; placement: Record<string, number> }
   | { type: 'DECLARE_DETENTE' }
-  | { type: 'DISMISS_DRAWN_CARD' };
+  | { type: 'DISMISS_DRAWN_CARD' }
+  | { type: 'APPLY_AI_STEP'; state: GameState };

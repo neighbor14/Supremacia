@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
-import { useGameStore } from '../game/store';
-import { playSound } from '../game/audio';
+import { useGameStore, planAiTurn } from '../game/store';
+import { playSound, SoundEffect } from '../game/audio';
 import { useAudioInit } from '../hooks/useAudio';
+import { usePresentationStore } from '../stores/presentationStore';
 import WorldMap from '../ui/WorldMap';
 import TurnPhaseBar from '../ui/TurnPhaseBar';
 import PlayerStatusBar from '../ui/PlayerStatusBar';
@@ -13,16 +14,17 @@ import GameOverModal from '../ui/GameOverModal';
 import TurnTutorial from '../ui/TurnTutorial';
 import LandscapePrompt from '../ui/LandscapePrompt';
 import EventLogDrawer from '../ui/EventLogDrawer';
-import CpuTurnOverlay from '../ui/CpuTurnOverlay';
 import AudioControls from '../ui/AudioControls';
 import ResourceCardsPanel from '../ui/ResourceCardsPanel';
 import NewsTicker from '../ui/NewsTicker';
 import MarketDrawer from '../ui/MarketDrawer';
 import DrawnCardModal from '../ui/DrawnCardModal';
+import TurnPresentationPanel from '../ui/TurnPresentationPanel';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
   const { game, dispatch } = useGameStore();
+  const presentation = usePresentationStore();
   useAudioInit();
 
   // Track previous state for sound triggers
@@ -68,32 +70,27 @@ export default function GameScreen() {
     prevNukeRef.current = game.nuclearAttack.active;
 
     if (human) {
-      // Human researched nuke for the first time
       if (human.hasResearchedNuke && !prevResearchedNukeRef.current) {
         playSound('missile-launch', 0.65);
       }
       prevResearchedNukeRef.current = human.hasResearchedNuke;
 
-      // Human researched laser star for the first time
       if (human.hasResearchedLaserStar && !prevResearchedLaserRef.current) {
         playSound('diplomacy-alert', 0.9);
       }
       prevResearchedLaserRef.current = human.hasResearchedLaserStar;
 
-      // Human built a new nuke
       if (human.nukes > prevNukeCountRef.current) {
         playSound('explosion', 0.45);
       }
       prevNukeCountRef.current = human.nukes;
 
-      // Human built a new laser star
       if (human.laserStars > prevLaserCountRef.current) {
         playSound('territory-conquered', 0.65);
       }
       prevLaserCountRef.current = human.laserStars;
     }
 
-    // Game over
     if (game.gameOver && !prevGameOverRef.current) {
       if (human && game.winner === human.id) {
         playSound('victory');
@@ -104,17 +101,69 @@ export default function GameScreen() {
     prevGameOverRef.current = !!game.gameOver;
   }, [game]);
 
-  // Auto-run CPU turns
+  // ── AI Turn: start presentation when it's an AI player's turn ──────────────
   useEffect(() => {
     if (!game || game.gameOver) return;
     const currentPlayer = game.players[game.turn.currentPlayer];
-    if (!currentPlayer.isHuman && !currentPlayer.isEliminated) {
-      const timer = setTimeout(() => {
+    if (currentPlayer.isHuman || currentPlayer.isEliminated) return;
+    if (presentation.isPresenting) return; // already presenting (or skip in progress)
+
+    const timer = setTimeout(() => {
+      const steps = planAiTurn(game);
+      if (steps.length > 0) {
+        presentation.startPresentation(steps);
+      } else {
+        // Fallback: no steps generated, run turn directly
         dispatch({ type: 'CPU_TURN' });
-      }, 1200);
-      return () => clearTimeout(timer);
-    }
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.turn.currentPlayer, game?.turn.turnNumber, game?.gameOver]);
+
+  // ── Presentation: play sound when a new event appears ───────────────────────
+  useEffect(() => {
+    if (!presentation.isPresenting) return;
+    const currentStep = presentation.steps[presentation.currentIndex];
+    if (!currentStep) return;
+    const soundKey = currentStep.event.soundKey;
+    if (soundKey) {
+      playSound(soundKey as SoundEffect, 0.8);
+    }
+  }, [presentation.currentIndex, presentation.isPresenting]);
+
+  // ── Presentation: apply each step after its delay ───────────────────────────
+  useEffect(() => {
+    if (!presentation.isPresenting || presentation.isPaused) return;
+    // Wait for any modal (e.g. drawn card from research) to be dismissed first
+    if (game?.drawnCard?.active) return;
+
+    const currentStep = presentation.steps[presentation.currentIndex];
+    if (!currentStep) {
+      presentation.clear();
+      return;
+    }
+
+    const delay = presentation.skipRequested
+      ? 0
+      : presentation.speed === 'fast' ? 2000 : (currentStep.event.durationMs ?? 5000);
+
+    const timer = setTimeout(() => {
+      dispatch({ type: 'APPLY_AI_STEP', state: currentStep.stateAfter });
+      presentation.advance();
+    }, delay);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    presentation.currentIndex,
+    presentation.isPresenting,
+    presentation.isPaused,
+    presentation.speed,
+    presentation.skipRequested,
+    game?.drawnCard?.active,
+  ]);
 
   if (!game) return null;
 
@@ -137,10 +186,12 @@ export default function GameScreen() {
           <ResourceCardsPanel />
           <TurnTutorial />
           <EventLogDrawer />
-          <CpuTurnOverlay />
           <PlayerStatusBar />
           <MarketDrawer />
           <NewsTicker />
+
+          {/* AI turn presentation panel — replaces CpuTurnOverlay */}
+          <TurnPresentationPanel />
         </div>
 
         {/* Bottom Sheet for territory/action details - only shows when needed */}
