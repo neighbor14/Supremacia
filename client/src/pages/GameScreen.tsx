@@ -18,6 +18,7 @@ import AudioControls from '../ui/AudioControls';
 import ResourceCardsPanel from '../ui/ResourceCardsPanel';
 import NewsTicker from '../ui/NewsTicker';
 import MarketDrawer from '../ui/MarketDrawer';
+import DrawnCardModal from '../ui/DrawnCardModal';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
@@ -146,6 +147,7 @@ export default function GameScreen() {
         <BottomSheet />
 
         {/* Modals */}
+        {game.drawnCard?.active && <DrawnCardModal />}
         {game.combat.active && <CombatModal />}
         {game.nuclearAttack.active && <NuclearModal />}
         {game.gameOver && <GameOverModal />}

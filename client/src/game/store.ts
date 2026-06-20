@@ -3,6 +3,7 @@ import { GameState, GameAction, SuperpowerId, ResourceType, TurnStage, EventLogE
 import { createInitialGameState } from './setup';
 import { RULES } from './rulesConfig';
 import { rollDice, sumDice, shuffleArray } from './rng';
+import { SUPERPOWER_IDS } from '../data/initialPlayers';
 import { nanoid } from 'nanoid';
 
 interface GameStore {
@@ -12,7 +13,7 @@ interface GameStore {
   uiMode: 'map' | 'market' | 'build' | 'move' | 'attack' | 'nuclear';
 
   // Actions
-  startGame: (humanPlayer?: SuperpowerId) => void;
+  startGame: (humanPlayer: SuperpowerId, aiCount: number) => void;
   dispatch: (action: GameAction) => void;
   selectTerritory: (id: string | null) => void;
   selectSeaZone: (id: string | null) => void;
@@ -195,6 +196,15 @@ function prospect(state: GameState): void {
     player.resourceCards.push(cardId);
     const icon = card.type === 'grain' ? 'cereal' : card.type === 'oil' ? 'petróleo' : 'minério';
     addEvent(state, player.id, `Prospecção: ${card.companyName} (+${card.production} ${icon}) adquirida.`, 'economy');
+    state.drawnCard = {
+      active: true,
+      type: 'resource',
+      success: true,
+      cardName: card.companyName,
+      cardEffect: `+${card.production} ${icon} por turno`,
+      context: 'Prospecção de Recursos',
+      cardId: card.id,
+    };
   }
 }
 
@@ -985,8 +995,26 @@ function researchNuke(state: GameState, cardId: string): void {
     addEvent(state, player.id, built
       ? 'Pesquisa nuclear concluída! Primeira bomba construída.'
       : 'Pesquisa nuclear concluída! (recursos insuficientes para construir a bomba agora)', 'build');
+    state.drawnCard = {
+      active: true,
+      type: 'nuke',
+      success: true,
+      cardName: 'Ogiva Nuclear',
+      cardEffect: built
+        ? 'Tecnologia desbloqueada! Primeira bomba construída automaticamente.'
+        : 'Tecnologia desbloqueada! Construa sua primeira bomba na fase de Construção.',
+      context: 'Pesquisa de Bomba Atômica',
+    };
   } else {
     addEvent(state, player.id, 'Pesquisa nuclear: carta virada, bomba não encontrada.', 'build');
+    state.drawnCard = {
+      active: true,
+      type: 'nuke',
+      success: false,
+      cardName: 'Carta de Recurso',
+      cardEffect: 'Nenhuma ogiva nuclear neste baralho. Tente novamente.',
+      context: 'Pesquisa de Bomba Atômica',
+    };
   }
 }
 
@@ -1000,14 +1028,34 @@ function researchLaserStar(state: GameState, cardId: string): void {
   const found = Math.random() < 0.25; // 2 L-star cards in ~60 card deck
   if (found) {
     player.hasResearchedLaserStar = true;
+    let built = false;
     if (player.money >= RULES.LASER_STAR_COST && player.supplies.mineral >= RULES.LASER_STAR_MINERAL_COST) {
       player.money -= RULES.LASER_STAR_COST;
       player.supplies.mineral -= RULES.LASER_STAR_MINERAL_COST;
       player.laserStars++;
+      built = true;
     }
     addEvent(state, player.id, 'Pesquisa Laser-Star concluída!', 'build');
+    state.drawnCard = {
+      active: true,
+      type: 'laser',
+      success: true,
+      cardName: 'Estrela Laser',
+      cardEffect: built
+        ? 'Guerra nas Estrelas desbloqueada! Primeira Laser-Star construída automaticamente.'
+        : 'Guerra nas Estrelas desbloqueada! Construa sua Laser-Star na fase de Construção.',
+      context: 'Pesquisa de Guerra nas Estrelas',
+    };
   } else {
     addEvent(state, player.id, 'Pesquisa Laser-Star: carta virada, não encontrada.', 'build');
+    state.drawnCard = {
+      active: true,
+      type: 'laser',
+      success: false,
+      cardName: 'Carta de Recurso',
+      cardEffect: 'Nenhuma Estrela Laser neste baralho. Tente novamente.',
+      context: 'Pesquisa de Guerra nas Estrelas',
+    };
   }
 }
 
@@ -1254,10 +1302,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedSeaZone: null,
   uiMode: 'map',
 
-  startGame: (humanPlayer: SuperpowerId = 'usa') => {
-    const game = createInitialGameState(humanPlayer);
+  startGame: (humanPlayer: SuperpowerId, aiCount: number) => {
+    const otherIds = shuffleArray(SUPERPOWER_IDS.filter(id => id !== humanPlayer));
+    const activeAiIds = otherIds.slice(0, Math.min(aiCount, otherIds.length));
+    const game = createInitialGameState(humanPlayer, activeAiIds);
     set({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map' });
-    // Auto-save
     localStorage.setItem('supremacia_save', JSON.stringify(game));
   },
 
@@ -1374,6 +1423,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       case 'CPU_TURN':
         cpuTurn(state);
         break;
+      case 'DISMISS_DRAWN_CARD':
+        state.drawnCard = null;
+        break;
       case 'DECLARE_DETENTE': {
         state.gameOver = true;
         state.endCondition = 'detente';
@@ -1402,7 +1454,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectSeaZone: (id) => set({ selectedSeaZone: id, selectedTerritory: null }),
   setUiMode: (mode) => set({ uiMode: mode }),
 
-  loadGame: (state: GameState) => set({ game: state }),
+  loadGame: (state: GameState) => {
+    // Migrate saves that pre-date the config field
+    if (!state.config) {
+      state.config = {
+        humanPlayers: 1,
+        aiPlayers: 5,
+        totalActivePlayers: 6,
+        maxPlayers: 6,
+        multiplayerReady: false,
+      };
+    }
+    // Migrate players that pre-date the type field
+    for (const p of Object.values(state.players)) {
+      if (!p.type) (p as any).type = p.isHuman ? 'human' : 'ai';
+    }
+    set({ game: state });
+  },
 
   saveGame: () => {
     const { game } = get();

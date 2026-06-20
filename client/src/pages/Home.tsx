@@ -1,30 +1,41 @@
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useGameStore } from '../game/store';
 import { SuperpowerId } from '../game/types';
-import { SUPERPOWERS } from '../data/initialPlayers';
-import { useState } from 'react';
+import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { GameState } from '../game/types';
+
+type Step = 'menu' | 'superpower' | 'ai_count';
 
 export default function Home() {
   const [, setLocation] = useLocation();
   const { startGame, loadGame } = useGameStore();
-  const [showSuperpowerSelect, setShowSuperpowerSelect] = useState(false);
+  const [step, setStep] = useState<Step>('menu');
+  const [selectedSuperpower, setSelectedSuperpower] = useState<SuperpowerId | null>(null);
+  const [aiCount, setAiCount] = useState(3);
 
   const hasSave = !!localStorage.getItem('supremacia_save');
-
-  const handleNewGame = () => setShowSuperpowerSelect(true);
+  const maxAi = SUPERPOWER_IDS.length - 1; // 5
 
   const handleSelectSuperpower = (id: SuperpowerId) => {
-    startGame(id);
+    setSelectedSuperpower(id);
+    setStep('ai_count');
+  };
+
+  const handleStartGame = () => {
+    if (!selectedSuperpower) return;
+    startGame(selectedSuperpower, aiCount);
     setLocation('/setup');
   };
 
   const handleContinue = () => {
     const save = localStorage.getItem('supremacia_save');
     if (save) {
-      const state = JSON.parse(save) as GameState;
-      loadGame(state);
-      setLocation('/game');
+      try {
+        const state = JSON.parse(save) as GameState;
+        loadGame(state);
+        setLocation('/game');
+      } catch { alert('Arquivo de save corrompido.'); }
     }
   };
 
@@ -48,6 +59,8 @@ export default function Home() {
     input.click();
   };
 
+  const sp = selectedSuperpower ? SUPERPOWERS[selectedSuperpower] : null;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
       {/* Logo / Title */}
@@ -70,11 +83,11 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Menu */}
-      {!showSuperpowerSelect ? (
+      {/* Step: main menu */}
+      {step === 'menu' && (
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <button
-            onClick={handleNewGame}
+            onClick={() => setStep('superpower')}
             className="w-full py-4 px-6 bg-primary text-primary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 transition-opacity active:scale-[0.97]"
             style={{ fontFamily: 'var(--font-display)' }}
           >
@@ -97,31 +110,106 @@ export default function Home() {
             Importar Jogo
           </button>
         </div>
-      ) : (
+      )}
+
+      {/* Step: choose superpower */}
+      {step === 'superpower' && (
         <div className="w-full max-w-sm">
           <h2 className="text-lg font-semibold text-center mb-4 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
             Escolha sua Superpotência
           </h2>
           <div className="grid grid-cols-2 gap-3">
-            {Object.values(SUPERPOWERS).map((sp) => (
+            {Object.values(SUPERPOWERS).map((s) => (
               <button
-                key={sp.id}
-                onClick={() => handleSelectSuperpower(sp.id)}
+                key={s.id}
+                onClick={() => handleSelectSuperpower(s.id)}
                 className="p-4 rounded-md border border-border hover:border-primary/50 transition-all active:scale-[0.97] text-left"
-                style={{ borderLeftColor: sp.color, borderLeftWidth: '4px' }}
+                style={{ borderLeftColor: s.color, borderLeftWidth: '4px' }}
               >
-                <span className="text-xs font-bold uppercase tracking-wider block" style={{ color: sp.color, fontFamily: 'var(--font-display)' }}>
-                  {sp.shortName}
+                <span className="text-xs font-bold uppercase tracking-wider block" style={{ color: s.color, fontFamily: 'var(--font-display)' }}>
+                  {s.shortName}
                 </span>
                 <span className="text-xs text-muted-foreground mt-1 block">
-                  {sp.name}
+                  {s.name}
                 </span>
               </button>
             ))}
           </div>
           <button
-            onClick={() => setShowSuperpowerSelect(false)}
+            onClick={() => setStep('menu')}
             className="mt-4 w-full py-2 text-xs text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Voltar
+          </button>
+        </div>
+      )}
+
+      {/* Step: choose AI count */}
+      {step === 'ai_count' && sp && (
+        <div className="w-full max-w-sm">
+          {/* Selected superpower badge */}
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sp.color }} />
+            <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: sp.color, fontFamily: 'var(--font-display)' }}>
+              {sp.shortName} — {sp.name}
+            </span>
+          </div>
+
+          <h2 className="text-lg font-semibold text-center mb-2 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
+            Quantos oponentes IA?
+          </h2>
+          <p className="text-xs text-muted-foreground text-center mb-6">
+            Mínimo 1 — Máximo {maxAi}
+          </p>
+
+          {/* AI count selector */}
+          <div className="flex justify-center gap-2 mb-6">
+            {Array.from({ length: maxAi }, (_, i) => i + 1).map(n => (
+              <button
+                key={n}
+                onClick={() => setAiCount(n)}
+                className={`w-11 h-11 rounded-md text-sm font-bold transition-all active:scale-[0.9] ${
+                  aiCount === n
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+
+          {/* Info card */}
+          <div className="bg-secondary/50 rounded-lg p-4 mb-6 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Jogadores ativos</span>
+              <span className="font-semibold text-foreground">
+                {1 + aiCount} de {SUPERPOWER_IDS.length}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Superpotências neutras</span>
+              <span className="font-semibold text-foreground">
+                {SUPERPOWER_IDS.length - 1 - aiCount}
+              </span>
+            </div>
+            <div className="border-t border-border pt-2 text-xs text-muted-foreground">
+              Territórios de superpotências inativas ficam virgens — conquistáveis durante a partida.
+            </div>
+          </div>
+
+          <button
+            onClick={handleStartGame}
+            className="w-full py-4 px-6 bg-primary text-primary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 transition-opacity active:scale-[0.97] mb-3"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Iniciar Partida
+          </button>
+          <button
+            onClick={() => setStep('superpower')}
+            className="w-full py-2 text-xs text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
             style={{ fontFamily: 'var(--font-display)' }}
           >
             Voltar
@@ -131,7 +219,7 @@ export default function Home() {
 
       {/* Footer */}
       <p className="mt-12 text-xs text-muted-foreground/50 text-center">
-        Protótipo interno — 1 humano vs 5 CPUs
+        Protótipo interno — 1 humano vs 1–{maxAi} CPUs
       </p>
     </div>
   );

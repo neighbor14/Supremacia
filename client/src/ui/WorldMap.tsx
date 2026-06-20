@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { useGameStore } from '../game/store';
-import { SUPERPOWERS } from '../data/initialPlayers';
+import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
 
@@ -8,11 +8,40 @@ import { Plus, Minus, Maximize2 } from 'lucide-react';
  * WorldMap uses CSS transform (scale + translate) for zoom/pan.
  * Fixed: pan direction matches finger/mouse direction exactly.
  * The SVG fills the container completely using "xMidYMid slice" to avoid blank areas.
+ *
+ * Rendering is fully data-driven: every shape, hitbox and label reads
+ * svgPath / labelPos from game.territories / game.seaZones (keyed by id),
+ * so the game graph stays untouched — only the visual layer changed.
  */
 
 const MIN_SCALE = 0.8;
 const MAX_SCALE = 6;
 const PAN_THRESHOLD = 6; // pixels before considering it a drag
+
+const NEUTRAL_COLOR = '#5b6c84';
+const NUKED_COLOR = '#3a2f63';
+
+// Mix a hex colour toward white (amt > 0) or black (amt < 0). Used to build
+// the top-light / bottom-dark gradient + side wall that give each landmass depth.
+function shade(hex: string, amt: number): string {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if (amt >= 0) {
+    r += (255 - r) * amt; g += (255 - g) * amt; b += (255 - b) * amt;
+  } else {
+    const k = 1 + amt; r *= k; g *= k; b *= k;
+  }
+  return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+}
+
+// Visual fill key for a territory: nuked / owner faction / neutral.
+const BASE_COLORS: Record<string, string> = (() => {
+  const m: Record<string, string> = { neutral: NEUTRAL_COLOR, nuked: NUKED_COLOR };
+  SUPERPOWER_IDS.forEach(id => { m[id] = SUPERPOWERS[id].color; });
+  return m;
+})();
 
 // In portrait the 2:1 viewBox letterboxes heavily. Start zoomed so the map fills
 // the container height instead, letting the user pan to navigate.
@@ -174,18 +203,13 @@ export default function WorldMap() {
   };
 
   // --- Rendering helpers ---
-  const getTerritoryColor = (territoryId: string): string => {
+  // Returns the visual fill key for a territory (drives its gradient + wall).
+  const getTerritoryKey = (territoryId: string): string => {
     const territory = game.territories[territoryId];
-    if (!territory) return '#334155';
-    if (territory.nuked) return '#1e1b4b';
-    if (territory.owner) return SUPERPOWERS[territory.owner].color;
-    return '#475569';
-  };
-
-  const getSeaColor = (seaId: string): string => {
-    const sea = game.seaZones[seaId];
-    if (!sea) return '#1e3a5f';
-    return sea.type === 'coastal' ? '#1e3a5f' : '#0f2942';
+    if (!territory) return 'neutral';
+    if (territory.nuked) return 'nuked';
+    if (territory.owner) return territory.owner;
+    return 'neutral';
   };
 
   const getArmyCount = (territoryId: string): number => {
@@ -235,52 +259,140 @@ export default function WorldMap() {
           transition: interactionRef.current.isPanning || interactionRef.current.isPinching ? 'none' : 'transform 0.1s ease-out',
         }}
       >
+        <defs>
+          {/* Deep ocean backdrop */}
+          <radialGradient id="ocean-grad" cx="50%" cy="42%" r="75%">
+            <stop offset="0%" stopColor="#16344f" />
+            <stop offset="55%" stopColor="#0c2138" />
+            <stop offset="100%" stopColor="#060f1d" />
+          </radialGradient>
+          {/* Per-faction landmass gradient: lit top, shaded bottom */}
+          {Object.entries(BASE_COLORS).map(([key, color]) => (
+            <linearGradient key={key} id={`terr-${key}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={shade(color, 0.30)} />
+              <stop offset="52%" stopColor={color} />
+              <stop offset="100%" stopColor={shade(color, -0.26)} />
+            </linearGradient>
+          ))}
+          {/* Sea fills */}
+          <linearGradient id="sea-coastal" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1f4d77" />
+            <stop offset="100%" stopColor="#123a5c" />
+          </linearGradient>
+          <linearGradient id="sea-deep" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#102d4a" />
+            <stop offset="100%" stopColor="#0a1d33" />
+          </linearGradient>
+          {/* Extruded-plateau drop shadow under each landmass */}
+          <filter id="land-depth" x="-20%" y="-20%" width="140%" height="150%">
+            <feDropShadow dx="0" dy="2.4" stdDeviation="2.6" floodColor="#020912" floodOpacity="0.6" />
+          </filter>
+          {/* Amber glow for the selected shape */}
+          <filter id="sel-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3.2" floodColor="#fbbf24" floodOpacity="0.95" />
+          </filter>
+        </defs>
+
         {/* Background ocean */}
-        <rect x="0" y="0" width="1000" height="500" fill="#0a1628" />
+        <rect x="0" y="0" width="1000" height="500" fill="url(#ocean-grad)" />
+
+        {/* Faint graticule for an atlas feel */}
+        <g stroke="#21527d" strokeWidth="0.4" opacity="0.18" pointerEvents="none">
+          {[125, 250, 375].map(y => <line key={`h${y}`} x1="0" y1={y} x2="1000" y2={y} />)}
+          {[200, 400, 600, 800].map(x => <line key={`v${x}`} x1={x} y1="0" x2={x} y2="500" />)}
+        </g>
 
         {/* Sea zones */}
-        {Object.entries(game.seaZones).map(([seaId, sea]) => (
+        {Object.entries(game.seaZones).map(([seaId, sea]) => {
+          const selected = selectedSeaZone === seaId;
+          return (
+            <path
+              key={seaId}
+              d={sea.svgPath}
+              fill={sea.type === 'coastal' ? 'url(#sea-coastal)' : 'url(#sea-deep)'}
+              stroke={selected ? '#fbbf24' : '#2a5e8c'}
+              strokeWidth={selected ? 2.2 : 0.8}
+              opacity={selected ? 0.95 : 0.78}
+              filter={selected ? 'url(#sel-glow)' : undefined}
+              onClick={(e) => handleSeaClick(seaId, e as any)}
+              style={{ cursor: 'pointer' }}
+            />
+          );
+        })}
+
+        {/* Deep-ocean anchor glyphs (skipped where fleets are shown) */}
+        {Object.entries(game.seaZones).map(([seaId, sea]) => {
+          if (sea.type !== 'deep' || getSeaForces(seaId).length > 0) return null;
+          return (
+            <text
+              key={`anchor-${seaId}`}
+              x={sea.labelPos.x} y={sea.labelPos.y}
+              fill="#7ea7cc" fillOpacity={0.42} fontSize="13"
+              textAnchor="middle" dominantBaseline="central" pointerEvents="none"
+            >
+              ⚓
+            </text>
+          );
+        })}
+
+        {/* Landmass side walls (drawn first → 3D extrusion under the top faces) */}
+        {Object.entries(game.territories).map(([territoryId, territory]) => (
           <path
-            key={seaId}
-            d={sea.svgPath}
-            fill={getSeaColor(seaId)}
-            stroke={selectedSeaZone === seaId ? '#fbbf24' : '#1e40af'}
-            strokeWidth={selectedSeaZone === seaId ? 2.5 : 0.5}
-            opacity={0.7}
-            onClick={(e) => handleSeaClick(seaId, e as any)}
-            style={{ cursor: 'pointer' }}
+            key={`wall-${territoryId}`}
+            d={territory.svgPath}
+            transform="translate(0, 4)"
+            fill={shade(BASE_COLORS[getTerritoryKey(territoryId)], -0.55)}
+            pointerEvents="none"
           />
         ))}
 
-        {/* Territories */}
-        {Object.entries(game.territories).map(([territoryId, territory]) => (
-          <g key={territoryId}>
-            <path
-              d={territory.svgPath}
-              fill={getTerritoryColor(territoryId)}
-              stroke={selectedTerritory === territoryId ? '#fbbf24' : '#64748b'}
-              strokeWidth={selectedTerritory === territoryId ? 2 : 0.5}
-              onClick={(e) => handleTerritoryClick(territoryId, e as any)}
-              style={{ cursor: 'pointer' }}
-            />
-            {/* Army count */}
-            {getArmyCount(territoryId) > 0 && (
+        {/* Territories (top faces + labels) */}
+        {Object.entries(game.territories).map(([territoryId, territory]) => {
+          const key = getTerritoryKey(territoryId);
+          const baseColor = BASE_COLORS[key];
+          const selected = selectedTerritory === territoryId;
+          const armies = getArmyCount(territoryId);
+          const lp = territory.labelPos;
+          const nameY = armies > 0 ? lp.y - 6.5 : lp.y;
+          return (
+            <g key={territoryId}>
+              <path
+                d={territory.svgPath}
+                fill={`url(#terr-${key})`}
+                stroke={selected ? '#fde68a' : shade(baseColor, 0.18)}
+                strokeWidth={selected ? 1.8 : 0.7}
+                strokeLinejoin="round"
+                filter={selected ? 'url(#sel-glow)' : 'url(#land-depth)'}
+                onClick={(e) => handleTerritoryClick(territoryId, e as any)}
+                style={{ cursor: 'pointer' }}
+              />
+              {/* Territory name */}
               <text
-                x={territory.labelPos.x}
-                y={territory.labelPos.y}
-                fill="#fef3c7"
-                fontSize="11"
-                fontWeight="bold"
-                textAnchor="middle"
-                dominantBaseline="central"
-                pointerEvents="none"
-                style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}
+                x={lp.x} y={nameY}
+                fill="#eef4fc" fontSize="7" fontWeight="600"
+                textAnchor="middle" dominantBaseline="central" pointerEvents="none"
+                style={{ paintOrder: 'stroke', stroke: 'rgba(3,9,18,0.7)', strokeWidth: 1.8, strokeLinejoin: 'round' }}
               >
-                {getArmyCount(territoryId)}
+                {territory.name}
               </text>
-            )}
-          </g>
-        ))}
+              {/* Army count badge */}
+              {armies > 0 && (
+                <g pointerEvents="none">
+                  <circle
+                    cx={lp.x} cy={lp.y + 7} r={6.6}
+                    fill="rgba(7,14,26,0.86)" stroke={shade(baseColor, 0.32)} strokeWidth={0.9}
+                  />
+                  <text
+                    x={lp.x} y={lp.y + 7.4} fill="#fef3c7" fontSize="8.5" fontWeight="bold"
+                    textAnchor="middle" dominantBaseline="central"
+                  >
+                    {armies}
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
 
         {/* Naval presence badges — one per owner: ⚓ fleet + 🪖 embarked armies */}
         {Object.entries(game.seaZones).map(([seaId, sea]) => {

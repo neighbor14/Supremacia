@@ -6,6 +6,15 @@
 export type ResourceType = 'grain' | 'oil' | 'mineral';
 export type UnitType = 'army' | 'navy';
 export type SeaType = 'coastal' | 'deep';
+export type PlayerType = 'human' | 'ai' | 'remote';
+
+export interface GameConfig {
+  humanPlayers: number;
+  aiPlayers: number;
+  totalActivePlayers: number;
+  maxPlayers: number;
+  multiplayerReady: boolean;
+}
 
 export type SuperpowerId = 'south_america' | 'africa' | 'europe' | 'china' | 'usa' | 'ussr';
 
@@ -55,6 +64,7 @@ export interface ResourceCard {
 export interface Player {
   id: SuperpowerId;
   name: string;
+  type: PlayerType;
   money: number;
   supplies: Record<ResourceType, number>;
   maxSupply: number;
@@ -122,6 +132,16 @@ export interface NuclearAttackState {
   phase: 'select_target' | 'confirm' | 'defense' | 'result';
 }
 
+export interface DrawnCardReveal {
+  active: boolean;
+  type: 'nuke' | 'laser' | 'resource';
+  success: boolean;
+  cardName: string;
+  cardEffect: string;
+  context: string;
+  cardId?: string;
+}
+
 export interface EventLogEntry {
   id: string;
   turn: number;
@@ -133,6 +153,7 @@ export interface EventLogEntry {
 }
 
 export interface GameState {
+  config: GameConfig;
   players: Record<SuperpowerId, Player>;
   territories: Record<string, Territory>;
   seaZones: Record<string, SeaZone>;
@@ -142,6 +163,7 @@ export interface GameState {
   turn: TurnState;
   combat: CombatState;
   nuclearAttack: NuclearAttackState;
+  drawnCard: DrawnCardReveal | null;
   eventLog: EventLogEntry[];
   nukedTerritoryCount: number;
   gameOver: boolean;
@@ -183,4 +205,5 @@ export type GameAction =
   | { type: 'LOAD_GAME'; state: GameState }
   | { type: 'SELECT_OPTIONAL_STAGE'; stage: TurnStage }
   | { type: 'SET_ARMY_PLACEMENT'; placement: Record<string, number> }
-  | { type: 'DECLARE_DETENTE' };
+  | { type: 'DECLARE_DETENTE' }
+  | { type: 'DISMISS_DRAWN_CARD' };
