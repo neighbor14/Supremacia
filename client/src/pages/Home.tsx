@@ -68,7 +68,7 @@ export default function Home() {
   const sp = selectedSuperpower ? SUPERPOWERS[selectedSuperpower] : null;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+    <div className="flex flex-col items-center justify-center p-6 bg-background" style={{ minHeight: 'var(--app-height, 100dvh)' }}>
       {/* Fullscreen / PWA onboarding — shows automatically on first mobile visit */}
       <FullscreenOnboarding
         externalOpen={fullscreenHelpOpen || undefined}

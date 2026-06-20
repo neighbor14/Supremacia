@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import SetupScreen from "./pages/SetupScreen";
 import GameScreen from "./pages/GameScreen";
+import { useIosChromeCollapse } from "./hooks/useIosChromeCollapse";
 
 function Router() {
   return (
@@ -21,6 +22,9 @@ function Router() {
 }
 
 function App() {
+  // Attempt to collapse iOS Safari chrome on landscape entry (best-effort; PWA is the reliable fix)
+  useIosChromeCollapse();
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">

@@ -172,8 +172,11 @@ export default function GameScreen() {
       {/* Landscape prompt for mobile portrait */}
       <LandscapePrompt />
 
-      {/* Full-screen game layout - no wasted space */}
-      <div className="fixed inset-0 overflow-hidden flex flex-col bg-background">
+      {/* Full-screen game layout — height uses --app-height (set by useIosChromeCollapse)
+          which tracks window.visualViewport.height so the container never exceeds
+          the visible area on iOS Safari landscape (where the chrome doesn't auto-collapse). */}
+      <div className="fixed inset-x-0 top-0 overflow-hidden flex flex-col bg-background"
+        style={{ height: 'var(--app-height, 100dvh)' }}>
         {/* Top: Turn Phase Bar - compact, always visible */}
         <TurnPhaseBar />
 

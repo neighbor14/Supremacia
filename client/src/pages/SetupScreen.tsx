@@ -70,7 +70,7 @@ export default function SetupScreen() {
   };
 
   return (
-    <div className="h-screen w-screen bg-background flex flex-col items-center justify-center p-6">
+    <div className="w-screen bg-background flex flex-col items-center justify-center p-6" style={{ height: 'var(--app-height, 100dvh)' }}>
       {/* Header */}
       <div className="text-center mb-8">
         <div className="flex items-center justify-center gap-3 mb-4">
