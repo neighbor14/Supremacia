@@ -49,7 +49,7 @@ export default function NewsTicker() {
         style={{ background: 'var(--color-primary)', borderColor: 'oklch(0.4 0.1 259.815)' }}
       >
         <span
-          className="text-[9px] font-bold tracking-[0.18em] uppercase text-white leading-none"
+          className="text-[13px] font-bold tracking-[0.12em] uppercase text-white leading-none"
           style={{ fontFamily: 'var(--font-display)' }}
         >
           EVENTOS
@@ -61,7 +61,7 @@ export default function NewsTicker() {
         <div
           ref={trackRef}
           key={events.length}
-          className="whitespace-nowrap text-[10px] leading-none animate-ticker"
+          className="whitespace-nowrap text-[13px] leading-none animate-ticker"
           style={{ color: 'oklch(0.82 0.015 252.894)', fontFamily: 'var(--font-display)' }}
         >
           {text}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{text}

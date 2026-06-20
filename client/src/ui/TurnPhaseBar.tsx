@@ -164,7 +164,7 @@ export default function TurnPhaseBar() {
                   }}
                   disabled={!isHuman || !isCurrent}
                   className={`
-                    flex-1 min-w-0 py-1.5 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 overflow-hidden
+                    flex-1 min-w-0 py-2.5 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 overflow-hidden
                     ${isCurrent ? 'bg-primary text-primary-foreground ring-1 ring-primary/50 cursor-pointer' : ''}
                     ${isPast && !isCurrent ? 'bg-secondary/50 text-muted-foreground' : ''}
                     ${isUsed && !isCurrent ? 'bg-accent/50 text-accent-foreground/70' : ''}
@@ -173,7 +173,7 @@ export default function TurnPhaseBar() {
                   style={{ fontFamily: 'var(--font-display)' }}
                 >
                   <span className="text-sm leading-none">{STAGE_ICONS[stage]}</span>
-                  <span className="block w-full text-[8px] truncate text-center">{STAGE_NAMES[stage]}</span>
+                  <span className="block w-full text-[10px] truncate text-center">{STAGE_NAMES[stage]}</span>
                 </button>
               );
             })}
