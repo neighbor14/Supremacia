@@ -7,7 +7,10 @@
       "Bash(pnpm check *)",
       "Bash(git -C /Users/danielmatias/Downloads/Supremacia diff --stat)",
       "Bash(git -C /Users/danielmatias/Downloads/Supremacia add netlify.toml client/src/ui/PlayerStatusBar.tsx client/src/ui/ProspectPanel.tsx client/src/ui/ResourceCardsPanel.tsx)",
-      "Bash(git -C /Users/danielmatias/Downloads/Supremacia commit -m ' *)"
+      "Bash(git -C /Users/danielmatias/Downloads/Supremacia commit -m ' *)",
+      "Bash(cp \"/root/.claude/uploads/a0fd2d6d-c44e-5806-b990-9d0e970f3972/b0896306-Menu_supremacia.mp3\" /home/user/Supremacia/client/public/audio/menu.mp3)",
+      "Bash(cp \"/root/.claude/uploads/a0fd2d6d-c44e-5806-b990-9d0e970f3972/7f25f076-Supremacy_gameplay.mp3\" /home/user/Supremacia/client/public/audio/gameplay.mp3)",
+      "Bash(cp \"/root/.claude/uploads/a0fd2d6d-c44e-5806-b990-9d0e970f3972/ff3bd8b6-Supremacy_batalha.mp3\" /home/user/Supremacia/client/public/audio/batalha.mp3)"
     ]
   }
 }
