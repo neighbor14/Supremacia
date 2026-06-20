@@ -1204,7 +1204,7 @@ function cpuTurn(state: GameState): void {
   }
 
   // Attack if strong enough (not on first turn)
-  if (!state.turn.isFirstTurn && optionalChoices.length < 3) {
+  if (!state.turn.isFirstTurn && optionalChoices.length < RULES.MAX_OPTIONAL_STAGES) {
     const canAttack = checkCpuAttackOpportunity(state, player);
     if (canAttack && !optionalChoices.includes(4)) {
       optionalChoices.push(4);
@@ -1212,7 +1212,7 @@ function cpuTurn(state: GameState): void {
   }
 
   // Execute chosen stages
-  const sorted = optionalChoices.sort((a, b) => a - b).slice(0, 3);
+  const sorted = optionalChoices.sort((a, b) => a - b).slice(0, RULES.MAX_OPTIONAL_STAGES);
 
   for (const stage of sorted) {
     state.turn.optionalStagesUsed.push(stage);
@@ -1486,12 +1486,12 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   if ((p.supplies.grain < 2 || p.supplies.oil < 2 || p.supplies.mineral < 2) && p.money > 10000) {
     optionalChoices.push(7);
   }
-  if (!state.turn.isFirstTurn && optionalChoices.length < 3) {
+  if (!state.turn.isFirstTurn && optionalChoices.length < RULES.MAX_OPTIONAL_STAGES) {
     if (checkCpuAttackOpportunity(state, p) && !optionalChoices.includes(4)) {
       optionalChoices.push(4);
     }
   }
-  const sorted = optionalChoices.sort((a, b) => a - b).slice(0, 3) as TurnStage[];
+  const sorted = optionalChoices.sort((a, b) => a - b).slice(0, RULES.MAX_OPTIONAL_STAGES) as TurnStage[];
 
   for (const stage of sorted) {
     state.turn.optionalStagesUsed.push(stage);
