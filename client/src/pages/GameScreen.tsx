@@ -17,6 +17,7 @@ import CpuTurnOverlay from '../ui/CpuTurnOverlay';
 import AudioControls from '../ui/AudioControls';
 import ResourceCardsPanel from '../ui/ResourceCardsPanel';
 import NewsTicker from '../ui/NewsTicker';
+import MarketDrawer from '../ui/MarketDrawer';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
@@ -137,6 +138,7 @@ export default function GameScreen() {
           <EventLogDrawer />
           <CpuTurnOverlay />
           <PlayerStatusBar />
+          <MarketDrawer />
           <NewsTicker />
         </div>
 

@@ -196,12 +196,17 @@ export default function WorldMap() {
     return total;
   };
 
-  const getNavyCount = (seaId: string): number => {
-    let total = 0;
+  // Per-owner naval presence in a sea zone: fleet count + embarked armies.
+  const getSeaForces = (seaId: string) => {
+    const forces: { id: string; color: string; navies: number; embarked: number }[] = [];
     for (const player of Object.values(game.players)) {
-      total += player.navies[seaId] || 0;
+      const navies = player.navies[seaId] || 0;
+      const embarked = player.embarked[seaId] || 0;
+      if (navies > 0 || embarked > 0) {
+        forces.push({ id: player.id, color: SUPERPOWERS[player.id].color, navies, embarked });
+      }
     }
-    return total;
+    return forces;
   };
 
   return (
@@ -277,24 +282,36 @@ export default function WorldMap() {
           </g>
         ))}
 
-        {/* Navy count labels */}
+        {/* Naval presence badges — one per owner: ⚓ fleet + 🪖 embarked armies */}
         {Object.entries(game.seaZones).map(([seaId, sea]) => {
-          const count = getNavyCount(seaId);
-          if (count === 0) return null;
+          const forces = getSeaForces(seaId);
+          if (forces.length === 0) return null;
+          const rowH = 11;
+          const startY = sea.labelPos.y - ((forces.length - 1) * rowH) / 2;
           return (
-            <text
-              key={`navy-${seaId}`}
-              x={sea.labelPos.x}
-              y={sea.labelPos.y}
-              fill="#93c5fd"
-              fontSize="10"
-              fontWeight="bold"
-              textAnchor="middle"
-              dominantBaseline="central"
-              pointerEvents="none"
-            >
-              ⚓{count}
-            </text>
+            <g key={`navy-${seaId}`} pointerEvents="none">
+              {forces.map((f, i) => {
+                const y = startY + i * rowH;
+                // Width scales with content so the pill stays readable when zoomed out.
+                const label = `⚓${f.navies}${f.embarked > 0 ? `  🪖${f.embarked}` : ''}`;
+                const w = 16 + label.length * 4.2;
+                return (
+                  <g key={f.id} transform={`translate(${sea.labelPos.x}, ${y})`}>
+                    <rect
+                      x={-w / 2} y={-5} width={w} height={10} rx={5}
+                      fill="rgba(8,18,34,0.82)" stroke={f.color} strokeWidth={0.6}
+                    />
+                    <circle cx={-w / 2 + 5} cy={0} r={2} fill={f.color} />
+                    <text
+                      x={3} y={0.5} fill="#dbeafe" fontSize="7" fontWeight="bold"
+                      textAnchor="middle" dominantBaseline="central"
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
           );
         })}
       </svg>

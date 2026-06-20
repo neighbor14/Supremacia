@@ -8,7 +8,7 @@ import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Se
 import ProspectPanel from './ProspectPanel';
 
 export default function BottomSheet() {
-  const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory, selectSeaZone } = useGameStore();
   if (!game) return null;
 
   const { turn } = game;
@@ -84,6 +84,78 @@ export default function BottomSheet() {
             </div>
           );
         })()}
+      </div>
+    );
+  }
+
+  // Ocean detail panel — tap a sea zone (outside the move/attack phases, which
+  // render their own panels) to see fleets, embarked armies, capacity and owner.
+  if (selectedSeaZone) {
+    const sea = game.seaZones[selectedSeaZone];
+    if (!sea) return null;
+    const forces: { id: keyof typeof SUPERPOWERS; navies: number; embarked: number }[] = [];
+    for (const [pid, p] of Object.entries(game.players)) {
+      const navies = p.navies[selectedSeaZone] || 0;
+      const embarked = p.embarked[selectedSeaZone] || 0;
+      if (navies > 0 || embarked > 0) forces.push({ id: pid as keyof typeof SUPERPOWERS, navies, embarked });
+    }
+    const cap = RULES.NAVY_TRANSPORT_CAPACITY;
+
+    return (
+      <div
+        className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[40vh] overflow-y-auto"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-base">⚓</span>
+            <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
+              {sea.name}
+            </h3>
+            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+              {sea.type === 'coastal' ? 'Costeiro' : 'Oceânico'}
+            </span>
+          </div>
+          <button onClick={() => selectSeaZone(null)} className="w-7 h-7 flex items-center justify-center rounded bg-secondary hover:bg-secondary/80">
+            <X size={12} />
+          </button>
+        </div>
+
+        {forces.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">Nenhuma frota nesta zona marítima.</p>
+        ) : (
+          /* pr-16 keeps the capacity value clear of the bottom-right zoom controls */
+          <div className="space-y-1.5 mb-2 pr-16">
+            {forces.map(f => {
+              const sp = SUPERPOWERS[f.id];
+              const capacity = f.navies * cap;
+              return (
+                <div key={f.id} className="flex items-center gap-2 bg-secondary/40 rounded-md px-2 py-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
+                  <span className="text-[11px] font-semibold w-24 truncate" style={{ color: sp.color }}>{sp.shortName}</span>
+                  <span className="text-[11px] font-mono flex items-center gap-1" title="Esquadras (navios)">
+                    ⚓ <strong>{f.navies}</strong> <span className="text-muted-foreground">navio(s)</span>
+                  </span>
+                  <span className="text-[11px] font-mono flex items-center gap-1" title="Exércitos embarcados">
+                    🪖 <strong>{f.embarked}</strong>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono ml-auto" title="Capacidade usada / total">
+                    {f.embarked}/{capacity} cap
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="pr-16">
+          <p className="text-[10px] text-muted-foreground">
+            <span className="text-foreground font-medium">Legenda:</span> ⚓ = esquadras (navios) · 🪖 = exércitos embarcados · cap = ocupação/capacidade ({cap} por navio).
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Para embarcar/desembarcar tropas, entre na fase <strong>Mover</strong> 🚀.
+          </p>
+        </div>
       </div>
     );
   }
@@ -427,7 +499,9 @@ function MovePanel() {
         🚀 Movimento
       </h3>
       <p className="text-[10px] text-muted-foreground mb-2">
-        Toque em um território (exércitos) ou zona marítima (esquadras) para ver destinos.
+        Toque num território (exércitos) ou zona marítima (esquadras) para ver destinos.
+        Em território costeiro com frota adjacente aparece <strong className="text-blue-300">⚓ Embarcar</strong>;
+        numa frota com tropas a bordo aparece <strong className="text-emerald-300">🪖 Desembarcar</strong>.
         Custo: 1 cereal/território | 2 petróleo/voo | 1 petróleo/mar.
       </p>
 
@@ -449,13 +523,16 @@ function MovePanel() {
       {/* List of sea zones with navies */}
       {myNavies.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
-          {myNavies.map(([sid, count]) => (
-            <span key={sid} className={`text-[10px] px-1.5 py-0.5 rounded ${
-              selectedSeaZone === sid ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-secondary'
-            }`}>
-              ⚓ {game.seaZones[sid]?.name}: {count}
-            </span>
-          ))}
+          {myNavies.map(([sid, count]) => {
+            const emb = player.embarked[sid] || 0;
+            return (
+              <span key={sid} className={`text-[10px] px-1.5 py-0.5 rounded ${
+                selectedSeaZone === sid ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-secondary'
+              }`}>
+                ⚓ {game.seaZones[sid]?.name}: {count}{emb > 0 ? ` · 🪖${emb}` : ''}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>
@@ -473,6 +550,15 @@ function SelectedTerritoryMoveActions() {
   if (myArmies === 0) return null;
 
   const adjacents = territory.adjacentTerritories.filter(t => !game.territories[t]?.nuked);
+
+  // Embark targets: adjacent seas where the player holds a fleet with free capacity.
+  const cap = RULES.NAVY_TRANSPORT_CAPACITY;
+  const coastalSeas = territory.adjacentSeas.map(sid => {
+    const navies = player.navies[sid] || 0;
+    const embarked = player.embarked[sid] || 0;
+    const free = navies * cap - embarked;
+    return { sid, sea: game.seaZones[sid], navies, free };
+  }).filter(s => s.sea);
 
   return (
     <div className="bg-secondary/50 rounded-md p-2 mb-2">
@@ -493,6 +579,44 @@ function SelectedTerritoryMoveActions() {
           </button>
         ))}
       </div>
+
+      {/* Embark onto an adjacent fleet */}
+      {territory.adjacentSeas.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-border/40">
+          <p className="text-[10px] text-blue-300 font-medium mb-1 flex items-center gap-1">
+            ⚓ Embarcar exército:
+          </p>
+          {coastalSeas.length === 0 ? (
+            <p className="text-[9px] text-muted-foreground">Sem zona marítima adjacente.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {coastalSeas.map(({ sid, sea, navies, free }) => {
+                const canEmbark = navies > 0 && free > 0;
+                const reason = navies === 0 ? 'sem navio adjacente' : free <= 0 ? 'sem capacidade' : '';
+                return (
+                  <button
+                    key={sid}
+                    disabled={!canEmbark}
+                    onClick={() => {
+                      if (!canEmbark) return;
+                      playSound('button-click', 0.5);
+                      dispatch({ type: 'EMBARK', territoryId: selectedTerritory, seaZoneId: sid, count: 1 });
+                    }}
+                    title={reason}
+                    className={`text-[10px] px-2 py-2 rounded border transition-all ${
+                      canEmbark
+                        ? 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 active:scale-[0.95] border-blue-500/30'
+                        : 'bg-secondary/30 text-muted-foreground/40 border-border/30 cursor-not-allowed'
+                    }`}
+                  >
+                    ⚓ {sea!.name} {canEmbark ? `(livre ${free})` : `(${reason})`}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -504,28 +628,67 @@ function SelectedSeaZoneMoveActions() {
   const player = game.players[game.turn.currentPlayer];
   const sea = game.seaZones[selectedSeaZone];
   const myNavies = player.navies[selectedSeaZone] || 0;
+  const myEmbarked = player.embarked[selectedSeaZone] || 0;
 
-  if (myNavies === 0 || !sea) return null;
+  if ((myNavies === 0 && myEmbarked === 0) || !sea) return null;
+
+  // Valid disembark targets: adjacent coastal territories not occupied by an enemy.
+  const disembarkTargets = sea.adjacentTerritories
+    .map(tid => game.territories[tid])
+    .filter(t => {
+      if (!t || t.nuked) return false;
+      const enemyArmies = Object.entries(game.players).some(
+        ([pid, p]) => pid !== player.id && (p.armies[t.id] || 0) > 0
+      );
+      return !(t.owner && t.owner !== player.id && enemyArmies);
+    });
 
   return (
     <div className="bg-secondary/50 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        Mover de <strong>{sea.name}</strong> ({myNavies} esquadra(s)):
+        <strong>{sea.name}</strong> — ⚓ {myNavies} esquadra(s){myEmbarked > 0 ? `, 🪖 ${myEmbarked} embarcado(s)` : ''}:
       </p>
-      <div className="flex flex-wrap gap-1">
-        {sea.adjacentSeas.map(adjId => (
-          <button
-            key={adjId}
-            onClick={() => {
-              playSound('button-click', 0.5);
-              dispatch({ type: 'MOVE_NAVY', from: selectedSeaZone, to: adjId, count: 1 });
-            }}
-            className="text-[10px] px-2 py-2 bg-blue-500/20 text-blue-300 rounded hover:bg-blue-500/30 active:scale-[0.95] border border-blue-500/20"
-          >
-            → {game.seaZones[adjId]?.name}
-          </button>
-        ))}
-      </div>
+      {myNavies > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {sea.adjacentSeas.map(adjId => (
+            <button
+              key={adjId}
+              onClick={() => {
+                playSound('button-click', 0.5);
+                dispatch({ type: 'MOVE_NAVY', from: selectedSeaZone, to: adjId, count: 1 });
+              }}
+              className="text-[10px] px-2 py-2 bg-blue-500/20 text-blue-300 rounded hover:bg-blue-500/30 active:scale-[0.95] border border-blue-500/20"
+            >
+              → {game.seaZones[adjId]?.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Disembark onto a coastal territory */}
+      {myEmbarked > 0 && (
+        <div className="mt-2 pt-2 border-t border-border/40">
+          <p className="text-[10px] text-emerald-300 font-medium mb-1">🪖 Desembarcar exército:</p>
+          {disembarkTargets.length === 0 ? (
+            <p className="text-[9px] text-muted-foreground">Nenhum território costeiro válido (ocupado por inimigo ou destruído).</p>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {disembarkTargets.map(t => (
+                <button
+                  key={t!.id}
+                  onClick={() => {
+                    playSound('button-click', 0.5);
+                    dispatch({ type: 'DISEMBARK', seaZoneId: selectedSeaZone, territoryId: t!.id, count: 1 });
+                  }}
+                  className="text-[10px] px-2 py-2 bg-emerald-500/20 text-emerald-300 rounded hover:bg-emerald-500/30 active:scale-[0.95] border border-emerald-500/30"
+                >
+                  ↓ {t!.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

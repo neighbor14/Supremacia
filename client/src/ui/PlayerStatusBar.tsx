@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useGameStore } from '../game/store';
+import { useGameStore, computeSalaryDue } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { RULES } from '../game/rulesConfig';
-import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, AlertTriangle } from 'lucide-react';
 import { useDraggable } from '../hooks/useDraggable';
 
 const RESOURCE_CONFIG = [
@@ -89,6 +89,50 @@ export default function PlayerStatusBar() {
                 );
               })}
             </div>
+
+            {/* Salary provision — forecast next upkeep using the real engine rule */}
+            {(() => {
+              const due = computeSalaryDue(humanPlayer);
+              const after = humanPlayer.money - due.total;
+              const short = after < 0;
+              return (
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      💰 Provisão de salários
+                    </span>
+                    {short && <AlertTriangle size={10} className="text-destructive" />}
+                  </div>
+                  <div className="space-y-0.5 font-mono text-[10px]">
+                    <div className="flex justify-between" title={`${due.unitCount} unidades × $${RULES.SALARY_PER_UNIT} + ${due.companyCount} companhias × $${RULES.SALARY_PER_COMPANY}${due.loanInterest ? ` + juros` : ''}`}>
+                      <span className="text-muted-foreground">Estimado</span>
+                      <span className="text-foreground font-bold">-${due.total.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Você tem</span>
+                      <span className="text-foreground">${humanPlayer.money.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Após pagar</span>
+                      <span className={short ? 'text-destructive font-bold' : 'text-emerald-400'}>
+                        ${after.toLocaleString()}
+                      </span>
+                    </div>
+                    {short && (
+                      <div className="flex justify-between pt-0.5">
+                        <span className="text-destructive">Faltam</span>
+                        <span className="text-destructive font-bold">${Math.abs(after).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                  {short && (
+                    <p className="text-[8px] text-destructive/80 mt-1 leading-tight">
+                      Sem fundos, unidades serão removidas no próximo pagamento.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Weapons row */}
             {(humanPlayer.nukes > 0 || humanPlayer.laserStars > 0) && (

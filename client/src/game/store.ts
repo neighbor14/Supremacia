@@ -37,20 +37,60 @@ function addEvent(state: GameState, player: SuperpowerId, message: string, type:
 
 
 
-function countPlayerUnits(player: { armies: Record<string, number>; navies: Record<string, number> }): number {
+function countPlayerUnits(player: { armies: Record<string, number>; navies: Record<string, number>; embarked?: Record<string, number> }): number {
   const armies = Object.values(player.armies).reduce((sum: number, n: number) => sum + n, 0);
   const navies = Object.values(player.navies).reduce((sum: number, n: number) => sum + n, 0);
-  return armies + navies;
+  // Embarked armies are still paid units — they just ride aboard the fleet.
+  const embarked = Object.values(player.embarked || {}).reduce((sum: number, n: number) => sum + n, 0);
+  return armies + navies + embarked;
 }
 
-function paySalaries(state: GameState): void {
-  const player = state.players[state.turn.currentPlayer];
+/**
+ * Single source of truth for Stage-1 upkeep. Reused by paySalaries() and by the
+ * salary-provision UI so the forecast always matches what will actually be charged.
+ */
+export interface SalaryDue {
+  unitCount: number;
+  companyCount: number;
+  unitCost: number;
+  companyCost: number;
+  loanInterest: number;
+  total: number;
+}
+
+export function computeSalaryDue(player: Player): SalaryDue {
   const unitCount = countPlayerUnits(player);
   const companyCount = player.resourceCards.length;
   const unitCost = unitCount * RULES.SALARY_PER_UNIT;
   const companyCost = companyCount * RULES.SALARY_PER_COMPANY;
   const loanInterest = Math.floor(player.loans * RULES.LOAN_INTEREST_RATE);
-  const totalCost = unitCost + companyCost + loanInterest;
+  return {
+    unitCount,
+    companyCount,
+    unitCost,
+    companyCost,
+    loanInterest,
+    total: unitCost + companyCost + loanInterest,
+  };
+}
+
+/**
+ * When a fleet shrinks (combat losses, nuke), embarked armies that no longer fit
+ * the surviving transport capacity are lost at sea. Keeps embarked ≤ navies × cap.
+ */
+function dropOverCapacityEmbarked(player: Player, seaZoneId: string): void {
+  const navies = player.navies[seaZoneId] || 0;
+  const capacity = navies * RULES.NAVY_TRANSPORT_CAPACITY;
+  const embarked = player.embarked[seaZoneId] || 0;
+  if (embarked > capacity) {
+    if (capacity <= 0) delete player.embarked[seaZoneId];
+    else player.embarked[seaZoneId] = capacity;
+  }
+}
+
+function paySalaries(state: GameState): void {
+  const player = state.players[state.turn.currentPlayer];
+  const { unitCost, companyCost, loanInterest, total: totalCost } = computeSalaryDue(player);
 
   if (player.money >= totalCost) {
     player.money -= totalCost;
@@ -360,7 +400,112 @@ function moveNavy(state: GameState, from: string, to: string, count: number): vo
   if (player.navies[from] <= 0) delete player.navies[from];
   player.navies[to] = (player.navies[to] || 0) + toMove;
 
-  addEvent(state, player.id, `Moveu ${toMove} esquadra(s) para ${state.seaZones[to]?.name || to}`, 'move');
+  // Carry embarked armies along with the fleet, up to the capacity that arrives
+  // at the destination (moved navies × capacity per navy).
+  const embarkedHere = player.embarked[from] || 0;
+  if (embarkedHere > 0) {
+    const carried = Math.min(embarkedHere, toMove * RULES.NAVY_TRANSPORT_CAPACITY);
+    if (carried > 0) {
+      player.embarked[from] -= carried;
+      if (player.embarked[from] <= 0) delete player.embarked[from];
+      player.embarked[to] = (player.embarked[to] || 0) + carried;
+    }
+  }
+
+  const carriedNote = (player.embarked[to] || 0) > 0 ? ` (com ${player.embarked[to]} exército(s) embarcado(s))` : '';
+  addEvent(state, player.id, `Moveu ${toMove} esquadra(s) para ${state.seaZones[to]?.name || to}${carriedNote}`, 'move');
+}
+
+/**
+ * Embark armies from a coastal territory onto the player's fleet in an adjacent
+ * sea zone. Restores the stubbed naval-transport rule (NAVY_TRANSPORT_CAPACITY).
+ * Capacity = navies in the zone × 4 armies each, minus already-embarked.
+ * TODO: confirmar regra original — manual físico pode cobrar custo de embarque.
+ */
+function embark(state: GameState, territoryId: string, seaZoneId: string, count: number): void {
+  const player = state.players[state.turn.currentPlayer];
+  const territory = state.territories[territoryId];
+  const sea = state.seaZones[seaZoneId];
+
+  if (!territory || !sea) return;
+  if (!territory.adjacentSeas.includes(seaZoneId)) {
+    addEvent(state, player.id, 'Embarque inválido: território não é costeiro nesta zona.', 'info');
+    return;
+  }
+  const available = player.armies[territoryId] || 0;
+  if (available <= 0) {
+    addEvent(state, player.id, 'Embarque inválido: nenhum exército neste território.', 'info');
+    return;
+  }
+  const navies = player.navies[seaZoneId] || 0;
+  if (navies <= 0) {
+    addEvent(state, player.id, 'Embarque inválido: sem esquadra própria nesta zona.', 'info');
+    return;
+  }
+  const capacity = navies * RULES.NAVY_TRANSPORT_CAPACITY;
+  const used = player.embarked[seaZoneId] || 0;
+  const freeCapacity = capacity - used;
+  if (freeCapacity <= 0) {
+    addEvent(state, player.id, 'Embarque inválido: esquadra sem capacidade.', 'info');
+    return;
+  }
+
+  const toEmbark = Math.min(count, available, freeCapacity);
+  if (toEmbark <= 0) return;
+
+  player.armies[territoryId] -= toEmbark;
+  if (player.armies[territoryId] <= 0) delete player.armies[territoryId];
+  player.embarked[seaZoneId] = used + toEmbark;
+
+  addEvent(state, player.id, `Embarcou ${toEmbark} exército(s) em ${sea.name}`, 'move');
+}
+
+/**
+ * Disembark armies from the fleet in a sea zone onto an adjacent coastal
+ * territory the player controls (or that is empty of enemies).
+ * TODO: confirmar regra original — desembarque em território inimigo (invasão anfíbia).
+ */
+function disembark(state: GameState, seaZoneId: string, territoryId: string, count: number): void {
+  const player = state.players[state.turn.currentPlayer];
+  const territory = state.territories[territoryId];
+  const sea = state.seaZones[seaZoneId];
+
+  if (!territory || !sea) return;
+  if (!sea.adjacentTerritories.includes(territoryId)) {
+    addEvent(state, player.id, 'Desembarque inválido: território não adjacente.', 'info');
+    return;
+  }
+  if (territory.nuked) {
+    addEvent(state, player.id, 'Desembarque inválido: território destruído.', 'info');
+    return;
+  }
+  const embarkedHere = player.embarked[seaZoneId] || 0;
+  if (embarkedHere <= 0) {
+    addEvent(state, player.id, 'Desembarque inválido: nenhum exército embarcado.', 'info');
+    return;
+  }
+  // Only onto own territory or one without enemy armies (no amphibious assault yet).
+  const enemyArmies = Object.entries(state.players).some(
+    ([pid, p]) => pid !== player.id && ((p as Player).armies[territoryId] || 0) > 0
+  );
+  if (territory.owner && territory.owner !== player.id && enemyArmies) {
+    addEvent(state, player.id, 'Desembarque inválido: território ocupado por inimigo.', 'info');
+    return;
+  }
+
+  const toLand = Math.min(count, embarkedHere);
+  if (toLand <= 0) return;
+
+  player.embarked[seaZoneId] -= toLand;
+  if (player.embarked[seaZoneId] <= 0) delete player.embarked[seaZoneId];
+  player.armies[territoryId] = (player.armies[territoryId] || 0) + toLand;
+
+  // Landing on a neutral/empty territory takes control of it (no defenders).
+  if (!territory.owner || territory.owner === player.id) {
+    territory.owner = player.id;
+  }
+
+  addEvent(state, player.id, `Desembarcou ${toLand} exército(s) em ${territory.name}`, 'move');
 }
 
 function initiateAttack(state: GameState, from: string, target: string, targetType: 'territory' | 'sea'): void {
@@ -500,9 +645,11 @@ function rollCombat(state: GameState): void {
     if (fromId) {
       attacker.navies[fromId] = Math.max(0, (attacker.navies[fromId] || 0) - attackerLosses);
       if (attacker.navies[fromId] <= 0) delete attacker.navies[fromId];
+      dropOverCapacityEmbarked(attacker, fromId);
     }
     defender.navies[targetId] = Math.max(0, (defender.navies[targetId] || 0) - defenderLosses);
     if (defender.navies[targetId] <= 0) delete defender.navies[targetId];
+    dropOverCapacityEmbarked(defender, targetId);
   }
 
   const targetName = state.combat.targetType === 'territory'
@@ -614,6 +761,9 @@ function eliminatePlayer(state: GameState, eliminatedId: SuperpowerId, conquered
   for (const [s, count] of Object.entries(eliminated.navies)) {
     conqueror.navies[s] = (conqueror.navies[s] || 0) + count;
   }
+  for (const [s, count] of Object.entries(eliminated.embarked)) {
+    conqueror.embarked[s] = (conqueror.embarked[s] || 0) + count;
+  }
 
   // Transfer territory ownership so the map reflects the new controller
   for (const t of Object.values(state.territories)) {
@@ -628,6 +778,7 @@ function eliminatePlayer(state: GameState, eliminatedId: SuperpowerId, conquered
   eliminated.resourceCards = [];
   eliminated.armies = {};
   eliminated.navies = {};
+  eliminated.embarked = {};
 
   addEvent(state, conqueredBy, `${eliminated.name} foi eliminada! Ativos transferidos.`, 'elimination');
 
@@ -758,14 +909,18 @@ function resolveNuke(state: GameState): void {
         player.resourceCards = [];
         player.armies = {};
         player.navies = {};
+        player.embarked = {};
         addEvent(state, player.id, `${player.name} eliminada por destruição nuclear total!`, 'elimination');
       }
     }
   } else {
-    // Sea zone nuke - destroy all navies there
+    // Sea zone nuke - destroy all navies AND any armies embarked aboard them
     for (const player of Object.values(state.players)) {
       if (player.navies[targetId]) {
         delete player.navies[targetId];
+      }
+      if (player.embarked[targetId]) {
+        delete player.embarked[targetId];
       }
     }
     addEvent(state, attacker.id, `BOMBA NUCLEAR no mar ${state.seaZones[targetId]?.name}!`, 'nuclear');
@@ -1179,6 +1334,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         break;
       case 'MOVE_NAVY':
         moveNavy(state, action.from, action.to, action.count);
+        break;
+      case 'EMBARK':
+        embark(state, action.territoryId, action.seaZoneId, action.count);
+        break;
+      case 'DISEMBARK':
+        disembark(state, action.seaZoneId, action.territoryId, action.count);
         break;
       case 'AIRLIFT':
         airlift(state, action.from, action.to, action.count);
