@@ -112,6 +112,7 @@ export function createInitialGameState(
     isFirstTurn: true,
     stageComplete: false,
     attackedFrom: [],
+    unpaidCompanies: [],
   };
 
   const combat: CombatState = {

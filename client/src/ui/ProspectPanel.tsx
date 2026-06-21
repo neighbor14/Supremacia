@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import { RULES } from '../game/rulesConfig';
-import type { ResourceCard } from '../game/types';
+import type { ResourceCard, ResourceType } from '../game/types';
 
 type RevealedCard = ResourceCard;
 
@@ -47,12 +47,18 @@ export default function ProspectPanel() {
     if (game.drawnCard?.active) setFlipping(false);
   }, [game.drawnCard?.active, game.drawnCard?.cardId]);
 
-  const handleFlip = () => {
+  const handleFlip = (resourceType?: ResourceType) => {
     if (!canProspect) return;
     setFlipping(true);
     playSound('resource-gain', 0.6);
-    dispatch({ type: 'PROSPECT', cardId: '' });
+    dispatch({ type: 'PROSPECT', cardId: '', resourceType });
   };
+
+  const TYPE_OPTIONS: { type: ResourceType; label: string; icon: string; color: string }[] = [
+    { type: 'grain', label: 'Cereal', icon: '🌾', color: '#eab308' },
+    { type: 'oil', label: 'Petróleo', icon: '🛢', color: '#ef4444' },
+    { type: 'mineral', label: 'Minério', icon: '⛏', color: '#a855f7' },
+  ];
 
   return (
     <div className="p-3">
@@ -80,7 +86,7 @@ export default function ProspectPanel() {
           )}
           {deckLeft > 0 ? (
             <div
-              onClick={canProspect ? handleFlip : undefined}
+              onClick={canProspect ? () => handleFlip() : undefined}
               className={`absolute rounded-lg border border-border bg-gradient-to-br from-primary/20 to-secondary flex items-center justify-center shadow-md transition-transform ${canProspect ? 'cursor-pointer hover:scale-105 active:scale-95' : 'opacity-50'}`}
               style={{ width: 52, height: 72, top: 0, left: 0 }}
             >
@@ -100,7 +106,7 @@ export default function ProspectPanel() {
         {/* Action */}
         <div className="flex-1 flex flex-col gap-1.5">
           <button
-            onClick={handleFlip}
+            onClick={() => handleFlip()}
             disabled={!canProspect}
             className={`w-full py-2 rounded font-semibold text-xs uppercase tracking-wider transition-all active:scale-[0.97] ${
               canProspect
@@ -112,9 +118,35 @@ export default function ProspectPanel() {
             {flipping ? '⏳ Virando...' : `Virar Carta  $${cost.toLocaleString()}`}
           </button>
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Pague ${cost.toLocaleString()} e veja qual carta sai do baralho.
+            Pague ${cost.toLocaleString()} por carta. <strong className="text-foreground">Companhias</strong> são descobertas aqui — controlar território não dá produção.
           </p>
         </div>
+      </div>
+
+      {/* Targeted prospecting: search until a company of the chosen resource appears */}
+      <div className="mb-4">
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">
+          🔎 Prospectar companhia por recurso
+        </p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {TYPE_OPTIONS.map(({ type, label, icon, color }) => (
+            <button
+              key={type}
+              onClick={() => handleFlip(type)}
+              disabled={!canProspect}
+              className={`flex flex-col items-center gap-0.5 py-2 rounded-lg border text-[11px] font-semibold transition-all active:scale-[0.96] ${
+                canProspect ? 'hover:bg-secondary/60' : 'opacity-40 cursor-not-allowed'
+              }`}
+              style={{ borderColor: color + '55', backgroundColor: color + '12', color }}
+            >
+              <span className="text-base leading-none">{icon}</span>
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[9px] text-muted-foreground leading-snug mt-1.5">
+          Vira cartas (cobrando ${cost.toLocaleString()} cada) até sair uma companhia do recurso escolhido. As demais voltam ao baralho.
+        </p>
       </div>
 
       {/* Revealed cards this session */}

@@ -94,6 +94,12 @@ export interface TurnState {
   isFirstTurn: boolean;
   stageComplete: boolean;
   attackedFrom: string[]; // origin ids (territory/sea) that already attacked this turn
+  // Companhias cujo salário NÃO foi pago no Estágio 1 deste turno. Fiel ao manual
+  // Grow: "se não pagar os salários das suas companhias, não poderá transferir as
+  // unidades produzidas no estágio 2". Elas ficam dormentes (não produzem) só
+  // neste turno; voltam a produzir quando o salário for pago. Recalculado a cada
+  // pagamento de salários (paySalaries).
+  unpaidCompanies: string[];
 }
 
 export interface MarketState {
@@ -260,7 +266,7 @@ export type GameAction =
   | { type: 'TRANSFER_PRODUCTION' }
   | { type: 'SELL_RESOURCE'; resource: ResourceType; quantity: number }
   | { type: 'BUY_RESOURCE'; resource: ResourceType; quantity: number }
-  | { type: 'PROSPECT'; cardId: string }
+  | { type: 'PROSPECT'; cardId: string; resourceType?: ResourceType }
   | { type: 'BUILD_UNITS'; units: Array<{ type: UnitType; locationId: string }> }
   | { type: 'BUILD_NUKE' }
   | { type: 'BUILD_LASER_STAR' }

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
@@ -49,6 +50,17 @@ export default function TurnPhaseBar() {
     playSound('button-click', 0.6);
     if (turn.stage === 1) {
       dispatch({ type: 'PAY_SALARIES' });
+      // Avisa se alguma companhia ficou dormente por falta de salário (manual Grow:
+      // companhia sem salário não transfere produção no Estágio 2).
+      const dormant = useGameStore.getState().game?.turn.unpaidCompanies ?? [];
+      if (dormant.length > 0) {
+        const cards = useGameStore.getState().game!.resourceCards;
+        const names = dormant.map(id => cards[id]?.companyName ?? id).join(', ');
+        toast.warning('Salário insuficiente para todas as companhias', {
+          description: `${dormant.length} companhia(s) não vão produzir neste turno: ${names}. Venda recursos ou faça empréstimo para pagar e reativá-las no próximo turno.`,
+          duration: 7000,
+        });
+      }
       dispatch({ type: 'NEXT_STAGE' });
     } else if (turn.stage === 2 && !turn.stageComplete) {
       dispatch({ type: 'TRANSFER_PRODUCTION' });

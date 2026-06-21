@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useGameStore } from '../game/store';
+import { toast } from 'sonner';
+import { useGameStore, getMoveBlockReason, moveBlockMessage, companiesInTerritory } from '../game/store';
 import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { ResourceType, TurnStage } from '../game/types';
@@ -7,6 +8,9 @@ import { RULES } from '../game/rulesConfig';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Search } from 'lucide-react';
 import ProspectPanel from './ProspectPanel';
 import { getTechCounts, formatOdds } from '../game/researchDeck';
+
+const RESOURCE_PT: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
+const RESOURCE_ICON_PT: Record<ResourceType, string> = { grain: '🌾', oil: '🛢️', mineral: '⛏️' };
 
 export default function BottomSheet() {
   const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory, selectSeaZone } = useGameStore();
@@ -30,22 +34,44 @@ export default function BottomSheet() {
     const territory = game.territories[selectedTerritory];
     if (!territory) return null;
     const ownerSp = territory.owner ? SUPERPOWERS[territory.owner] : null;
+    const isMine = territory.owner === currentPlayer.id;
     const armiesHere: Record<string, number> = {};
     for (const [pid, p] of Object.entries(game.players)) {
       if (p.armies[selectedTerritory]) armiesHere[pid] = p.armies[selectedTerritory];
     }
 
+    // Company located here that the human player owns (an "active company").
+    const myCompanyIds = companiesInTerritory(game, selectedTerritory, currentPlayer.id);
+    const myCompanies = myCompanyIds.map(id => game.resourceCards[id]).filter(Boolean);
+    // A company exists here but belongs to someone else / undiscovered.
+    const hasForeignCompany = companiesInTerritory(game, selectedTerritory).some(id => !myCompanyIds.includes(id) && game.resourceCards[id]?.revealed);
+
+    // Build eligibility (mirrors BuildPanel rule): own, non-nuked land territory.
+    const canBuildHere = isMine && !territory.nuked;
+    const buildReason = territory.nuked
+      ? 'território destruído por bomba nuclear'
+      : !territory.owner
+        ? 'território neutro — conquiste-o primeiro movendo um exército para cá'
+        : !isMine
+          ? `controlado por ${ownerSp?.shortName ?? 'outro jogador'}`
+          : 'território seu';
+
     return (
       <div
-        className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto"
+        className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[42vh] overflow-y-auto"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
       >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            {ownerSp && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ownerSp.color }} />}
+            {ownerSp
+              ? <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ownerSp.color }} />
+              : <div className="w-3 h-3 rounded-full border border-border bg-secondary" title="Neutro" />}
             <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
               {territory.name}
             </h3>
+            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+              Território terrestre
+            </span>
           </div>
           <button onClick={() => selectTerritory(null)} className="w-6 h-6 flex items-center justify-center rounded bg-secondary hover:bg-secondary/80">
             <X size={12} />
@@ -56,8 +82,16 @@ export default function BottomSheet() {
           <p className="text-xs text-destructive mb-2">☢ Território destruído por bomba nuclear</p>
         )}
 
+        {/* Controller / owner line */}
+        <div className="flex items-center gap-1.5 mb-1.5 text-[11px]">
+          <span className="text-muted-foreground">Controlador:</span>
+          {ownerSp
+            ? <span className="font-semibold" style={{ color: ownerSp.color }}>{ownerSp.name}{isMine ? ' (você)' : ''}</span>
+            : <span className="font-semibold text-muted-foreground">Neutro (sem controlador)</span>}
+        </div>
+
         {/* Armies */}
-        {Object.keys(armiesHere).length > 0 && (
+        {Object.keys(armiesHere).length > 0 ? (
           <div className="flex gap-3 mb-2">
             {Object.entries(armiesHere).map(([pid, count]) => (
               <div key={pid} className="flex items-center gap-1">
@@ -66,25 +100,49 @@ export default function BottomSheet() {
               </div>
             ))}
           </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground mb-2">Nenhum exército presente.</p>
         )}
 
-        {/* Resource cards linked to this territory */}
-        {game.resourceCards && (() => {
-          const linkedCards = Object.values(game.resourceCards).filter(c => c.territoryId === selectedTerritory && c.ownerId === currentPlayer.id);
-          if (linkedCards.length === 0) return null;
-          return (
-            <div className="mt-1">
-              <p className="text-[10px] text-muted-foreground uppercase mb-1">Cartas neste território:</p>
-              <div className="flex flex-wrap gap-1">
-                {linkedCards.map(card => (
-                  <span key={card.id} className="text-[10px] px-1.5 py-0.5 bg-secondary rounded">
-                    {card.type === 'grain' ? '🌾' : card.type === 'oil' ? '🛢️' : '⛏️'} {card.companyName} (+{card.production})
-                  </span>
-                ))}
-              </div>
+        {/* Company / resource status — território controlado ≠ companhia */}
+        <div className="rounded-md bg-secondary/40 border border-border/50 p-2 mb-2">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Companhia / Carta de recurso</p>
+          {myCompanies.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {myCompanies.map(card => (
+                <span key={card!.id} className="text-[11px] px-1.5 py-0.5 bg-emerald-600/15 text-emerald-300 border border-emerald-600/30 rounded">
+                  {RESOURCE_ICON_PT[card!.type]} {card!.companyName} · {RESOURCE_PT[card!.type]} +{card!.production}/turno
+                </span>
+              ))}
             </div>
-          );
-        })()}
+          ) : hasForeignCompany ? (
+            <p className="text-[11px] text-muted-foreground">
+              Há uma companhia aqui que pertence a outro jogador. Conquiste o território para capturá-la.
+            </p>
+          ) : (
+            <p className="text-[11px] text-amber-300/90">
+              {isMine
+                ? 'Você controla este território, mas ainda não possui uma companhia de recurso aqui.'
+                : 'Nenhuma companhia ativa conhecida neste território.'}
+            </p>
+          )}
+          {myCompanies.length === 0 && (
+            <button
+              onClick={() => toast.info('Companhias são obtidas por prospecção (fase Comprar 🛒 → Prospectar), negociação ou conquista de territórios que já possuíam cartas de recurso. Controlar um território não garante produção automática.', { duration: 8000 })}
+              className="mt-1.5 text-[10px] px-2 py-1 rounded bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 active:scale-[0.97]"
+            >
+              ❓ Como obter uma companhia?
+            </button>
+          )}
+        </div>
+
+        {/* Build eligibility */}
+        <div className="flex items-start gap-1.5 text-[11px]">
+          <span className="text-muted-foreground shrink-0">Construir exército:</span>
+          {canBuildHere
+            ? <span className="text-emerald-300 font-semibold">Sim ✓ <span className="text-muted-foreground font-normal">({buildReason})</span></span>
+            : <span className="text-muted-foreground">Não — {buildReason}</span>}
+        </div>
       </div>
     );
   }
@@ -681,15 +739,26 @@ function MovePanel() {
       className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
     >
-      <h3 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-        🚀 Movimento
-      </h3>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
+          🚀 Movimento
+        </h3>
+        {/* Movement consumes cereal — show the live balance up front */}
+        <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${player.supplies.grain > 0 ? 'bg-secondary text-foreground' : 'bg-destructive/20 text-destructive'}`}>
+          🌾 {player.supplies.grain} cereal
+        </span>
+      </div>
       <p className="text-[10px] text-muted-foreground mb-2">
         Toque num território (exércitos) ou zona marítima (esquadras) para ver destinos.
         Em território costeiro com frota adjacente aparece <strong className="text-blue-300">⚓ Embarcar</strong>;
         numa frota com tropas a bordo aparece <strong className="text-emerald-300">🪖 Desembarcar</strong>.
-        Custo: 1 cereal/território | 2 petróleo/voo | 1 petróleo/mar.
+        <strong className="text-foreground"> Mover tropas consome {RULES.LAND_MOVE_GRAIN_COST} cereal por território</strong> · 2 petróleo/voo · 1 petróleo/mar.
       </p>
+      {player.supplies.grain <= 0 && (
+        <p className="text-[10px] text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1 mb-2">
+          ⚠ Você está sem cereal. Movimentos terrestres ficam bloqueados até produzir ou comprar cereal.
+        </p>
+      )}
 
       {/* Show selected territory/sea actions */}
       {selectedTerritory && <SelectedTerritoryMoveActions />}
@@ -737,6 +806,32 @@ function SelectedTerritoryMoveActions() {
 
   const adjacents = territory.adjacentTerritories.filter(t => !game.territories[t]?.nuked);
 
+  // Classify each adjacent target via the shared engine validation so the UI
+  // and the engine never disagree on why a move is allowed/blocked.
+  const targets = adjacents.map(adjId => ({
+    id: adjId,
+    name: game.territories[adjId]?.name ?? adjId,
+    neutral: game.territories[adjId]?.owner == null,
+    block: getMoveBlockReason(game, selectedTerritory, adjId),
+  }));
+
+  const handleMove = (adjId: string, wasNeutral: boolean) => {
+    const reason = getMoveBlockReason(game, selectedTerritory, adjId);
+    if (reason) {
+      playSound('error', 0.5);
+      toast.error(moveBlockMessage(reason));
+      return;
+    }
+    playSound('button-click', 0.5);
+    dispatch({ type: 'MOVE_ARMY', from: selectedTerritory, to: adjId, count: 1 });
+    // After dispatch, an unopposed neutral target becomes controlled — confirm it.
+    const after = useGameStore.getState().game;
+    if (wasNeutral && after?.territories[adjId]?.owner === player.id) {
+      playSound('territory-conquered', 0.7);
+      toast.success(`Conquistou ${game.territories[adjId]?.name} — agora é seu território.`);
+    }
+  };
+
   // Embark targets: adjacent seas where the player holds a fleet with free capacity.
   const cap = RULES.NAVY_TRANSPORT_CAPACITY;
   const coastalSeas = territory.adjacentSeas.map(sid => {
@@ -749,21 +844,31 @@ function SelectedTerritoryMoveActions() {
   return (
     <div className="bg-secondary/50 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        Mover de <strong>{territory.name}</strong> ({myArmies} exércitos):
+        Mover de <strong>{territory.name}</strong> ({myArmies} exércitos) — custo {RULES.LAND_MOVE_GRAIN_COST} 🌾:
       </p>
       <div className="flex flex-wrap gap-1">
-        {adjacents.map(adjId => (
-          <button
-            key={adjId}
-            onClick={() => {
-              playSound('button-click', 0.5);
-              dispatch({ type: 'MOVE_ARMY', from: selectedTerritory, to: adjId, count: 1 });
-            }}
-            className="text-[10px] px-2 py-2 bg-primary/20 text-primary rounded hover:bg-primary/30 active:scale-[0.95] border border-primary/20"
-          >
-            → {game.territories[adjId]?.name}
-          </button>
-        ))}
+        {targets.map(({ id, name, neutral, block }) => {
+          const enemy = block === 'enemy_held';
+          const blocked = !!block;
+          return (
+            <button
+              key={id}
+              onClick={() => handleMove(id, neutral)}
+              title={block ? moveBlockMessage(block) : (neutral ? 'Território neutro — mover para cá conquista-o' : '')}
+              className={`text-[10px] px-2 py-2 rounded active:scale-[0.95] border transition-all ${
+                enemy
+                  ? 'bg-destructive/10 text-destructive/70 border-destructive/20 cursor-not-allowed'
+                  : blocked
+                    ? 'bg-secondary/40 text-muted-foreground/50 border-border/30'
+                    : neutral
+                      ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/30'
+                      : 'bg-primary/20 text-primary hover:bg-primary/30 border-primary/20'
+              }`}
+            >
+              {enemy ? '⚔ ' : neutral ? '🏴 ' : '→ '}{name}{neutral ? ' (neutro)' : ''}
+            </button>
+          );
+        })}
       </div>
 
       {/* Embark onto an adjacent fleet */}

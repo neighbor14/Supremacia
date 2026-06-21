@@ -9,6 +9,22 @@ Matemática, estrutura de turnos, quantidade de territórios/mares/cartas, regra
 
 ---
 
+## Diretrizes permanentes do projeto
+
+- **Mobile-first.** Todo modal, carta, painel e mensagem precisa funcionar bem no celular. Tooltips não podem ser a única forma de explicar uma regra no mobile — prefira clicar e mostrar a explicação.
+- **Não inventar regras novas sem marcar claramente como adaptação digital.** Use `// TODO: confirmar regra original` em vez de inventar comportamento, e marque toda simplificação de MVP com comentário explícito.
+- **Antes de alterar mecânicas de jogo, consulte [`docs/regras-supremacia.md`](docs/regras-supremacia.md).**
+- **Antes de alterar cartas, prospecção, produção, conquista, movimento, ataque ou mercado, verifique as referências oficiais** em [`docs/referencias-oficiais.md`](docs/referencias-oficiais.md).
+- **Toda regra tem fonte única de verdade no código.** Constantes em `rulesConfig.ts`; controle de território é sempre o campo `territory.owner`; companhias/produção vêm sempre das `resourceCards`. Não duplique lógica de conquista/movimento/produção em componentes.
+- **UI, log, estado do jogo e cálculos devem sempre bater.** "Minhas Cartas", produção real e recursos recebidos não podem divergir; mapa, `owner`, cor e permissão de construção não podem divergir.
+- **Bugs de regra têm prioridade P0/P1** — nunca corrija só a UI quando o bug é de regra.
+- **Preparado para multiplayer futuro**, mesmo que o MVP seja contra IA (ver `multiplayerSchema.md` e a Turn Presentation Layer).
+- **Não copiar arte, texto longo ou material protegido** do jogo original; usar apenas como referência de regra e criar arte/interface própria.
+
+Regras detalhadas para alterações de mecânica: [`.claude/rules/game-rules.md`](.claude/rules/game-rules.md).
+
+---
+
 ## Fonte de verdade
 
 Antes de alterar qualquer mecânica, leia esses arquivos — eles são a referência canônica:

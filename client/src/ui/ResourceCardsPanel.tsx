@@ -23,6 +23,16 @@ export default function ResourceCardsPanel() {
   const player = game.players[game.turn.currentPlayer];
   const cardIds = player.resourceCards;
 
+  // Territories the player controls (distinct from companies/cards). A controlled
+  // territory only produces if a company card is located there.
+  const territoryIdsWithMyCompany = new Set(
+    cardIds.map(id => game.resourceCards[id]?.territoryId).filter(Boolean) as string[]
+  );
+  const controlledTerritories = Object.values(game.territories)
+    .filter(t => t.owner === player.id && !t.nuked)
+    .map(t => ({ id: t.id, name: t.name, producing: territoryIdsWithMyCompany.has(t.id) }));
+  const producingCount = controlledTerritories.filter(t => t.producing).length;
+
   const totalProduction: Record<ResourceType, number> = { grain: 0, oil: 0, mineral: 0 };
   const cardsByType: Record<ResourceType, { id: string; name: string; production: number; territory: string }[]> = {
     grain: [], oil: [], mineral: [],
@@ -81,6 +91,18 @@ export default function ResourceCardsPanel() {
 
       {expanded && (
         <>
+          {/* Summary: companies vs controlled territories are different things */}
+          <div className="border-t border-border/50 px-3 py-1.5 bg-secondary/20 grid grid-cols-2 gap-1 text-[9px]">
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground uppercase">Companhias</span>
+              <span className="text-[11px] font-bold font-mono text-emerald-300">{totalCards}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground uppercase">Territórios</span>
+              <span className="text-[11px] font-bold font-mono text-primary">{controlledTerritories.length}</span>
+            </div>
+          </div>
+
           <div className="border-t border-border/50 px-3 py-1.5 bg-secondary/20 flex items-center gap-3">
             <span className="text-[9px] text-muted-foreground uppercase">Prod/turno</span>
             {RESOURCE_CONFIG.map(({ key, icon, color }) => (
@@ -129,8 +151,37 @@ export default function ResourceCardsPanel() {
 
             {totalCards === 0 && (
               <div className="px-3 py-3 text-center text-[10px] text-muted-foreground">
-                Nenhuma carta ainda.
+                Nenhuma companhia ainda. Faça prospecção ou conquiste territórios com companhias.
               </div>
+            )}
+          </div>
+
+          {/* Controlled territories — separate from companies. Shows which produce. */}
+          <div className="border-t border-border/50 px-3 py-1.5 max-h-32 overflow-y-auto">
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-[9px]">🗺️</span>
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-primary">
+                Territórios controlados ({controlledTerritories.length})
+              </span>
+            </div>
+            {controlledTerritories.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground pl-2">Nenhum território controlado.</p>
+            ) : (
+              <div className="space-y-0.5 pl-2">
+                {controlledTerritories.map(t => (
+                  <div key={t.id} className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground truncate">{t.name}</span>
+                    <span className={`text-[9px] shrink-0 ${t.producing ? 'text-emerald-300' : 'text-amber-400/80'}`}>
+                      {t.producing ? 'companhia ativa' : 'sem companhia'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {producingCount < controlledTerritories.length && (
+              <p className="text-[9px] text-muted-foreground/70 mt-1 pl-2 leading-snug">
+                {producingCount} de {controlledTerritories.length} produzem. Territórios sem companhia não geram recurso — prospecte para descobrir uma.
+              </p>
             )}
           </div>
         </>

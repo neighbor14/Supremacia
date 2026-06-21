@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameState, GameAction, SuperpowerId, ResourceType, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep } from './types';
+import { GameState, GameAction, SuperpowerId, ResourceType, ResourceCard, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep } from './types';
 import { createInitialGameState } from './setup';
 import { RULES } from './rulesConfig';
 import { rollDice, sumDice, shuffleArray } from './rng';
@@ -95,43 +95,91 @@ function dropOverCapacityEmbarked(player: Player, seaZoneId: string): void {
 function paySalaries(state: GameState): void {
   const player = state.players[state.turn.currentPlayer];
   const { unitCost, companyCost, loanInterest, total: totalCost } = computeSalaryDue(player);
+  // Recalcula a dormência de companhias a cada Estágio 1 (sempre parte do zero).
+  state.turn.unpaidCompanies = [];
 
   if (player.money >= totalCost) {
     player.money -= totalCost;
     addEvent(state, player.id, `Pagou salários: ${unitCost.toLocaleString()} (unidades) + ${companyCost.toLocaleString()} (companhias) + ${loanInterest.toLocaleString()} (juros)`, 'economy');
+    return;
+  }
+
+  // ── Fundos insuficientes ── Prioridade fiel ao manual:
+  // 1) juros (serviço de dívida), 2) salário das unidades — tropas sem salário são
+  //    dispensadas, 3) salário das companhias — as não pagas ficam DORMENTES (não
+  //    produzem neste turno, mas não são destruídas). Pagamos as companhias de
+  //    maior produção primeiro para o jogador preservar suas melhores fontes.
+  let money = player.money;
+
+  // 1) Juros (melhor esforço).
+  const paidInterest = Math.min(money, loanInterest);
+  money -= paidInterest;
+
+  // 2) Salário das unidades — dispensa proporcional ao que não couber.
+  let removedUnits = 0;
+  if (money >= unitCost) {
+    money -= unitCost;
   } else {
-    // Pay what can be paid, remove unpaid units.
-    // Compute the deficit BEFORE zeroing money, otherwise it always equals totalCost.
-    const deficit = totalCost - player.money;
-    player.money = 0;
-    addEvent(state, player.id, `Fundos insuficientes para salários. Unidades removidas.`, 'economy');
-    // Remove armies proportionally to the unpaid amount
-    let toRemove = Math.ceil(deficit / RULES.SALARY_PER_UNIT);
+    const unpaidUnitSalary = unitCost - money;
+    money = 0;
+    let toRemove = Math.ceil(unpaidUnitSalary / RULES.SALARY_PER_UNIT);
     const territories = Object.keys(player.armies);
     for (const t of territories) {
       if (toRemove <= 0) break;
       const remove = Math.min(player.armies[t], toRemove);
       player.armies[t] -= remove;
       toRemove -= remove;
+      removedUnits += remove;
       if (player.armies[t] <= 0) delete player.armies[t];
     }
   }
+
+  // 3) Salário das companhias — maiores produtoras primeiro; o resto fica dormente.
+  const companies = player.resourceCards
+    .map(id => state.resourceCards[id])
+    .filter((c): c is ResourceCard => !!c)
+    .sort((a, b) => b.production - a.production);
+  const dormant: string[] = [];
+  for (const c of companies) {
+    if (money >= RULES.SALARY_PER_COMPANY) {
+      money -= RULES.SALARY_PER_COMPANY;
+    } else {
+      dormant.push(c.id);
+    }
+  }
+  state.turn.unpaidCompanies = dormant;
+  player.money = money;
+
+  const parts: string[] = ['Fundos insuficientes para salários.'];
+  if (removedUnits > 0) parts.push(`${removedUnits} unidade(s) dispensada(s).`);
+  if (dormant.length > 0) {
+    const names = dormant.map(id => state.resourceCards[id]?.companyName ?? id).join(', ');
+    parts.push(`${dormant.length} companhia(s) sem salário não vão produzir: ${names}.`);
+  }
+  addEvent(state, player.id, parts.join(' '), 'economy');
 }
 
 function transferProduction(state: GameState): void {
   const player = state.players[state.turn.currentPlayer];
   let produced = { grain: 0, oil: 0, mineral: 0 };
+  // Companhias sem salário pago no Estágio 1 não transferem produção (manual Grow).
+  const dormant = new Set(state.turn.unpaidCompanies);
+  let dormantCount = 0;
 
   for (const cardId of player.resourceCards) {
     const card = state.resourceCards[cardId];
     if (!card || !card.revealed) continue;
+    if (dormant.has(cardId)) { dormantCount++; continue; }
     const space = player.maxSupply - player.supplies[card.type];
     const amount = Math.min(card.production, space);
     player.supplies[card.type] += amount;
     produced[card.type] += amount;
   }
 
-  addEvent(state, player.id, `Produção: +${produced.grain} cereal, +${produced.oil} petróleo, +${produced.mineral} minério`, 'economy');
+  const suffix = dormantCount > 0
+    ? ` (${dormantCount} companhia(s) dormente(s) por salário não pago não produziram)`
+    : '';
+  addEvent(state, player.id, `Produção: +${produced.grain} cereal, +${produced.oil} petróleo, +${produced.mineral} minério${suffix}`, 'economy');
 }
 
 function sellResource(state: GameState, resource: ResourceType, quantity: number): void {
@@ -197,7 +245,59 @@ function buyResource(state: GameState, resource: ResourceType, quantity: number)
   }
 }
 
-function prospect(state: GameState): void {
+const RESOURCE_ICON: Record<ResourceType, string> = { grain: 'cereal', oil: 'petróleo', mineral: 'minério' };
+
+/**
+ * Fidelidade ao manual Grow: "A nova carta será devolvida ao maço, se ela estiver
+ * localizada num território que esteja ocupado por um oponente ou onde haja
+ * explodido uma bomba atômica." Logo, uma companhia só é prospectável se o
+ * território dela NÃO estiver sob controle de um oponente nem nuclearizado.
+ * Território neutro (sem dono) ou já controlado pelo próprio jogador → OK.
+ * A captura por conquista (claimTerritory) é o caminho para obter companhias de
+ * territórios inimigos — não a prospecção.
+ */
+function isProspectableTerritory(state: GameState, card: ResourceCard, playerId: SuperpowerId): boolean {
+  const t = state.territories[card.territoryId];
+  if (!t) return false;
+  if (t.nuked) return false;
+  if (t.owner && t.owner !== playerId) return false; // ocupado por oponente
+  return true;
+}
+
+function acquireCompany(state: GameState, player: Player, cardId: string): void {
+  const card = state.resourceCards[cardId];
+  if (!card) return;
+  card.ownerId = player.id;
+  card.revealed = true;
+  if (!player.resourceCards.includes(cardId)) player.resourceCards.push(cardId);
+  const icon = RESOURCE_ICON[card.type];
+  const where = state.territories[card.territoryId]?.name ?? card.territoryId;
+  addEvent(state, player.id, `Prospecção: ${card.companyName} (+${card.production} ${icon}, ${where}) adquirida.`, 'economy');
+  state.drawnCard = {
+    active: true,
+    type: 'resource',
+    success: true,
+    cardName: card.companyName,
+    cardEffect: `+${card.production} ${icon} por turno · localizada em ${where}`,
+    context: 'Prospecção de Recursos',
+    cardId: card.id,
+    resourceType: card.type,
+    companyName: card.companyName,
+    production: card.production,
+  };
+}
+
+/**
+ * Prospecting draws real cards from the virtual deck (no hardcoded odds).
+ *
+ * - Without a target type: reveals the single top card. A company is acquired; a
+ *   tech card is returned to the deck (cost refunded — tech only via research).
+ * - With a target type (grain/oil/mineral): keeps flipping, charging per card,
+ *   until a company of that type appears. Non-matching company cards and tech
+ *   cards are set aside and returned/reshuffled into the deck afterwards. This
+ *   mirrors the physical rule of searching for a company of the chosen resource.
+ */
+function prospect(state: GameState, targetType?: ResourceType): void {
   const player = state.players[state.turn.currentPlayer];
   if (state.resourceDeck.length === 0) {
     addEvent(state, player.id, 'Baralho vazio — nada para prospectar.', 'info');
@@ -208,10 +308,57 @@ function prospect(state: GameState): void {
     return;
   }
 
+  // ── Targeted prospecting: flip until the chosen resource type appears ──
+  if (targetType) {
+    const setAside: string[] = [];
+    let flips = 0;
+    let cost = 0;
+    let found: string | null = null;
+
+    while (state.resourceDeck.length > 0 && player.money >= RULES.RESEARCH_COST_PER_CARD) {
+      player.money -= RULES.RESEARCH_COST_PER_CARD;
+      cost += RULES.RESEARCH_COST_PER_CARD;
+      flips++;
+      const id = state.resourceDeck.shift()!;
+      if (isTechCard(id)) { setAside.push(id); continue; }
+      const card = state.resourceCards[id];
+      // Tipo certo E território prospectável (não inimigo, não nuclearizado) → fica.
+      // Tipo certo mas território inimigo/nuke → devolve ao maço e continua buscando.
+      if (card && card.type === targetType && isProspectableTerritory(state, card, player.id)) {
+        found = id;
+        break;
+      }
+      setAside.push(id);
+    }
+
+    // Non-matching + tech cards always return to the deck and reshuffle.
+    if (setAside.length > 0) {
+      state.resourceDeck.push(...setAside);
+      state.resourceDeck = shuffleArray(state.resourceDeck);
+    }
+
+    const typeIcon = RESOURCE_ICON[targetType];
+    if (found) {
+      addEvent(state, player.id, `Prospecção de ${typeIcon}: ${flips} carta(s) virada(s), custo $${cost.toLocaleString()}.`, 'economy');
+      acquireCompany(state, player, found);
+    } else {
+      addEvent(state, player.id, `Prospecção de ${typeIcon}: nenhuma companhia encontrada (${flips} carta(s), $${cost.toLocaleString()}).`, 'info');
+      state.drawnCard = {
+        active: true,
+        type: 'resource',
+        success: false,
+        cardName: `Companhia de ${typeIcon} não encontrada`,
+        cardEffect: `Você virou ${flips} carta(s) e não saiu nenhuma companhia de ${typeIcon}. As cartas voltaram ao baralho.`,
+        context: 'Prospecção de Recursos',
+      };
+    }
+    return;
+  }
+
+  // ── Untargeted prospecting: reveal a single top card ──
   player.money -= RULES.RESEARCH_COST_PER_CARD;
   const cardId = state.resourceDeck.shift()!;
 
-  // Tech cards can't be acquired via prospecting — return to bottom of deck, refund cost
   if (isTechCard(cardId)) {
     state.resourceDeck.push(cardId);
     player.money += RULES.RESEARCH_COST_PER_CARD;
@@ -229,23 +376,31 @@ function prospect(state: GameState): void {
     return;
   }
 
-  const card = state.resourceCards[cardId];
-  if (card) {
-    card.ownerId = player.id;
-    card.revealed = true;
-    player.resourceCards.push(cardId);
-    const icon = card.type === 'grain' ? 'cereal' : card.type === 'oil' ? 'petróleo' : 'minério';
-    addEvent(state, player.id, `Prospecção: ${card.companyName} (+${card.production} ${icon}) adquirida.`, 'economy');
+  // Fidelidade Grow: companhia em território inimigo/nuclearizado é devolvida ao
+  // maço (não pode ser prospectada). Espelha o tratamento das cartas de tecnologia.
+  const drawn = state.resourceCards[cardId];
+  if (drawn && !isProspectableTerritory(state, drawn, player.id)) {
+    state.resourceDeck.push(cardId);
+    state.resourceDeck = shuffleArray(state.resourceDeck);
+    player.money += RULES.RESEARCH_COST_PER_CARD; // estorno
+    const where = state.territories[drawn.territoryId]?.name ?? drawn.territoryId;
+    const motivo = state.territories[drawn.territoryId]?.nuked
+      ? 'território nuclearizado'
+      : 'território sob controle inimigo';
+    addEvent(state, player.id, `Prospecção: ${drawn.companyName} (${where}) devolvida ao baralho — ${motivo}.`, 'info');
     state.drawnCard = {
       active: true,
       type: 'resource',
-      success: true,
-      cardName: card.companyName,
-      cardEffect: `+${card.production} ${icon} por turno`,
+      success: false,
+      cardName: `${drawn.companyName} indisponível`,
+      cardEffect: `A companhia fica em ${where} (${motivo}). Conquiste o território para capturá-la — a carta voltou ao baralho sem custo.`,
       context: 'Prospecção de Recursos',
-      cardId: card.id,
+      cardId,
     };
+    return;
   }
+
+  acquireCompany(state, player, cardId);
 }
 
 function startNewRound(state: GameState): void {
@@ -394,22 +549,113 @@ function buildUnits(state: GameState, units: Array<{ type: UnitType; locationId:
   addEvent(state, player.id, `Construiu ${units.length} unidade(s) por ${moneyCost.toLocaleString()}`, 'build');
 }
 
+// ── Territory control: single source of truth ────────────────────────────────
+// A territory's controller is `territory.owner`. The map color, build permission,
+// and territory panel all derive from this single field, so claiming must always
+// go through here. Claiming a neutral/empty territory does NOT grant a company —
+// production only ever comes from resource cards (companies) the player holds.
+
+function enemyArmiesPresent(state: GameState, territoryId: string, playerId: SuperpowerId): boolean {
+  return Object.entries(state.players).some(
+    ([pid, p]) => pid !== playerId && ((p as Player).armies[territoryId] || 0) > 0
+  );
+}
+
+/**
+ * Returns the company cards (resource cards) located in a territory, optionally
+ * filtered to a specific owner. Used for capture/transfer + UI panels.
+ */
+export function companiesInTerritory(state: GameState, territoryId: string, ownerId?: SuperpowerId | null): string[] {
+  return Object.values(state.resourceCards)
+    .filter(c => c.territoryId === territoryId && (ownerId === undefined || c.ownerId === ownerId))
+    .map(c => c.id);
+}
+
+/**
+ * Claim control of a territory the player entered unopposed (neutral, or already
+ * theirs). Sets owner → map color + build permission update automatically from
+ * this single field. Transfers any company that belonged to the previous owner
+ * and logs whether a company was captured. Returns true if ownership changed.
+ */
+function claimTerritory(state: GameState, territoryId: string, playerId: SuperpowerId): boolean {
+  const territory = state.territories[territoryId];
+  if (!territory || territory.nuked) return false;
+  const previousOwner = territory.owner;
+  if (previousOwner === playerId) return false;
+
+  const attacker = state.players[playerId];
+  territory.owner = playerId;
+
+  // Capturing a territory captures the company located there (manual rule).
+  const capturedNames: string[] = [];
+  if (previousOwner) {
+    const prevPlayer = state.players[previousOwner];
+    for (const cid of companiesInTerritory(state, territoryId, previousOwner)) {
+      prevPlayer.resourceCards = prevPlayer.resourceCards.filter(id => id !== cid);
+      if (!attacker.resourceCards.includes(cid)) attacker.resourceCards.push(cid);
+      state.resourceCards[cid].ownerId = playerId;
+      capturedNames.push(state.resourceCards[cid].companyName);
+    }
+  }
+
+  if (capturedNames.length > 0) {
+    addEvent(state, playerId, `Conquistou ${territory.name} — companhia capturada: ${capturedNames.join(', ')}.`, 'move');
+  } else {
+    addEvent(state, playerId, `Conquistou ${territory.name} — território sem companhia ativa.`, 'move');
+  }
+  return true;
+}
+
+export type MoveBlockReason =
+  | 'no_units' | 'invalid' | 'not_adjacent' | 'nuked' | 'no_grain' | 'enemy_held';
+
+const MOVE_BLOCK_MESSAGE: Record<MoveBlockReason, string> = {
+  no_units: 'Nenhum exército neste território para mover.',
+  invalid: 'Movimento inválido: território inexistente.',
+  not_adjacent: 'Territórios não são adjacentes.',
+  nuked: 'Destino destruído por bomba nuclear.',
+  no_grain: `Cereal insuficiente — mover tropas custa ${RULES.LAND_MOVE_GRAIN_COST} cereal por território.`,
+  enemy_held: 'Território inimigo — use a fase de Combate (⚔️) para conquistá-lo.',
+};
+
+/**
+ * Single source of truth for land-move validation. Returns null when the move is
+ * allowed, otherwise a structured reason. The UI calls this BEFORE dispatching so
+ * the player always sees WHY a move is blocked (esp. "sem cereal"); the engine
+ * re-checks it for defense in depth.
+ */
+export function getMoveBlockReason(state: GameState, from: string, to: string): MoveBlockReason | null {
+  const player = state.players[state.turn.currentPlayer];
+  if ((player.armies[from] || 0) <= 0) return 'no_units';
+  const fromT = state.territories[from];
+  const toT = state.territories[to];
+  if (!fromT || !toT) return 'invalid';
+  if (!fromT.adjacentTerritories.includes(to)) return 'not_adjacent';
+  if (toT.nuked) return 'nuked';
+  if (player.supplies.grain < RULES.LAND_MOVE_GRAIN_COST) return 'no_grain';
+  // Enemy-controlled or enemy-garrisoned territory must be taken via combat.
+  if ((toT.owner && toT.owner !== player.id) || enemyArmiesPresent(state, to, player.id)) return 'enemy_held';
+  return null;
+}
+
+export function moveBlockMessage(reason: MoveBlockReason): string {
+  return MOVE_BLOCK_MESSAGE[reason];
+}
+
 function moveArmy(state: GameState, from: string, to: string, count: number): void {
   const player = state.players[state.turn.currentPlayer];
   const available = player.armies[from] || 0;
   const toMove = Math.min(count, available);
   if (toMove <= 0) return;
 
-  // Validate adjacency (defense in depth — UI also filters)
-  const fromT = state.territories[from];
-  if (!fromT || !fromT.adjacentTerritories.includes(to)) {
-    addEvent(state, player.id, 'Movimento inválido: territórios não adjacentes.', 'info');
-    return;
-  }
-
-  // Check grain cost
-  if (player.supplies.grain < RULES.LAND_MOVE_GRAIN_COST) {
-    addEvent(state, player.id, 'Cereal insuficiente para movimento.', 'info');
+  // Centralized validation — engine refuses the move and explains why.
+  const block = getMoveBlockReason(state, from, to);
+  if (block) {
+    if (block === 'no_grain') {
+      addEvent(state, player.id, `${player.name} tentou mover, mas não tinha cereal suficiente (precisa de ${RULES.LAND_MOVE_GRAIN_COST}).`, 'move');
+    } else {
+      addEvent(state, player.id, MOVE_BLOCK_MESSAGE[block], 'info');
+    }
     return;
   }
 
@@ -418,7 +664,11 @@ function moveArmy(state: GameState, from: string, to: string, count: number): vo
   if (player.armies[from] <= 0) delete player.armies[from];
   player.armies[to] = (player.armies[to] || 0) + toMove;
 
-  addEvent(state, player.id, `Moveu ${toMove} exército(s) para ${state.territories[to]?.name || to}`, 'move');
+  addEvent(state, player.id, `Moveu ${toMove} exército(s) para ${state.territories[to]?.name || to}. Cereal consumido: ${RULES.LAND_MOVE_GRAIN_COST}.`, 'move');
+
+  // Entering an unopposed neutral/own territory takes control of it (updates map
+  // color + build permission through the single owner field).
+  claimTerritory(state, to, player.id);
 }
 
 function airlift(state: GameState, from: string, to: string, count: number): void {
@@ -426,6 +676,12 @@ function airlift(state: GameState, from: string, to: string, count: number): voi
   const available = player.armies[from] || 0;
   const toMove = Math.min(count, available);
   if (toMove <= 0) return;
+
+  const toT = state.territories[to];
+  if (toT && ((toT.owner && toT.owner !== player.id) || enemyArmiesPresent(state, to, player.id))) {
+    addEvent(state, player.id, MOVE_BLOCK_MESSAGE.enemy_held, 'info');
+    return;
+  }
 
   const oilCost = RULES.AIRLIFT_OIL_COST * toMove;
   if (player.supplies.oil < oilCost) {
@@ -439,6 +695,9 @@ function airlift(state: GameState, from: string, to: string, count: number): voi
   player.armies[to] = (player.armies[to] || 0) + toMove;
 
   addEvent(state, player.id, `Aerotransportou ${toMove} exército(s) para ${state.territories[to]?.name || to}`, 'move');
+
+  // Airlifting into an unopposed neutral/own territory takes control of it.
+  claimTerritory(state, to, player.id);
 }
 
 function moveNavy(state: GameState, from: string, to: string, count: number): void {
@@ -549,10 +808,7 @@ function disembark(state: GameState, seaZoneId: string, territoryId: string, cou
     return;
   }
   // Only onto own territory or one without enemy armies (no amphibious assault yet).
-  const enemyArmies = Object.entries(state.players).some(
-    ([pid, p]) => pid !== player.id && ((p as Player).armies[territoryId] || 0) > 0
-  );
-  if (territory.owner && territory.owner !== player.id && enemyArmies) {
+  if (territory.owner && territory.owner !== player.id && enemyArmiesPresent(state, territoryId, player.id)) {
     addEvent(state, player.id, 'Desembarque inválido: território ocupado por inimigo.', 'info');
     return;
   }
@@ -564,12 +820,13 @@ function disembark(state: GameState, seaZoneId: string, territoryId: string, cou
   if (player.embarked[seaZoneId] <= 0) delete player.embarked[seaZoneId];
   player.armies[territoryId] = (player.armies[territoryId] || 0) + toLand;
 
-  // Landing on a neutral/empty territory takes control of it (no defenders).
-  if (!territory.owner || territory.owner === player.id) {
-    territory.owner = player.id;
-  }
-
   addEvent(state, player.id, `Desembarcou ${toLand} exército(s) em ${territory.name}`, 'move');
+
+  // Landing unopposed on a neutral/empty territory takes control of it (and any
+  // company there), going through the single claim path.
+  if (!enemyArmiesPresent(state, territoryId, player.id)) {
+    claimTerritory(state, territoryId, player.id);
+  }
 }
 
 function initiateAttack(state: GameState, from: string, target: string, targetType: 'territory' | 'sea'): void {
@@ -824,22 +1081,14 @@ function occupyTerritory(state: GameState, count: number = 1): void {
     attacker.armies[targetId] = (attacker.armies[targetId] || 0) + toMove;
   }
 
-  // Transfer territory ownership
+  // Transfer ownership + capture company through the single claim path (also logs
+  // whether a company was captured), then mark the combat as a conquest.
   const previousOwner = territory.owner;
-  territory.owner = attacker.id;
+  claimTerritory(state, targetId, attacker.id);
   state.combat.conquered = true;
 
-  // Capture resource cards in this territory
+  // Check elimination (last homeland captured)
   if (previousOwner) {
-    const prevPlayer = state.players[previousOwner];
-    const cardsInTerritory = prevPlayer.resourceCards.filter(cid => state.resourceCards[cid]?.territoryId === targetId);
-    for (const cid of cardsInTerritory) {
-      prevPlayer.resourceCards = prevPlayer.resourceCards.filter(id => id !== cid);
-      attacker.resourceCards.push(cid);
-      state.resourceCards[cid].ownerId = attacker.id;
-    }
-
-    // Check elimination (last homeland captured)
     const remainingHomeTerritories = Object.values(state.territories).filter(
       t => t.superpowerId === previousOwner && t.owner === previousOwner && !t.nuked
     );
@@ -1867,7 +2116,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         buyResource(state, action.resource, action.quantity);
         break;
       case 'PROSPECT':
-        prospect(state);
+        prospect(state, action.resourceType);
         break;
       case 'BUILD_UNITS':
         buildUnits(state, action.units);
