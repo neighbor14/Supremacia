@@ -201,9 +201,9 @@ export default function TurnPhaseBar() {
 
   return (
     <>
-    <div className="flex-shrink-0 bg-card border-b border-border px-3 py-2 safe-top">
+    <div className="flex-shrink-0 bg-card border-b border-border px-3 py-2 [@media(max-height:600px)]:py-1 safe-top">
       {/* Top row: Player info + Turn */}
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-center justify-between mb-1.5 [@media(max-height:600px)]:mb-0.5">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sp.color }} />
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: sp.color }}>
@@ -230,7 +230,7 @@ export default function TurnPhaseBar() {
       {isChoosingPhase ? (
         <div>
           {/* Optional actions counter + progress bar */}
-          <div className="mb-2">
+          <div className="mb-2 [@media(max-height:600px)]:mb-1">
             <div className="flex items-center justify-between mb-1">
               <span
                 className={`text-[11px] font-bold uppercase tracking-wider ${isAtLimit ? 'text-red-400' : 'text-emerald-400'}`}
@@ -252,13 +252,13 @@ export default function TurnPhaseBar() {
             </div>
 
             {/* Contextual feedback message */}
-            <p className={`text-[10px] mt-1 leading-tight ${isAtLimit ? 'text-red-400/80 font-medium' : 'text-muted-foreground'}`}>
+            <p className={`text-[10px] mt-1 leading-tight [@media(max-height:600px)]:hidden ${isAtLimit ? 'text-red-400/80 font-medium' : 'text-muted-foreground'}`}>
               {getContextMessage()}
             </p>
           </div>
 
           {/* Optional stage buttons */}
-          <div className="flex items-center gap-1 mb-2">
+          <div className="flex items-center gap-1 mb-2 [@media(max-height:600px)]:mb-1">
             {[3, 4, 5, 6, 7].map(stage => {
               const availability = getStageAvailability(stage);
               const isAvailable = availability === 'available';
@@ -274,7 +274,7 @@ export default function TurnPhaseBar() {
                   onClick={() => isAvailable && handleSelectOptionalStage(stage as TurnStage)}
                   disabled={!isAvailable}
                   className={`
-                    flex-1 py-1.5 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 min-w-0
+                    flex-1 py-1.5 [@media(max-height:600px)]:py-1 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 min-w-0
                     ${isAvailable
                       ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 active:scale-[0.95] animate-pulse-subtle'
                       : isUsed
@@ -292,10 +292,10 @@ export default function TurnPhaseBar() {
                     {STAGE_NAMES[stage]}
                   </span>
                   {isAvailable && (
-                    <span className="text-emerald-400/60 text-[8px] leading-none">1 ação</span>
+                    <span className="text-emerald-400/60 text-[8px] leading-none [@media(max-height:600px)]:hidden">1 ação</span>
                   )}
                   {isUsed && (
-                    <span className="text-accent-foreground/40 text-[8px] leading-none">✓</span>
+                    <span className="text-accent-foreground/40 text-[8px] leading-none [@media(max-height:600px)]:hidden">✓</span>
                   )}
                 </button>
               );
@@ -335,8 +335,9 @@ export default function TurnPhaseBar() {
                     }
                   }}
                   disabled={!isHuman || !isCurrent}
+                  title={STAGE_NAMES[stage]}
                   className={`
-                    flex-1 min-w-0 py-2.5 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 overflow-hidden
+                    flex-1 min-w-0 py-2.5 [@media(max-height:600px)]:py-1 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 overflow-hidden
                     ${isCurrent ? 'bg-primary text-primary-foreground ring-1 ring-primary/50 cursor-pointer' : ''}
                     ${isPast && !isCurrent ? 'bg-secondary/50 text-muted-foreground' : ''}
                     ${isUsed && !isCurrent ? 'bg-accent/50 text-accent-foreground/70' : ''}
@@ -345,7 +346,7 @@ export default function TurnPhaseBar() {
                   style={{ fontFamily: 'var(--font-display)' }}
                 >
                   <span className="text-sm leading-none">{STAGE_ICONS[stage]}</span>
-                  <span className="block w-full text-[10px] truncate text-center">{STAGE_NAMES[stage]}</span>
+                  <span className="block w-full text-[10px] truncate text-center [@media(max-height:600px)]:hidden">{STAGE_NAMES[stage]}</span>
                 </button>
               );
             })}
@@ -353,7 +354,7 @@ export default function TurnPhaseBar() {
 
           {/* Compact optional-actions indicator + action buttons during active optional stage */}
           {isHuman && turn.stage > 2 && !turn.stageComplete && (
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-2 [@media(max-height:600px)]:mt-1">
               {/* Compact pip counter */}
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-muted-foreground truncate">
