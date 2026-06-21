@@ -21,6 +21,7 @@ const ACTION_ICONS: Record<ActionEventType, string> = {
   buy_resource:          '🛒',
   build_armies:          '⚔️',
   build_navies:          '🚢',
+  move:                  '🪖',
   attack_result_victory: '🏆',
   attack_result_defeat:  '💥',
   research:              '☢️',

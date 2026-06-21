@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import { GameState, GameAction, SuperpowerId, ResourceType, ResourceCard, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep, ProspectingSession } from './types';
+import { GameState, GameAction, SuperpowerId, ResourceType, ResourceCard, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep, ProspectingSession, AIDifficulty } from './types';
 import { createInitialGameState } from './setup';
 import { RULES } from './rulesConfig';
 import { rollDice, sumDice, shuffleArray } from './rng';
 import { SUPERPOWER_IDS, SUPERPOWERS } from '../data/initialPlayers';
 import { nanoid } from 'nanoid';
 import { isNukeCard, isLaserCard, isTechCard, getTechCounts } from './researchDeck';
+import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, OptionalStage, AIConfig } from './ai';
 
 interface GameStore {
   game: GameState | null;
@@ -14,7 +15,7 @@ interface GameStore {
   uiMode: 'map' | 'market' | 'build' | 'move' | 'attack' | 'nuclear';
 
   // Actions
-  startGame: (humanPlayer: SuperpowerId, aiCount: number) => void;
+  startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => void;
   dispatch: (action: GameAction) => void;
   selectTerritory: (id: string | null) => void;
   selectSeaZone: (id: string | null) => void;
@@ -1715,37 +1716,13 @@ function cpuTurn(state: GameState): void {
   // Stage 2: Transfer production
   transferProduction(state);
 
-  // CPU chooses up to 3 optional stages
-  const optionalChoices: TurnStage[] = [];
-
-  // Always try to sell if has excess resources
-  const totalSupplies = player.supplies.grain + player.supplies.oil + player.supplies.mineral;
-  if (totalSupplies > 6) {
-    optionalChoices.push(3);
+  // Decisão de estágios opcionais delegada ao AIEngine, conforme o perfil de
+  // dificuldade deste jogador. O motor já respeita RULES.MAX_OPTIONAL_STAGES.
+  const aiConfig = getPlayerAIConfig(player);
+  const { stages: sorted, decisions } = chooseOptionalStages(state, player, aiConfig);
+  for (const d of decisions) {
+    addEvent(state, player.id, `IA ${player.name} — ${d.reason}.`, 'info');
   }
-
-  // Build if has money and supplies
-  if (player.money > 5000 && player.supplies.grain >= 1 && player.supplies.oil >= 1 && player.supplies.mineral >= 1) {
-    optionalChoices.push(6);
-  }
-
-  // Buy resources if low
-  if (player.supplies.grain < 2 || player.supplies.oil < 2 || player.supplies.mineral < 2) {
-    if (player.money > 10000) {
-      optionalChoices.push(7);
-    }
-  }
-
-  // Attack if strong enough (not on first turn)
-  if (!state.turn.isFirstTurn && optionalChoices.length < RULES.MAX_OPTIONAL_STAGES) {
-    const canAttack = checkCpuAttackOpportunity(state, player);
-    if (canAttack && !optionalChoices.includes(4)) {
-      optionalChoices.push(4);
-    }
-  }
-
-  // Execute chosen stages
-  const sorted = optionalChoices.sort((a, b) => a - b).slice(0, RULES.MAX_OPTIONAL_STAGES);
 
   for (const stage of sorted) {
     state.turn.optionalStagesUsed.push(stage);
@@ -1758,6 +1735,9 @@ function cpuTurn(state: GameState): void {
       case 4: // Attack
         cpuAttack(state, player);
         break;
+      case 5: // Move (land + naval)
+        cpuMove(state, player, aiConfig);
+        break;
       case 6: // Build
         cpuBuild(state, player);
         break;
@@ -1767,8 +1747,9 @@ function cpuTurn(state: GameState): void {
     }
   }
 
-  // Research nukes if affordable and not yet researched (AI instant resolve)
-  if (!player.hasResearchedNuke && player.money > 15000 && sorted.includes(6)) {
+  // Research nukes if affordable and not yet researched (AI instant resolve).
+  // Só perfis com usesTechStrategy investem na corrida tecnológica.
+  if (sorted.includes(6) && shouldResearchTech(player, aiConfig)) {
     researchInstant(state, 'nuke');
   }
 
@@ -1928,6 +1909,118 @@ function cpuBuy(state: GameState, player: typeof state.players[SuperpowerId]): v
   }
 }
 
+interface CpuMoveResult {
+  kind: 'land' | 'naval';
+  fromId: string;
+  toId: string;
+  fromName: string;
+  toName: string;
+  count: number;
+  claimed: boolean; // ocupou um território neutro
+}
+
+// Movimento da IA (Estágio 5) — terrestre + naval. Usa EXATAMENTE os mesmos
+// executores do humano (moveArmy/moveNavy), que validam adjacência, custo de
+// cereal/petróleo e bloqueio por território inimigo. A IA só PLANEJA leituras
+// read-only e depois executa, no máximo 2 movimentos terrestres + 1 naval por
+// turno (mantém o turno legível no mobile e o custo de recursos sob controle).
+function cpuMove(state: GameState, player: typeof state.players[SuperpowerId], config: AIConfig): CpuMoveResult[] {
+  const results: CpuMoveResult[] = [];
+  const enemyForces = (tid: string): number => {
+    let f = 0;
+    for (const [pid, p] of Object.entries(state.players)) {
+      if (pid === player.id) continue;
+      f += (p as Player).armies[tid] || 0;
+    }
+    return f;
+  };
+
+  // Planeja (read-only): expansão para terra neutra e reforço de fronteira.
+  const expansion: Array<{ from: string; to: string }> = [];
+  const reinforce: Array<{ from: string; to: string }> = [];
+
+  for (const [tid, count] of Object.entries(player.armies)) {
+    const t = state.territories[tid];
+    if (!t) continue;
+    // Expansão: tropa sobrando (≥2) ao lado de terra neutra e livre de inimigo.
+    if (count >= 2) {
+      const to = t.adjacentTerritories.find(adj => {
+        const at = state.territories[adj];
+        return at && !at.nuked && at.owner === null && enemyForces(adj) === 0;
+      });
+      if (to) expansion.push({ from: tid, to });
+    }
+    // Reforço: território próprio ameaçado com um vizinho próprio doador (≥2).
+    if (t.owner === player.id) {
+      const threatened = t.adjacentTerritories.some(adj => {
+        const at = state.territories[adj];
+        return at && at.owner && at.owner !== player.id && enemyForces(adj) >= count;
+      });
+      if (threatened) {
+        const donor = t.adjacentTerritories.find(adj =>
+          state.territories[adj]?.owner === player.id && (player.armies[adj] || 0) >= 2);
+        if (donor) reinforce.push({ from: donor, to: tid });
+      }
+    }
+  }
+
+  // Perfis defensivos reforçam primeiro; os demais expandem primeiro.
+  const landPlan = (config.defensePriority > config.expansionPriority
+    ? [...reinforce, ...expansion]
+    : [...expansion, ...reinforce]
+  ).slice(0, 2);
+
+  for (const mv of landPlan) {
+    if (player.supplies.grain < RULES.LAND_MOVE_GRAIN_COST) break;
+    if ((player.armies[mv.from] || 0) < 2) continue; // mantém ao menos 1 na origem
+    const fromT = state.territories[mv.from];
+    const toT = state.territories[mv.to];
+    const beforeOwner = toT?.owner ?? null;
+    const beforeCount = player.armies[mv.to] || 0;
+    moveArmy(state, mv.from, mv.to, 1);
+    if ((player.armies[mv.to] || 0) > beforeCount) {
+      results.push({
+        kind: 'land',
+        fromId: mv.from, toId: mv.to,
+        fromName: fromT?.name || mv.from, toName: toT?.name || mv.to,
+        count: 1,
+        claimed: state.territories[mv.to]?.owner === player.id && beforeOwner !== player.id,
+      });
+    }
+  }
+
+  // Naval: aproxima UMA frota de um mar adjacente que toque terra inimiga.
+  if (player.supplies.oil >= RULES.SEA_MOVE_OIL_COST) {
+    for (const [seaId, navies] of Object.entries(player.navies)) {
+      if (navies <= 0) continue;
+      const sea = state.seaZones[seaId];
+      if (!sea) continue;
+      const to = sea.adjacentSeas.find(adjSea => {
+        const target = state.seaZones[adjSea];
+        return target && target.adjacentTerritories.some(t => {
+          const terr = state.territories[t];
+          return terr && terr.owner && terr.owner !== player.id;
+        });
+      });
+      if (to) {
+        const beforeCount = player.navies[to] || 0;
+        moveNavy(state, seaId, to, 1);
+        if ((player.navies[to] || 0) > beforeCount) {
+          results.push({
+            kind: 'naval',
+            fromId: seaId, toId: to,
+            fromName: sea.name, toName: state.seaZones[to]?.name || to,
+            count: 1, claimed: false,
+          });
+        }
+        break; // um movimento naval por turno
+      }
+    }
+  }
+
+  return results;
+}
+
 // ============================================================
 // TURN PRESENTATION LAYER — AI Planner
 // Runs AI logic on a clone of the game state, collecting
@@ -1944,7 +2037,8 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   if (player.isHuman || player.isEliminated) return steps;
 
   const sp = SUPERPOWERS[playerId];
-  const STEP_MS = 3000; // 3 s per announcement (matches user expectation)
+  const aiConfig = getPlayerAIConfig(player);
+  const STEP_MS = aiConfig.thinkingDelayMs; // delay visível por ação, conforme a dificuldade
 
   // Snapshot the working clone — drawnCard excluded from intermediate steps
   // to prevent modals from re-opening when steps are replayed.
@@ -2008,27 +2102,21 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
     durationMs: STEP_MS,
   });
 
-  // ── Choose optional stages (mirrors cpuTurn logic exactly) ─
+  // ── Choose optional stages via AIEngine (perfil de dificuldade) ──────────
   const p = state.players[playerId];
-  const optionalChoices: TurnStage[] = [];
-  const totalSup = p.supplies.grain + p.supplies.oil + p.supplies.mineral;
-  if (totalSup > 6) optionalChoices.push(3);
-  if (p.money > 5000 && p.supplies.grain >= 1 && p.supplies.oil >= 1 && p.supplies.mineral >= 1) {
-    optionalChoices.push(6);
-  }
-  if ((p.supplies.grain < 2 || p.supplies.oil < 2 || p.supplies.mineral < 2) && p.money > 10000) {
-    optionalChoices.push(7);
-  }
-  if (!state.turn.isFirstTurn && optionalChoices.length < RULES.MAX_OPTIONAL_STAGES) {
-    if (checkCpuAttackOpportunity(state, p) && !optionalChoices.includes(4)) {
-      optionalChoices.push(4);
-    }
-  }
-  const sorted = optionalChoices.sort((a, b) => a - b).slice(0, RULES.MAX_OPTIONAL_STAGES) as TurnStage[];
+  const { stages: sorted, decisions } = chooseOptionalStages(state, p, aiConfig);
+  const reasonByStage = new Map<OptionalStage, string>(decisions.map(d => [d.stage, d.reason]));
+  let actionIndex = 0;
 
   for (const stage of sorted) {
     state.turn.optionalStagesUsed.push(stage);
     state.turn.stage = stage;
+    actionIndex++;
+    const reason = reasonByStage.get(stage);
+    if (reason) {
+      // Log visível "ação X/N: motivo" — mobile-first, não depende de tooltip.
+      addEvent(state, playerId, `IA ${sp.name} — ação ${actionIndex}/${sorted.length}: ${reason}.`, 'info');
+    }
 
     switch (stage) {
       case 3: { // Sell — one announcement per resource type
@@ -2085,6 +2173,32 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
               conquered,
               defenderName,
             },
+          });
+        }
+        break;
+      }
+
+      case 5: { // Move (land + naval) — one announcement per move
+        const moves = cpuMove(state, state.players[playerId], aiConfig);
+        for (const mv of moves) {
+          const title = mv.kind === 'naval'
+            ? `Moveu frota para ${mv.toName}`
+            : mv.claimed
+              ? `Ocupou ${mv.toName}`
+              : `Reforçou ${mv.toName}`;
+          pushStep({
+            phase: 5,
+            actionType: 'move',
+            title,
+            description: mv.kind === 'naval'
+              ? `Frota avança de ${mv.fromName}`
+              : `${mv.count} exército(s) de ${mv.fromName}`,
+            fromId: mv.fromId,
+            toId: mv.toId,
+            armyDelta: mv.kind === 'land' ? mv.count : undefined,
+            navyDelta: mv.kind === 'naval' ? mv.count : undefined,
+            soundKey: mv.claimed ? 'territory-conquered' : 'resource-gain',
+            durationMs: STEP_MS,
           });
         }
         break;
@@ -2165,7 +2279,8 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   }
 
   // ── Research nukes — card-by-card so human player sees each draw ────────────
-  if (!player.hasResearchedNuke && state.players[playerId].money > 15000 && sorted.includes(6)) {
+  // Só perfis com usesTechStrategy entram na corrida tecnológica.
+  if (sorted.includes(6) && shouldResearchTech(state.players[playerId], aiConfig)) {
     const techName = 'Bomba Atômica';
     const drawnForResearch: string[] = [];
     let researchCost = 0;
@@ -2253,10 +2368,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedSeaZone: null,
   uiMode: 'map',
 
-  startGame: (humanPlayer: SuperpowerId, aiCount: number) => {
+  startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => {
     const otherIds = shuffleArray(SUPERPOWER_IDS.filter(id => id !== humanPlayer));
     const activeAiIds = otherIds.slice(0, Math.min(aiCount, otherIds.length));
-    const game = createInitialGameState(humanPlayer, activeAiIds);
+    const game = createInitialGameState(humanPlayer, activeAiIds, aiDifficulty);
     set({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map' });
     localStorage.setItem('supremacia_save', JSON.stringify(game));
   },

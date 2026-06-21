@@ -1,4 +1,5 @@
-import { GameState, GameConfig, Player, SuperpowerId, MarketState, TurnState, CombatState, NuclearAttackState, DrawnCardReveal } from './types';
+import { GameState, GameConfig, Player, SuperpowerId, MarketState, TurnState, CombatState, NuclearAttackState, DrawnCardReveal, AIDifficulty } from './types';
+import { DEFAULT_AI_DIFFICULTY } from './ai';
 import { RULES } from './rulesConfig';
 import { TERRITORIES } from '../data/territories';
 import { SEA_ZONES } from '../data/seaZones';
@@ -8,8 +9,15 @@ import { shuffleArray } from './rng';
 
 export function createInitialGameState(
   humanPlayer: SuperpowerId,
-  activeAiIds: SuperpowerId[]
+  activeAiIds: SuperpowerId[],
+  // Dificuldade aplicada às IAs ativas. Aceita um nível global ou um mapa
+  // por superpotência (cada IA com o seu nível). Padrão: intermediate.
+  aiDifficulty: AIDifficulty | Partial<Record<SuperpowerId, AIDifficulty>> = DEFAULT_AI_DIFFICULTY
 ): GameState {
+  const difficultyFor = (id: SuperpowerId): AIDifficulty =>
+    typeof aiDifficulty === 'string'
+      ? aiDifficulty
+      : aiDifficulty[id] ?? DEFAULT_AI_DIFFICULTY;
   const resourceCards = generateResourceCards();
 
   const activePlayers = [humanPlayer, ...activeAiIds];
@@ -45,6 +53,7 @@ export function createInitialGameState(
         loans: 0,
         isHuman,
         isEliminated: false,
+        aiDifficulty: isHuman ? undefined : difficultyFor(id),
         armies,
         navies: {},
         embarked: {},

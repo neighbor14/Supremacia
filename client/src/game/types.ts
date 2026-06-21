@@ -8,6 +8,11 @@ export type UnitType = 'army' | 'navy';
 export type SeaType = 'coastal' | 'deep';
 export type PlayerType = 'human' | 'ai' | 'remote';
 
+// Níveis de dificuldade da IA. Afetam SÓ a qualidade da decisão —
+// nunca concedem bônus de recurso, dado ou informação oculta.
+// Perfis e pesos ficam em game/ai/aiConfig.ts.
+export type AIDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'god';
+
 export interface GameConfig {
   humanPlayers: number;
   aiPlayers: number;
@@ -76,6 +81,9 @@ export interface Player {
   loans: number;
   isHuman: boolean;
   isEliminated: boolean;
+  // Dificuldade da IA que controla este jogador (só relevante p/ type === 'ai').
+  // Cada IA pode ter o seu próprio nível; ausência → perfil padrão.
+  aiDifficulty?: AIDifficulty;
   armies: Record<string, number>; // territoryId -> count
   navies: Record<string, number>; // seaZoneId -> count
   embarked: Record<string, number>; // seaZoneId -> armies aboard
@@ -227,6 +235,7 @@ export type ActionEventType =
   | 'buy_resource'
   | 'build_armies'
   | 'build_navies'
+  | 'move'
   | 'attack_result_victory'
   | 'attack_result_defeat'
   | 'research'

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Volume2 } from 'lucide-react';
 import { useGameStore } from '../game/store';
-import { SuperpowerId } from '../game/types';
+import { SuperpowerId, AIDifficulty } from '../game/types';
+import { AI_DIFFICULTY_LABELS, DEFAULT_AI_DIFFICULTY } from '../game/ai';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { GameState } from '../game/types';
 import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
@@ -15,6 +16,7 @@ export default function Home() {
   const [step, setStep] = useState<Step>('menu');
   const [selectedSuperpower, setSelectedSuperpower] = useState<SuperpowerId | null>(null);
   const [aiCount, setAiCount] = useState(3);
+  const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>(DEFAULT_AI_DIFFICULTY);
 
   const { initialized, activate } = useAudioInit();
   const { play } = useMusicPlayer();
@@ -41,7 +43,7 @@ export default function Home() {
 
   const handleStartGame = () => {
     if (!selectedSuperpower) return;
-    startGame(selectedSuperpower, aiCount);
+    startGame(selectedSuperpower, aiCount, aiDifficulty);
     setLocation('/setup');
   };
 
@@ -224,6 +226,36 @@ export default function Home() {
             <div className="border-t border-border pt-2 text-xs text-muted-foreground">
               Territórios de superpotências inativas ficam virgens — conquistáveis durante a partida.
             </div>
+          </div>
+
+          {/* Dificuldade da IA — aplicada a todas as IAs da partida */}
+          <h2 className="text-lg font-semibold text-center mb-1 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
+            Dificuldade da IA
+          </h2>
+          <p className="text-xs text-muted-foreground text-center mb-3">
+            A IA joga com as mesmas regras — muda só a qualidade das decisões.
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-6">
+            {(Object.keys(AI_DIFFICULTY_LABELS) as AIDifficulty[]).map(level => {
+              const info = AI_DIFFICULTY_LABELS[level];
+              const active = aiDifficulty === level;
+              return (
+                <button
+                  key={level}
+                  onClick={() => setAiDifficulty(level)}
+                  className={`p-3 rounded-md border text-left transition-all active:scale-[0.97] ${
+                    active ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'
+                  }`}
+                >
+                  <span className={`text-xs font-bold uppercase tracking-wider block ${active ? 'text-primary' : 'text-foreground'}`} style={{ fontFamily: 'var(--font-display)' }}>
+                    {info.label}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground mt-1 block leading-tight">
+                    {info.hint}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           <button
