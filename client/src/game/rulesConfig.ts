@@ -9,8 +9,8 @@ export const RULES = {
   STARTING_SUPPLIES: 3,
   MAX_SUPPLY: 12,
   MARKET_START_PRICE: 5000,
-  MARKET_MIN_PRICE: 1000,
-  MARKET_MAX_PRICE: 12000,
+  MARKET_MIN_PRICE: 10,        // manual Grow: piso $10
+  MARKET_MAX_PRICE: 10000,     // manual Grow: teto $10.000
   MARKET_PRICE_STEP: 1000,
 
   // Salaries (Stage 1)
@@ -48,14 +48,16 @@ export const RULES = {
   LASER_STAR_INTERCEPT_FAIL: 6, // only 6 fails, 1-5 intercepts
   HOLOCAUST_THRESHOLD: 12,      // nuked territories to trigger holocaust
 
-  // Loans
-  LOAN_MULTIPLE: 5000,
-  LOAN_INTEREST_RATE: 0.1,     // 10% per turn
+  // Loans — manual Grow: múltiplos de $10.000, juros $500/turno por unidade (5%)
+  LOAN_MULTIPLE: 10000,
+  LOAN_INTEREST_RATE: 0.05,    // 5% per turn
 
   // Turn structure
   MANDATORY_STAGES: [1, 2] as const,
   OPTIONAL_STAGES: [3, 4, 5, 6, 7] as const,
   MAX_OPTIONAL_STAGES: 3,
+  // D3 fidelidade: manual Grow permite até 3 tentativas de prospecção no Estágio 7
+  MAX_PROSPECT_ATTEMPTS: 3,
 
   // Victory - Detente wealth calculation
   WEALTH_COMPANY_VALUE: 1000,

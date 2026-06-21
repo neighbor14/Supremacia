@@ -297,6 +297,13 @@ function acquireCompany(state: GameState, player: Player, cardId: string): void 
  *   one card at a time. Each flip sets state.drawnCard so DrawnCardModal can show
  *   the card to the player. Non-matching cards are set aside and reshuffled back
  *   into the deck when the session ends (found, stopped, or exhausted).
+ *
+ * TODO: confirmar regra original — manual Grow diz "até 3 vezes por jogada" no
+ * Estágio 7. A implementação atual trata o Estágio 7 como um único slot opcional,
+ * permitindo apenas 1 sessão de prospecção por turno. Para fidelizar: permitir
+ * que o jogador inicie até 3 sessões distintas dentro do Estágio 7 (uma por tipo
+ * de recurso, ou repetindo o mesmo tipo). Cada sessão começa um novo baralho
+ * embaralhado.
  */
 function prospect(state: GameState, targetType?: ResourceType): void {
   const player = state.players[state.turn.currentPlayer];
@@ -308,17 +315,26 @@ function prospect(state: GameState, targetType?: ResourceType): void {
     addEvent(state, player.id, 'Dinheiro insuficiente para prospectar.', 'info');
     return;
   }
+  // D3 fidelidade: limite de 3 tentativas de prospecção por turno (manual Grow).
+  // Cada nova sessão iniciada (ou carta avulsa no modo sem tipo) conta como 1 tentativa.
+  if (!state.prospectingSession && state.turn.prospectAttemptsUsed >= RULES.MAX_PROSPECT_ATTEMPTS) {
+    addEvent(state, player.id,
+      `Limite de ${RULES.MAX_PROSPECT_ATTEMPTS} prospecções por turno atingido.`, 'info');
+    return;
+  }
 
   // ── Targeted prospecting: step-by-step, one card per dispatch ──
   if (targetType) {
     if (!state.prospectingSession) {
       state.prospectingSession = { targetType, cardsSetAside: [], found: false, totalCost: 0, cardsFlipped: 0 };
+      state.turn.prospectAttemptsUsed++;
     }
     drawProspectCardInternal(state);
     return;
   }
 
-  // ── Untargeted prospecting: reveal a single top card ──
+  // ── Untargeted prospecting: reveal a single top card (conta como 1 tentativa) ──
+  state.turn.prospectAttemptsUsed++;
   player.money -= RULES.RESEARCH_COST_PER_CARD;
   const cardId = state.resourceDeck.shift()!;
 
@@ -592,8 +608,10 @@ function advanceToNextPlayer(state: GameState): void {
   // Clear any orphaned sessions before changing players
   if (state.researchSession) finalizeResearch(state);
   if (state.prospectingSession) finalizeProspect(state);
-  // Reset per-turn attack tracking
+  // Reset per-turn tracking
   state.turn.attackedFrom = [];
+  state.turn.prospectAttemptsUsed = 0;
+  state.defenderReinforcement = null;
 
   // Victory check: only one (or zero) non-eliminated player remains
   const active = state.turn.playerOrder.filter(id => !state.players[id].isEliminated);
@@ -858,6 +876,10 @@ function airlift(state: GameState, from: string, to: string, count: number): voi
   claimTerritory(state, to, player.id);
 }
 
+// D8 fidelidade: manual Grow — mares costeiros ("azul-claro") têm uso compartilhado
+// restrito: somente esquadras de UM jogador podem ocupar a zona por vez (como um
+// território). Mares oceânicos ("azul-escuro") aceitam esquadras de qualquer jogador.
+// Naval combat em mares costeiros está pendente (TODO); por ora bloqueia a entrada.
 function moveNavy(state: GameState, from: string, to: string, count: number): void {
   const player = state.players[state.turn.currentPlayer];
   const available = player.navies[from] || 0;
@@ -869,6 +891,21 @@ function moveNavy(state: GameState, from: string, to: string, count: number): vo
   if (!fromSea || !fromSea.adjacentSeas.includes(to)) {
     addEvent(state, player.id, 'Movimento naval inválido: zonas não adjacentes.', 'info');
     return;
+  }
+
+  // D8: mar costeiro — verifica se outro jogador já ocupa a zona
+  const toSea = state.seaZones[to];
+  if (toSea?.type === 'coastal') {
+    const occupier = Object.entries(state.players).find(
+      ([pid, p]) => pid !== player.id && ((p as Player).navies[to] || 0) > 0
+    );
+    if (occupier) {
+      const occupierName = state.players[occupier[0] as SuperpowerId]?.name ?? occupier[0];
+      addEvent(state, player.id,
+        `Mar costeiro ${toSea.name} ocupado por ${occupierName}. Combate naval em mares costeiros ainda não implementado.`,
+        'info');
+      return;
+    }
   }
 
   if (player.supplies.oil < RULES.SEA_MOVE_OIL_COST) {
@@ -1075,9 +1112,19 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     defenderLosses: 0,
     phase: 'confirm',
     defenderChoice: null,
+    counterAttackAvailable: false,
+    counterAttackUsed: false,
   };
 }
 
+// TODO: confirmar regra original — manual Grow diz que, após o combate, o defensor
+// pode mover reforços de territórios adjacentes para o território atacado. Não
+// implementado: o combate resolve e o turno segue sem essa janela de reforço.
+//
+// TODO: confirmar regra original — manual Grow diz que o defensor pode contra-atacar
+// uma vez por combate. Não implementado: apenas o atacante inicia combates. Para
+// fidelizar seria necessário uma fase de "resposta do defensor" após o resultado do
+// dado, com custo de suprimentos próprio.
 function rollCombat(state: GameState): void {
   if (!state.combat.active || !state.combat.attackerId || !state.combat.defenderId) return;
 
@@ -1185,7 +1232,188 @@ function rollCombat(state: GameState): void {
         state.combat.phase = 'occupy';
       }
       // else: both wiped out → stays at 'result', territory uncontested but attacker can't advance
+    } else {
+      // Defender kept territory — check D7 (counter-attack) opportunity
+      checkCounterAttack(state, defender);
     }
+  }
+}
+
+// ── D7: contra-ataque do defensor ─────────────────────────────────────────────
+// Chamado após rollCombat quando o defensor manteve o território.
+function checkCounterAttack(state: GameState, defender: Player): void {
+  if (state.combat.counterAttackUsed) {
+    checkDefenderReinforcement(state);
+    return;
+  }
+  const canCounter = defender.supplies.grain >= RULES.COMBAT_SUPPLY_COST &&
+    defender.supplies.oil >= RULES.COMBAT_SUPPLY_COST &&
+    defender.supplies.mineral >= RULES.COMBAT_SUPPLY_COST;
+  if (!canCounter) {
+    addEvent(state, defender.id, 'Sem suprimentos para contra-atacar.', 'combat');
+    checkDefenderReinforcement(state);
+    return;
+  }
+  if (defender.isHuman) {
+    // Pause — UI mostrará botões COUNTER_ATTACK / SKIP_COUNTER_ATTACK
+    state.combat.counterAttackAvailable = true;
+    state.combat.phase = 'counter_attack_available';
+  } else {
+    // AI: decide baseado em agressividade do perfil
+    const aiConfig = getPlayerAIConfig(defender);
+    const roll = Math.random();
+    if (roll < aiConfig.aggression) {
+      executeCounterAttack(state);
+    } else {
+      addEvent(state, defender.id, 'IA optou por não contra-atacar.', 'combat');
+      state.combat.counterAttackUsed = true;
+      checkDefenderReinforcement(state);
+    }
+  }
+}
+
+// Executa o contra-ataque: inverte papéis e rola dados.
+function executeCounterAttack(state: GameState): void {
+  const { attackerId, defenderId, fromId, targetId, targetType } = state.combat;
+  if (!attackerId || !defenderId || !fromId || !targetId) return;
+
+  const counterAttacker = state.players[defenderId]; // defensor vira atacante
+  const counterDefender = state.players[attackerId]; // atacante original vira defensor
+
+  // Custo de suprimentos do contra-ataque
+  counterAttacker.supplies.grain -= RULES.COMBAT_SUPPLY_COST;
+  counterAttacker.supplies.oil -= RULES.COMBAT_SUPPLY_COST;
+  counterAttacker.supplies.mineral -= RULES.COMBAT_SUPPLY_COST;
+
+  const defenderHasSupplies = counterDefender.supplies.grain >= RULES.COMBAT_SUPPLY_COST &&
+    counterDefender.supplies.oil >= RULES.COMBAT_SUPPLY_COST &&
+    counterDefender.supplies.mineral >= RULES.COMBAT_SUPPLY_COST;
+  if (defenderHasSupplies) {
+    counterDefender.supplies.grain -= RULES.COMBAT_SUPPLY_COST;
+    counterDefender.supplies.oil -= RULES.COMBAT_SUPPLY_COST;
+    counterDefender.supplies.mineral -= RULES.COMBAT_SUPPLY_COST;
+  }
+
+  // Forças atuais: contra-atacante em targetId, contra-defensor em fromId
+  const caUnits = targetType === 'territory'
+    ? (counterAttacker.armies[targetId] || 0)
+    : (counterAttacker.navies[targetId] || 0);
+  const cdUnits = targetType === 'territory'
+    ? (counterDefender.armies[fromId] || 0)
+    : (counterDefender.navies[fromId] || 0);
+
+  let caDice: number = RULES.ATTACKER_BASE_DICE;
+  let cdDice: number = defenderHasSupplies ? RULES.DEFENDER_BASE_DICE : RULES.DEFENDER_NO_SUPPLY_DICE;
+  if (caUnits > cdUnits) caDice += RULES.BONUS_DICE_MAJORITY;
+  if (cdUnits > caUnits) cdDice += RULES.BONUS_DICE_MAJORITY;
+  if (counterAttacker.laserStars > counterDefender.laserStars) caDice += RULES.BONUS_DICE_LASER_STAR;
+  if (counterDefender.laserStars > counterAttacker.laserStars) cdDice += RULES.BONUS_DICE_LASER_STAR;
+  caDice = Math.min(caDice, RULES.MAX_DICE);
+  cdDice = Math.min(cdDice, RULES.MAX_DICE);
+
+  const caDiceRoll = rollDice(caDice);
+  const cdDiceRoll = rollDice(cdDice);
+  const caTotal = sumDice(caDiceRoll);
+  const cdTotal = sumDice(cdDiceRoll);
+  const caLosses = Math.floor(cdTotal / RULES.CASUALTIES_PER_POINTS);
+  const cdLosses = Math.floor(caTotal / RULES.CASUALTIES_PER_POINTS);
+
+  // Aplica baixas
+  if (targetType === 'territory') {
+    counterAttacker.armies[targetId] = Math.max(0, (counterAttacker.armies[targetId] || 0) - caLosses);
+    if (counterAttacker.armies[targetId] <= 0) delete counterAttacker.armies[targetId];
+    counterDefender.armies[fromId] = Math.max(0, (counterDefender.armies[fromId] || 0) - cdLosses);
+    if (counterDefender.armies[fromId] <= 0) delete counterDefender.armies[fromId];
+  } else {
+    counterAttacker.navies[targetId] = Math.max(0, (counterAttacker.navies[targetId] || 0) - caLosses);
+    if (counterAttacker.navies[targetId] <= 0) delete counterAttacker.navies[targetId];
+    counterDefender.navies[fromId] = Math.max(0, (counterDefender.navies[fromId] || 0) - cdLosses);
+    if (counterDefender.navies[fromId] <= 0) delete counterDefender.navies[fromId];
+  }
+
+  const targetName = targetType === 'territory'
+    ? state.territories[targetId]?.name : state.seaZones[targetId]?.name;
+  const fromName = targetType === 'territory'
+    ? state.territories[fromId]?.name : state.seaZones[fromId]?.name;
+
+  addEvent(state, counterAttacker.id,
+    `Contra-ataque ${targetName}→${fromName}: [${caDiceRoll.join(',')}]=${caTotal} vs [${cdDiceRoll.join(',')}]=${cdTotal} — baixas ca -${caLosses} cd -${cdLosses}`,
+    'combat');
+
+  state.combat.counterAttackUsed = true;
+  state.combat.counterAttackAvailable = false;
+
+  // Se o contra-defensor foi eliminado E o contra-atacante ainda tem forças:
+  // contra-atacante avança para o território de origem do ataque original
+  const cdAfter = targetType === 'territory'
+    ? (counterDefender.armies[fromId] || 0) : (counterDefender.navies[fromId] || 0);
+  const caAfter = targetType === 'territory'
+    ? (counterAttacker.armies[targetId] || 0) : (counterAttacker.navies[targetId] || 0);
+
+  if (cdAfter <= 0 && caAfter > 0 && targetType === 'territory') {
+    addEvent(state, counterAttacker.id,
+      `Contra-ataque bem-sucedido! ${counterAttacker.name} avança para ${fromName}.`, 'combat');
+    claimTerritory(state, fromId, counterAttacker.id);
+    // Mover 1 exército para o território capturado
+    const toMove = Math.min(1, counterAttacker.armies[targetId] || 0);
+    if (toMove > 0) {
+      counterAttacker.armies[targetId] = (counterAttacker.armies[targetId] || 0) - toMove;
+      if (counterAttacker.armies[targetId] <= 0) delete counterAttacker.armies[targetId];
+      counterAttacker.armies[fromId] = (counterAttacker.armies[fromId] || 0) + toMove;
+    }
+  }
+
+  resetCombat(state);
+  // Após contra-ataque, verificar reforço (D6) — apenas se território não foi capturado
+  if (cdAfter > 0 || caAfter <= 0) checkDefenderReinforcement(state);
+}
+
+// ── D6: reforço do defensor pós-combate ──────────────────────────────────────
+// Chamado após resolução de combate (e opcional contra-ataque) quando o defensor
+// manteve o seu território. Permite mover 1 grupo de exércitos de território
+// adjacente para reforçar o território que foi atacado.
+function checkDefenderReinforcement(state: GameState): void {
+  const { defenderId, targetId, fromId, targetType } = state.combat;
+  if (!defenderId || !targetId || targetType !== 'territory') {
+    resetCombat(state);
+    return;
+  }
+  const defender = state.players[defenderId];
+  const territory = state.territories[targetId];
+  if (!territory) { resetCombat(state); return; }
+
+  // Verifica se há territórios adjacentes com exércitos do defensor para reforçar
+  const adjacentWithArmies = territory.adjacentTerritories.filter(
+    tid => (defender.armies[tid] || 0) > 0 && state.territories[tid]?.owner === defenderId
+  );
+
+  if (adjacentWithArmies.length === 0) {
+    addEvent(state, defenderId, 'Sem reforços adjacentes disponíveis.', 'combat');
+    resetCombat(state);
+    return;
+  }
+
+  if (defender.isHuman) {
+    // Pause: UI mostrará opções REINFORCE_AFTER_COMBAT / SKIP_REINFORCEMENT
+    state.defenderReinforcement = {
+      territory: targetId,
+      defenderPlayer: defenderId,
+      attackerOrigin: fromId,
+    };
+    resetCombat(state);
+  } else {
+    // AI: auto-reforça com o território adjacente mais populoso
+    const best = adjacentWithArmies.reduce((a, b) =>
+      (defender.armies[a] || 0) >= (defender.armies[b] || 0) ? a : b
+    );
+    const count = Math.ceil((defender.armies[best] || 0) / 2);
+    defender.armies[best] = (defender.armies[best] || 0) - count;
+    if (defender.armies[best] <= 0) delete defender.armies[best];
+    defender.armies[targetId] = (defender.armies[targetId] || 0) + count;
+    const fromName = state.territories[best]?.name ?? best;
+    addEvent(state, defenderId,
+      `Reforço pós-combate: ${count} exército(s) de ${fromName} → ${territory.name}.`, 'combat');
+    resetCombat(state);
   }
 }
 
@@ -1196,6 +1424,7 @@ function resetCombat(state: GameState): void {
     attackerUnitsAfter: 0, defenderUnitsAfter: 0, conquered: false,
     attackerDice: [], defenderDice: [], attackerLosses: 0, defenderLosses: 0,
     phase: 'select_target', defenderChoice: null,
+    counterAttackAvailable: false, counterAttackUsed: false,
   };
 }
 
@@ -1734,6 +1963,11 @@ function cpuTurn(state: GameState): void {
         break;
       case 4: // Attack
         cpuAttack(state, player);
+        // D7/D6: se o humano é o defensor e pode contra-atacar ou reforçar,
+        // pausa o turno da IA — o humano age e o jogo avança automaticamente depois.
+        if (state.combat.phase === 'counter_attack_available' || state.defenderReinforcement) {
+          return; // turno retomado após COUNTER_ATTACK/SKIP ou REINFORCE/SKIP
+        }
         break;
       case 5: // Move (land + naval)
         cpuMove(state, player, aiConfig);
@@ -2509,6 +2743,58 @@ export const useGameStore = create<GameStore>((set, get) => ({
       case 'STOP_PROSPECT':
         finalizeProspect(state); // Return all set-aside cards to deck + reshuffle
         state.drawnCard = null;
+        break;
+      case 'COUNTER_ATTACK': {
+        if (state.combat.phase !== 'counter_attack_available') break;
+        executeCounterAttack(state);
+        // Se era o turno da IA (humano estava defendendo), finaliza o turno da IA
+        if (!state.players[state.turn.currentPlayer].isHuman && !state.defenderReinforcement) {
+          advanceToNextPlayer(state);
+        }
+        break;
+      }
+      case 'SKIP_COUNTER_ATTACK': {
+        if (state.combat.phase !== 'counter_attack_available') break;
+        state.combat.counterAttackUsed = true;
+        state.combat.counterAttackAvailable = false;
+        addEvent(state, state.combat.defenderId!, 'Contra-ataque ignorado.', 'combat');
+        checkDefenderReinforcement(state);
+        // Se era o turno da IA e não há reforço pendente, finaliza o turno
+        if (!state.players[state.turn.currentPlayer].isHuman && !state.defenderReinforcement) {
+          advanceToNextPlayer(state);
+        }
+        break;
+      }
+      case 'REINFORCE_AFTER_COMBAT': {
+        const reinf = state.defenderReinforcement;
+        if (!reinf) break;
+        const rPlayer = state.players[reinf.defenderPlayer];
+        const available = rPlayer.armies[action.from] || 0;
+        const count = Math.min(action.count, available);
+        if (count <= 0 || state.territories[action.to]?.id !== reinf.territory) break;
+        rPlayer.armies[action.from] -= count;
+        if (rPlayer.armies[action.from] <= 0) delete rPlayer.armies[action.from];
+        rPlayer.armies[action.to] = (rPlayer.armies[action.to] || 0) + count;
+        const fromName = state.territories[action.from]?.name ?? action.from;
+        const toName = state.territories[action.to]?.name ?? action.to;
+        addEvent(state, reinf.defenderPlayer,
+          `Reforço pós-combate: ${count} exército(s) de ${fromName} → ${toName}.`, 'combat');
+        state.defenderReinforcement = null;
+        // Finaliza o turno da IA se ela estava atacando
+        if (!state.players[state.turn.currentPlayer].isHuman) {
+          advanceToNextPlayer(state);
+        }
+        break;
+      }
+      case 'SKIP_REINFORCEMENT':
+        if (state.defenderReinforcement) {
+          addEvent(state, state.defenderReinforcement.defenderPlayer, 'Reforço pós-combate ignorado.', 'combat');
+        }
+        state.defenderReinforcement = null;
+        // Finaliza o turno da IA se ela estava atacando
+        if (!state.players[state.turn.currentPlayer].isHuman) {
+          advanceToNextPlayer(state);
+        }
         break;
       case 'APPLY_AI_STEP':
         set({ game: action.state });

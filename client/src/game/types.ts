@@ -108,6 +108,9 @@ export interface TurnState {
   // neste turno; voltam a produzir quando o salário for pago. Recalculado a cada
   // pagamento de salários (paySalaries).
   unpaidCompanies: string[];
+  // Fidelidade D3: manual Grow permite até 3 tentativas de prospecção por turno
+  // no Estágio 7. Incrementa a cada nova sessão iniciada; reseta a cada turno.
+  prospectAttemptsUsed: number;
 }
 
 export interface MarketState {
@@ -134,8 +137,11 @@ export interface CombatState {
   defenderDice: number[];
   attackerLosses: number;
   defenderLosses: number;
-  phase: 'select_target' | 'confirm' | 'rolling' | 'result' | 'occupy';
+  phase: 'select_target' | 'confirm' | 'rolling' | 'result' | 'occupy' | 'counter_attack_available';
   defenderChoice: 'resist' | 'retreat' | 'surrender' | null;
+  // D7: manual Grow — defensor pode contra-atacar uma vez por combate
+  counterAttackAvailable: boolean;
+  counterAttackUsed: boolean;
 }
 
 export interface NuclearAttackState {
@@ -201,6 +207,13 @@ export interface EventLogEntry {
   type: 'info' | 'combat' | 'nuclear' | 'economy' | 'build' | 'move' | 'elimination';
 }
 
+// D6: manual Grow — defensor pode mover reforços após combate
+export interface DefenderReinforcement {
+  territory: string;          // território que foi defendido
+  defenderPlayer: SuperpowerId;
+  attackerOrigin: string | null; // território de onde o ataque partiu
+}
+
 export interface GameState {
   config: GameConfig;
   players: Record<SuperpowerId, Player>;
@@ -220,6 +233,8 @@ export interface GameState {
   gameOver: boolean;
   winner: SuperpowerId | null;
   endCondition: 'supremacy' | 'detente' | 'holocaust' | null;
+  // D6: janela de reforço do defensor pós-combate (null = sem reforço pendente)
+  defenderReinforcement: DefenderReinforcement | null;
 }
 
 // ============================================================
@@ -321,4 +336,10 @@ export type GameAction =
   | { type: 'STOP_RESEARCH' }
   | { type: 'DRAW_PROSPECT_CARD' }
   | { type: 'STOP_PROSPECT' }
-  | { type: 'APPLY_AI_STEP'; state: GameState };
+  | { type: 'APPLY_AI_STEP'; state: GameState }
+  // D7: contra-ataque do defensor
+  | { type: 'COUNTER_ATTACK' }
+  | { type: 'SKIP_COUNTER_ATTACK' }
+  // D6: reforço do defensor pós-combate
+  | { type: 'REINFORCE_AFTER_COMBAT'; from: string; to: string; count: number }
+  | { type: 'SKIP_REINFORCEMENT' };

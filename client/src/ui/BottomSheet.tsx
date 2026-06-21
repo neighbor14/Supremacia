@@ -548,32 +548,32 @@ function BuildPanel() {
   const hasMoney = money >= RULES.UNIT_COST;
   const canBuildUnit = hasSupplies && hasMoney;
   const unitMissing: string[] = [];
-  if (!hasMoney) unitMissing.push(`$${(RULES.UNIT_COST - money).toLocaleString()}`);
-  if (grain < 1) unitMissing.push('1 cereal');
-  if (oil < 1) unitMissing.push('1 petróleo');
-  if (mineral < 1) unitMissing.push('1 minério');
+  if (!hasMoney) unitMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.UNIT_COST.toLocaleString()}`);
+  if (grain < 1) unitMissing.push(`🌾 cereal: ${grain}/1`);
+  if (oil < 1) unitMissing.push(`🛢️ petróleo: ${oil}/1`);
+  if (mineral < 1) unitMissing.push(`⛏️ minério: ${mineral}/1`);
 
   // Affordability — special weapons
   const canResearchNuke = !player.hasResearchedNuke && money >= RULES.RESEARCH_COST_PER_CARD;
   const nukeResearchMissing = !canResearchNuke && !player.hasResearchedNuke
-    ? [`$${(RULES.RESEARCH_COST_PER_CARD - money).toLocaleString()}`] : [];
+    ? [`💵 dinheiro: $${money.toLocaleString()} / $${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}`] : [];
 
   const canBuildNuke = player.hasResearchedNuke && money >= RULES.NUKE_COST && mineral >= RULES.NUKE_MINERAL_COST && player.nukes < RULES.MAX_NUKES;
   const nukeBuildMissing: string[] = [];
   if (player.hasResearchedNuke && player.nukes < RULES.MAX_NUKES) {
-    if (money < RULES.NUKE_COST) nukeBuildMissing.push(`$${(RULES.NUKE_COST - money).toLocaleString()}`);
-    if (mineral < RULES.NUKE_MINERAL_COST) nukeBuildMissing.push(`${RULES.NUKE_MINERAL_COST - mineral} minério`);
+    if (money < RULES.NUKE_COST) nukeBuildMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.NUKE_COST.toLocaleString()}`);
+    if (mineral < RULES.NUKE_MINERAL_COST) nukeBuildMissing.push(`⛏️ minério: ${mineral}/${RULES.NUKE_MINERAL_COST}`);
   }
 
   const canResearchLaser = !player.hasResearchedLaserStar && money >= RULES.RESEARCH_COST_PER_CARD;
   const laserResearchMissing = !canResearchLaser && !player.hasResearchedLaserStar
-    ? [`$${(RULES.RESEARCH_COST_PER_CARD - money).toLocaleString()}`] : [];
+    ? [`💵 dinheiro: $${money.toLocaleString()} / $${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}`] : [];
 
   const canBuildLaser = player.hasResearchedLaserStar && money >= RULES.LASER_STAR_COST && mineral >= RULES.LASER_STAR_MINERAL_COST && player.laserStars < RULES.MAX_LASER_STARS;
   const laserBuildMissing: string[] = [];
   if (player.hasResearchedLaserStar && player.laserStars < RULES.MAX_LASER_STARS) {
-    if (money < RULES.LASER_STAR_COST) laserBuildMissing.push(`$${(RULES.LASER_STAR_COST - money).toLocaleString()}`);
-    if (mineral < RULES.LASER_STAR_MINERAL_COST) laserBuildMissing.push(`${RULES.LASER_STAR_MINERAL_COST - mineral} minério`);
+    if (money < RULES.LASER_STAR_COST) laserBuildMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.LASER_STAR_COST.toLocaleString()}`);
+    if (mineral < RULES.LASER_STAR_MINERAL_COST) laserBuildMissing.push(`⛏️ minério em estoque: ${mineral}/${RULES.LASER_STAR_MINERAL_COST} (verifique painel esquerdo)`);
   }
 
   // Real-time research odds derived from the actual deck

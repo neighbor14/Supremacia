@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
@@ -27,7 +28,97 @@ const STAGE_ICONS: Record<number, string> = {
 
 const ORDINALS = ['1ª', '2ª', '3ª', '4ª', '5ª'];
 
+function RoundStatusPanel({ onClose }: { onClose: () => void }) {
+  const { game } = useGameStore();
+  if (!game) return null;
+  const { turn, players } = game;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-sm shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold" style={{ fontFamily: 'var(--font-display)' }}>Rodada</p>
+            <p className="text-2xl font-black font-mono leading-none" style={{ fontFamily: 'var(--font-display)' }}>{turn.turnNumber}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground">Vez</p>
+            <p className="text-lg font-bold font-mono">{turn.currentPlayerIndex + 1}<span className="text-muted-foreground text-sm">/{turn.playerOrder.length}</span></p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none ml-3">✕</button>
+        </div>
+
+        {/* Player list in turn order */}
+        <div className="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto">
+          {turn.playerOrder.map((pid, idx) => {
+            const p = players[pid];
+            const sp = SUPERPOWERS[pid];
+            const isCurrent = pid === turn.currentPlayer;
+            const isPast = idx < turn.currentPlayerIndex;
+            const isEliminated = p.isEliminated;
+
+            return (
+              <div
+                key={pid}
+                className={`rounded-lg px-3 py-2 border flex items-center gap-2 transition-all ${
+                  isCurrent ? 'border-primary/60 bg-primary/10' :
+                  isEliminated ? 'border-border/20 bg-secondary/10 opacity-40' :
+                  isPast ? 'border-border/30 bg-secondary/20' :
+                  'border-border/30 bg-secondary/5'
+                }`}
+              >
+                {/* Position number */}
+                <span className={`text-[10px] font-mono w-4 text-center shrink-0 ${isCurrent ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                  {idx + 1}
+                </span>
+
+                {/* Color dot */}
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
+
+                {/* Name */}
+                <span className={`text-[11px] font-semibold flex-1 truncate uppercase tracking-wider ${isEliminated ? 'line-through' : ''}`} style={{ fontFamily: 'var(--font-display)', color: isCurrent ? sp.color : undefined }}>
+                  {sp.shortName}
+                  {!p.isHuman && <span className="text-[9px] text-muted-foreground ml-1 normal-case">CPU</span>}
+                </span>
+
+                {/* Status badges */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* Research status */}
+                  {p.hasResearchedNuke
+                    ? <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/20 text-destructive font-bold">☢️{p.nukes}</span>
+                    : <span className="text-[9px] px-1 py-0.5 rounded bg-secondary/30 text-muted-foreground/40">☢️–</span>
+                  }
+                  {p.hasResearchedLaserStar
+                    ? <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400 font-bold">🛡️{p.laserStars}</span>
+                    : <span className="text-[9px] px-1 py-0.5 rounded bg-secondary/30 text-muted-foreground/40">🛡️–</span>
+                  }
+                </div>
+
+                {/* Turn marker */}
+                {isCurrent && <span className="text-[9px] text-primary font-bold shrink-0">▶ jogando</span>}
+                {isPast && !isEliminated && <span className="text-[9px] text-muted-foreground/50 shrink-0">✓ feito</span>}
+                {isEliminated && <span className="text-[9px] text-muted-foreground/40 shrink-0">eliminado</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Legend */}
+        <div className="px-4 py-2.5 border-t border-border/40 flex gap-3 flex-wrap">
+          <span className="text-[9px] text-muted-foreground">☢️ = ogivas nucleares pesquisadas/qtd</span>
+          <span className="text-[9px] text-muted-foreground">🛡️ = laser-stars pesquisadas/qtd</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TurnPhaseBar() {
+  const [showRoundPanel, setShowRoundPanel] = useState(false);
   const { game, dispatch } = useGameStore();
   if (!game) return null;
 
@@ -109,6 +200,7 @@ export default function TurnPhaseBar() {
   };
 
   return (
+    <>
     <div className="flex-shrink-0 bg-card border-b border-border px-3 py-2 safe-top">
       {/* Top row: Player info + Turn */}
       <div className="flex items-center justify-between mb-1.5">
@@ -121,9 +213,17 @@ export default function TurnPhaseBar() {
             <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded uppercase">CPU</span>
           )}
         </div>
-        <span className="text-xs text-muted-foreground font-mono">
-          Turno {turn.turnNumber}
-        </span>
+        <button
+          onClick={() => setShowRoundPanel(true)}
+          className="text-xs font-mono text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-secondary/50 active:scale-[0.97]"
+          title="Ver status de todos os jogadores"
+        >
+          <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>Rod.</span>
+          <span className="font-bold">{turn.turnNumber}</span>
+          <span className="text-muted-foreground/40">·</span>
+          <span className="text-[10px]">{turn.currentPlayerIndex + 1}/{turn.playerOrder.length}</span>
+          <span className="text-[9px] text-muted-foreground/40 ml-0.5">ℹ</span>
+        </button>
       </div>
 
       {/* Choosing mode: optional stage selection with counter + progress */}
@@ -295,5 +395,7 @@ export default function TurnPhaseBar() {
         </>
       )}
     </div>
+    {showRoundPanel && <RoundStatusPanel onClose={() => setShowRoundPanel(false)} />}
+    </>
   );
 }

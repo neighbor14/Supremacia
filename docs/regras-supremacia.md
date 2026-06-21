@@ -137,3 +137,26 @@ log de eventos nomeando as companhias dormentes. Implementado em `paySalaries` e
 - **Prospecção por tipo de recurso.** Conveniência digital: o jogador escolhe
   cereal/petróleo/minério e o jogo vira cartas reais do baralho até achar uma
   companhia do tipo, cobrando por carta; as não-correspondentes voltam ao baralho.
+
+---
+
+## Divergências implementadas (2026-06-21)
+
+Todas as 8 divergências identificadas na auditoria do manual Grow foram corrigidas:
+
+| # | Regra | Antes | Agora | Onde |
+|---|---|---|---|---|
+| D1 | Preço mínimo de mercado | $1.000 | $10 | `MARKET_MIN_PRICE` |
+| D2 | Preço máximo de mercado | $12.000 | $10.000 | `MARKET_MAX_PRICE` |
+| D3 | Prospecção por turno | 1× | 3× (`MAX_PROSPECT_ATTEMPTS`) | `prospect()` |
+| D4 | Múltiplo de empréstimo | $5.000 | $10.000 | `LOAN_MULTIPLE` |
+| D5 | Juros de empréstimo | 10% | 5% | `LOAN_INTEREST_RATE` |
+| D6 | Reforço do defensor pós-combate | ausente | implementado | `checkDefenderReinforcement()` |
+| D7 | Contra-ataque do defensor | ausente | implementado | `executeCounterAttack()` |
+| D8 | Mar costeiro — uso restrito | sem restrição | 1 jogador por zona costeira | `moveNavy()` |
+
+**D6/D7 — notas de implementação:**
+- Quando humano ataca IA: IA decide contra-atacar (baseado em perfil de agressividade) e reforça automaticamente.
+- Quando IA ataca humano: turno da IA pausa, humano recebe prompt para contra-atacar (`COUNTER_ATTACK`/`SKIP_COUNTER_ATTACK`) e reforçar (`REINFORCE_AFTER_COMBAT`/`SKIP_REINFORCEMENT`). Após ação humana, turno da IA é finalizado.
+
+**D8 — nota:** combate naval em mares costeiros ainda não implementado. Entrar em mar costeiro já ocupado por outro jogador é bloqueado com mensagem explicativa.
