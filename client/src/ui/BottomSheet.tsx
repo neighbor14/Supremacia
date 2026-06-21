@@ -438,10 +438,10 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
 // ============================================================
 
 /** Single resource pill shown in the player resource bar */
-function ResChip({ icon, value, dim }: { icon: string; value: string | number; dim?: boolean }) {
+function ResChip({ icon, label, value, dim }: { icon: string; label: string; value: string | number; dim?: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono font-semibold bg-secondary/70 ${dim ? 'text-muted-foreground' : 'text-foreground'}`}>
-      {icon} {value}
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono font-semibold ${dim ? 'bg-destructive/15 text-destructive border border-destructive/30' : 'bg-secondary/70 text-foreground'}`}>
+      {icon} <span className="text-[9px] opacity-60 font-normal">{label}</span> {value}
     </span>
   );
 }
@@ -543,15 +543,24 @@ function BuildPanel() {
   const oil = player.supplies.oil;
   const mineral = player.supplies.mineral;
 
-  // Affordability — units (1 unit per click = $1.000 + 1 set of supplies)
-  const hasSupplies = grain >= 1 && oil >= 1 && mineral >= 1;
+  // Affordability — units. Fidelidade 3.7.1: 1 conjunto de suprimentos constrói
+  // 3 peças. A próxima unidade só consome um novo conjunto quando a contagem do
+  // turno está num múltiplo de UNITS_PER_SUPPLY_SET; senão entra "de graça" no
+  // conjunto já pago.
+  const unitsBuiltThisTurn = game.turn.unitsBuiltThisTurn;
+  const setSize = RULES.UNITS_PER_SUPPLY_SET;
+  const nextUnitNeedsNewSet = unitsBuiltThisTurn % setSize === 0;
+  const freeUnitsInSet = nextUnitNeedsNewSet ? 0 : setSize - (unitsBuiltThisTurn % setSize);
+  const hasSupplies = !nextUnitNeedsNewSet || (grain >= 1 && oil >= 1 && mineral >= 1);
   const hasMoney = money >= RULES.UNIT_COST;
   const canBuildUnit = hasSupplies && hasMoney;
   const unitMissing: string[] = [];
   if (!hasMoney) unitMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.UNIT_COST.toLocaleString()}`);
-  if (grain < 1) unitMissing.push(`🌾 cereal: ${grain}/1`);
-  if (oil < 1) unitMissing.push(`🛢️ petróleo: ${oil}/1`);
-  if (mineral < 1) unitMissing.push(`⛏️ minério: ${mineral}/1`);
+  if (nextUnitNeedsNewSet) {
+    if (grain < 1) unitMissing.push(`🌾 cereal: ${grain}/1`);
+    if (oil < 1) unitMissing.push(`🛢️ petróleo: ${oil}/1`);
+    if (mineral < 1) unitMissing.push(`⛏️ minério: ${mineral}/1`);
+  }
 
   // Affordability — special weapons
   const canResearchNuke = !player.hasResearchedNuke && money >= RULES.RESEARCH_COST_PER_CARD;
@@ -573,7 +582,7 @@ function BuildPanel() {
   const laserBuildMissing: string[] = [];
   if (player.hasResearchedLaserStar && player.laserStars < RULES.MAX_LASER_STARS) {
     if (money < RULES.LASER_STAR_COST) laserBuildMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.LASER_STAR_COST.toLocaleString()}`);
-    if (mineral < RULES.LASER_STAR_MINERAL_COST) laserBuildMissing.push(`⛏️ minério em estoque: ${mineral}/${RULES.LASER_STAR_MINERAL_COST} (verifique painel esquerdo)`);
+    if (mineral < RULES.LASER_STAR_MINERAL_COST) laserBuildMissing.push(`⛏️ minério: ${mineral}/${RULES.LASER_STAR_MINERAL_COST}`);
   }
 
   // Real-time research odds derived from the actual deck
@@ -593,10 +602,10 @@ function BuildPanel() {
           🏗️ Construção
         </h3>
         <div className="flex flex-wrap gap-1.5">
-          <ResChip icon="💵" value={`$${money.toLocaleString()}`} />
-          <ResChip icon="🌾" value={grain} dim={grain === 0} />
-          <ResChip icon="🛢️" value={oil} dim={oil === 0} />
-          <ResChip icon="⛏️" value={mineral} dim={mineral === 0} />
+          <ResChip icon="💵" label="Dinheiro" value={`$${money.toLocaleString()}`} />
+          <ResChip icon="🌾" label="Cereal" value={grain} dim={grain === 0} />
+          <ResChip icon="🛢️" label="Petróleo" value={oil} dim={oil === 0} />
+          <ResChip icon="⛏️" label="Minério" value={mineral} dim={mineral === 0} />
         </div>
       </div>
 
@@ -605,9 +614,12 @@ function BuildPanel() {
         <BuildActionCard
           icon="🎖️"
           title="Construir Exército"
-          costLabel={`$${RULES.UNIT_COST.toLocaleString()} + 1 cereal + 1 petróleo + 1 minério`}
+          costLabel={`$${RULES.UNIT_COST.toLocaleString()} por unidade · 1 conjunto (1 cereal + 1 petróleo + 1 minério) a cada ${setSize} peças`}
           canAfford={canBuildUnit}
           missing={unitMissing}
+          extra={freeUnitsInSet > 0
+            ? `Conjunto pago: ${freeUnitsInSet} peça(s) restante(s) sem custo de suprimento`
+            : `Próxima peça abre um novo conjunto de suprimentos`}
         >
           <p className="text-[10px] text-emerald-400 font-medium mb-1.5">Escolha o território:</p>
           <div className="flex flex-wrap gap-1.5">
@@ -628,7 +640,7 @@ function BuildPanel() {
           <BuildActionCard
             icon="⚓"
             title="Construir Esquadra (Navio)"
-            costLabel={`$${RULES.UNIT_COST.toLocaleString()} + 1 cereal + 1 petróleo + 1 minério · requer porto`}
+            costLabel={`$${RULES.UNIT_COST.toLocaleString()} por esquadra · 1 conjunto a cada ${setSize} peças · requer porto`}
             canAfford={canBuildUnit && navalZones.length > 0}
             missing={
               !canBuildUnit ? unitMissing
@@ -680,7 +692,7 @@ function BuildPanel() {
                 costLabel={`$${RULES.NUKE_COST.toLocaleString()} + ${RULES.NUKE_MINERAL_COST} minério`}
                 canAfford={canBuildNuke}
                 missing={nukeBuildMissing}
-                extra={`Em estoque: ${player.nukes} bomba(s) · máx ${RULES.MAX_NUKES}`}
+                extra={`Ogivas construídas: ${player.nukes} / ${RULES.MAX_NUKES}`}
                 action={{ label: 'Construir', onClick: () => { playSound('missile-launch', 0.5); dispatch({ type: 'BUILD_NUKE' }); } }}
               />
             )}
@@ -708,7 +720,7 @@ function BuildPanel() {
                 costLabel={`$${RULES.LASER_STAR_COST.toLocaleString()} + ${RULES.LASER_STAR_MINERAL_COST} minério`}
                 canAfford={canBuildLaser}
                 missing={laserBuildMissing}
-                extra={`Em estoque: ${player.laserStars} Laser-Star(s) · máx ${RULES.MAX_LASER_STARS}`}
+                extra={`Laser-Stars construídos: ${player.laserStars} / ${RULES.MAX_LASER_STARS}`}
                 action={{ label: 'Construir', onClick: () => { playSound('diplomacy-alert', 0.8); dispatch({ type: 'BUILD_LASER_STAR' }); } }}
               />
             )}

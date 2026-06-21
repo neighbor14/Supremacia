@@ -123,6 +123,7 @@ export function createInitialGameState(
     attackedFrom: [],
     unpaidCompanies: [],
     prospectAttemptsUsed: 0,
+    unitsBuiltThisTurn: 0,
   };
 
   const combat: CombatState = {

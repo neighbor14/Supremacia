@@ -117,6 +117,24 @@ A UX **avisa** o jogador: toast em `TurnPhaseBar` ao pagar salários + entrada n
 log de eventos nomeando as companhias dormentes. Implementado em `paySalaries` e
 `transferProduction` (`store.ts`); coberto por testes em `__tests__/conquest.test.ts`.
 
+### Construção de unidades — 3 peças por conjunto (fiel ao manual Grow 3.7.1)
+
+> "$1.000 por unidade (exército ou esquadra). Um conjunto de suprimentos (1 cereal
+> + 1 petróleo + 1 minério) constrói **três** peças militares — três exércitos,
+> três esquadras, ou qualquer combinação de três."
+
+Cada unidade custa **$1.000**; o **conjunto de suprimentos** (1 de cada recurso) só
+é debitado **a cada 3 peças**, em qualquer combinação de exércitos/esquadras. Como a
+UI constrói 1 peça por clique, o estado de turno acumula `turn.unitsBuiltThisTurn` e
+`buildUnits` (`store.ts`) só cobra um novo conjunto quando a contagem cruza um
+múltiplo de `RULES.UNITS_PER_SUPPLY_SET` (3). O contador **reseta a cada turno**
+(`advanceToNextPlayer`). Coberto por `__tests__/build-units.test.ts`.
+
+> **Correção de fidelidade (bug P1):** antes, o despacho 1-a-1 chamava
+> `Math.ceil(1/3) = 1` por clique, cobrando **1 conjunto inteiro por unidade** —
+> triplicando o custo de suprimentos e drenando o minério. O `UNITS_PER_SUPPLY_SET:
+> 3` estava correto; o erro era a UI não acumular as peças do turno.
+
 ## 8. Condições de vitória
 
 - **Supremacia**: restar um único jogador não eliminado.

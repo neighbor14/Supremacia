@@ -111,6 +111,12 @@ export interface TurnState {
   // Fidelidade D3: manual Grow permite até 3 tentativas de prospecção por turno
   // no Estágio 7. Incrementa a cada nova sessão iniciada; reseta a cada turno.
   prospectAttemptsUsed: number;
+  // Fidelidade 3.7.1: manual Grow — 1 conjunto de suprimentos (1 cereal + 1
+  // petróleo + 1 minério) constrói TRÊS peças militares (exércitos/esquadras, em
+  // qualquer combinação). Como a UI constrói 1 unidade por clique, contamos as
+  // unidades construídas neste turno e só cobramos 1 conjunto a cada 3 peças.
+  // Reseta a cada turno.
+  unitsBuiltThisTurn: number;
 }
 
 export interface MarketState {

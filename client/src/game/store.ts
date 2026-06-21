@@ -611,6 +611,7 @@ function advanceToNextPlayer(state: GameState): void {
   // Reset per-turn tracking
   state.turn.attackedFrom = [];
   state.turn.prospectAttemptsUsed = 0;
+  state.turn.unitsBuiltThisTurn = 0;
 
   // Victory check: only one (or zero) non-eliminated player remains
   const active = state.turn.playerOrder.filter(id => !state.players[id].isEliminated);
@@ -695,8 +696,16 @@ function selectOptionalStage(state: GameState, stage: TurnStage): void {
 
 function buildUnits(state: GameState, units: Array<{ type: UnitType; locationId: string }>): void {
   const player = state.players[state.turn.currentPlayer];
-  // Check supply sets needed
-  const setsNeeded = Math.ceil(units.length / RULES.UNITS_PER_SUPPLY_SET);
+  // Fidelidade 3.7.1 (manual Grow): 1 conjunto de suprimentos (1 cereal +
+  // 1 petróleo + 1 minério) constrói 3 peças militares. Como a UI constrói 1
+  // unidade por clique, acumulamos as unidades do turno e só cobramos um novo
+  // conjunto quando a contagem cruza um múltiplo de UNITS_PER_SUPPLY_SET — assim
+  // 3 unidades avulsas custam 1 conjunto, não 3.
+  const alreadyBuilt = state.turn.unitsBuiltThisTurn;
+  const newTotal = alreadyBuilt + units.length;
+  const setsAlreadyPaid = Math.ceil(alreadyBuilt / RULES.UNITS_PER_SUPPLY_SET);
+  const setsAfter = Math.ceil(newTotal / RULES.UNITS_PER_SUPPLY_SET);
+  const setsNeeded = setsAfter - setsAlreadyPaid;
   const moneyCost = units.length * RULES.UNIT_COST;
 
   if (player.supplies.grain < setsNeeded || player.supplies.oil < setsNeeded || player.supplies.mineral < setsNeeded) {
@@ -712,6 +721,7 @@ function buildUnits(state: GameState, units: Array<{ type: UnitType; locationId:
   player.supplies.oil -= setsNeeded;
   player.supplies.mineral -= setsNeeded;
   player.money -= moneyCost;
+  state.turn.unitsBuiltThisTurn = newTotal;
 
   for (const unit of units) {
     if (unit.type === 'army') {
@@ -2958,6 +2968,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!p.type) (p as any).type = p.isHuman ? 'human' : 'ai';
     }
     if (state.prospectingSession === undefined) (state as any).prospectingSession = null;
+    // Migrate saves that pre-date the per-turn unit-build counter
+    if (state.turn && (state.turn as any).unitsBuiltThisTurn === undefined) {
+      (state.turn as any).unitsBuiltThisTurn = 0;
+    }
     set({ game: state });
   },
 
