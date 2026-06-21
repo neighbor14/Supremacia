@@ -177,49 +177,116 @@ function landAdjacentToOwn(state: GameState, territoryId: string, selfId: string
   return t.adjacentTerritories.some(adj => state.territories[adj]?.owner === selfId);
 }
 
+// Limite de pernas navais de uma invasão anfíbia (legibilidade no mobile + custo de
+// petróleo sob controle). Cobre travessias intercontinentais (costa→oceano→costa).
+const AMPHIBIOUS_MAX_LEGS = 3;
+
+/** Plano completo de uma invasão anfíbia, partilhado por leitura e execução. */
+export interface AmphibiousPlan {
+  embarkTerritory: string | null; // origem do embarque (null = usa tropa já embarcada)
+  startSea: string;               // mar onde a frota está agora
+  route: string[];                // caminho de mares [startSea, …, landSea]; legs = len-1
+  landSea: string;                // mar de onde se desembarca
+  landTerritory: string;          // terra neutra desguarnecida a conquistar
+  spareArmies: number;            // tropa embarcável na origem (mantém ≥1 em casa)
+  navies: number;                 // esquadras na frota (capacidade de transporte)
+}
+
+/** Terra costeira NEUTRA, desguarnecida e fora do alcance terrestre = alvo de desembarque. */
+function isAmphibiousLandTarget(state: GameState, player: Player, territoryId: string): boolean {
+  const terr = state.territories[territoryId];
+  return !!terr && !terr.nuked && terr.owner === null &&
+    enemyForcesOn(state, territoryId, player.id) === 0 &&
+    !landAdjacentToOwn(state, territoryId, player.id);
+}
+
+/** Mar costeiro ocupado por outro jogador → moveNavy recusa entrar (D8). Oceano nunca bloqueia. */
+function seaBlockedForPlayer(state: GameState, player: Player, seaId: string): boolean {
+  const s = state.seaZones[seaId];
+  if (!s) return true;
+  if (s.type !== 'coastal') return false;
+  return Object.entries(state.players).some(
+    ([pid, p]) => pid !== player.id && ((p as Player).navies[seaId] || 0) > 0,
+  );
+}
+
 /**
- * Lê oportunidades de INVASÃO ANFÍBIA (read-only): embarcar tropa de um território
- * costeiro próprio, navegar e desembarcar em terra costeira NEUTRA e desguarnecida
- * que NÃO seja alcançável por terra (senão a expansão terrestre, mais barata, já
- * resolve). Fiel ao manual: desembarque só toma terra neutra/vazia — território
- * inimigo continua exigindo a fase de Combate (ver docs/regras-supremacia.md §3).
- * Conta cenários de 0 pernas (mesmo mar costeiro toca as duas praias) e de 1 perna
- * (uma zona naval adjacente, que custa petróleo).
+ * BFS no grafo de mares a partir de `startSea`, achando o caminho MAIS CURTO até um
+ * mar que toque um alvo de desembarque. `maxLegs` limita o nº de movimentos navais
+ * (= len do caminho − 1); mares bloqueados (costeiros ocupados) são evitados, igual
+ * ao que moveNavy faria. Retorna o caminho + mar/território de desembarque, ou null.
  */
-function readAmphibious(state: GameState, player: Player): number {
-  const oilForLeg = player.supplies.oil >= RULES.SEA_MOVE_OIL_COST;
-  let count = 0;
+function findAmphibiousRoute(
+  state: GameState,
+  player: Player,
+  startSea: string,
+  maxLegs: number,
+): { route: string[]; landSea: string; landTerritory: string } | null {
+  const visited = new Set<string>([startSea]);
+  let frontier: string[][] = [[startSea]];
+
+  for (let legs = 0; legs <= maxLegs && frontier.length > 0; legs++) {
+    const next: string[][] = [];
+    for (const path of frontier) {
+      const cur = path[path.length - 1];
+      const s = state.seaZones[cur];
+      if (!s) continue;
+      // Dá para desembarcar daqui?
+      const target = s.adjacentTerritories.find(t => isAmphibiousLandTarget(state, player, t));
+      if (target) return { route: path, landSea: cur, landTerritory: target };
+      // Expande para os mares adjacentes (próxima perna), se ainda há orçamento.
+      if (legs < maxLegs) {
+        for (const adj of s.adjacentSeas) {
+          if (visited.has(adj) || seaBlockedForPlayer(state, player, adj)) continue;
+          visited.add(adj);
+          next.push([...path, adj]);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+/**
+ * PLANNER PURO da invasão anfíbia (fonte única usada pela leitura/score do engine E
+ * pelo executor no store). Acha uma frota própria com carga (território costeiro
+ * próprio com tropa sobrando, ou tropa já embarcada) e uma rota naval — de 0 a
+ * AMPHIBIOUS_MAX_LEGS pernas, limitada pelo petróleo — até terra costeira NEUTRA e
+ * desguarnecida fora do alcance terrestre. Fiel ao manual: desembarque só toma terra
+ * neutra/vazia; território inimigo continua exigindo a fase de Combate (§3). Read-only.
+ */
+export function planAmphibiousInvasion(state: GameState, player: Player): AmphibiousPlan | null {
+  const cost = RULES.SEA_MOVE_OIL_COST;
+  const oilLegs = player.supplies.oil >= cost
+    ? Math.min(Math.floor(player.supplies.oil / cost), AMPHIBIOUS_MAX_LEGS)
+    : 0;
 
   for (const [seaId, navies] of Object.entries(player.navies)) {
     if (navies <= 0) continue;
     const sea = state.seaZones[seaId];
     if (!sea) continue;
 
-    // Precisa de carga: tropa embarcável (território próprio adjacente com ≥2) ou
-    // tropa já embarcada nesta zona.
-    const hasEmbarkSource = sea.adjacentTerritories.some(
+    const embarkTerritory = sea.adjacentTerritories.find(
       t => state.territories[t]?.owner === player.id && (player.armies[t] || 0) >= 2,
-    );
+    ) ?? null;
     const alreadyEmbarked = (player.embarked?.[seaId] || 0) > 0;
-    if (!hasEmbarkSource && !alreadyEmbarked) continue;
+    if (!embarkTerritory && !alreadyEmbarked) continue;
 
-    // Mares de onde dá para desembarcar: o próprio (0 pernas) e, se houver
-    // petróleo, os adjacentes (1 perna).
-    const reachableSeas = oilForLeg ? [seaId, ...sea.adjacentSeas] : [seaId];
-    const hasLanding = reachableSeas.some(sid => {
-      const s = state.seaZones[sid];
-      if (!s) return false;
-      return s.adjacentTerritories.some(t => {
-        const terr = state.territories[t];
-        return terr && !terr.nuked && terr.owner === null &&
-          enemyForcesOn(state, t, player.id) === 0 &&
-          !landAdjacentToOwn(state, t, player.id);
-      });
-    });
-    if (hasLanding) count++;
+    const route = findAmphibiousRoute(state, player, seaId, oilLegs);
+    if (!route) continue;
+
+    return {
+      embarkTerritory,
+      startSea: seaId,
+      route: route.route,
+      landSea: route.landSea,
+      landTerritory: route.landTerritory,
+      spareArmies: embarkTerritory ? Math.max(0, (player.armies[embarkTerritory] || 0) - 1) : 0,
+      navies,
+    };
   }
-
-  return count;
+  return null;
 }
 
 /**
@@ -275,7 +342,8 @@ function readMovement(state: GameState, player: Player): MovementRead {
     }
   }
 
-  const amphibiousTargets = readAmphibious(state, player);
+  // Invasão anfíbia: 1 se há um plano viável (a IA faz no máx. 1 op/turno).
+  const amphibiousTargets = planAmphibiousInvasion(state, player) ? 1 : 0;
 
   return { expansionTargets, reinforceTargets, navalRepositions, amphibiousTargets };
 }

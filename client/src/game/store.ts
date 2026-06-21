@@ -6,13 +6,23 @@ import { rollDice, sumDice, shuffleArray } from './rng';
 import { SUPERPOWER_IDS, SUPERPOWERS } from '../data/initialPlayers';
 import { nanoid } from 'nanoid';
 import { isNukeCard, isLaserCard, isTechCard, getTechCounts } from './researchDeck';
-import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, OptionalStage, AIConfig } from './ai';
+import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, planAmphibiousInvasion, OptionalStage, AIConfig } from './ai';
+
+/**
+ * Build-selection mode (fase Construir). When the player picks "Construir
+ * Exército" or "Construir Esquadra", the HUD enters a target-selection mode and
+ * the player taps a highlighted territory/sea directly on the map. `null` means
+ * no pending build action (weapons research/build are one-click and never use it).
+ */
+export type BuildAction = 'army' | 'navy' | null;
 
 interface GameStore {
   game: GameState | null;
   selectedTerritory: string | null;
   selectedSeaZone: string | null;
   uiMode: 'map' | 'market' | 'build' | 'move' | 'attack' | 'nuclear';
+  /** Pending build action awaiting a map click (army/navy), or null. */
+  buildAction: BuildAction;
 
   // Actions
   startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => void;
@@ -20,8 +30,39 @@ interface GameStore {
   selectTerritory: (id: string | null) => void;
   selectSeaZone: (id: string | null) => void;
   setUiMode: (mode: GameStore['uiMode']) => void;
+  setBuildAction: (action: BuildAction) => void;
   loadGame: (state: GameState) => void;
   saveGame: () => string;
+}
+
+/**
+ * Single source of truth for where the current player may place a newly built
+ * unit. Army → controlled, non-nuked land territories (home + foreign held).
+ * Navy → sea zones adjacent to a port the player controls. The BuildPanel HUD
+ * and the WorldMap highlight both read from here so they can never disagree.
+ */
+export function getBuildTargets(game: GameState, action: BuildAction): string[] {
+  if (!action) return [];
+  const player = game.players[game.turn.currentPlayer];
+  const homeTs = Object.values(game.territories).filter(
+    t => t.superpowerId === player.id && !t.nuked && t.owner === player.id
+  );
+  const foreignTs = Object.entries(player.armies)
+    .filter(([tid, count]) => count > 0 && game.territories[tid]?.superpowerId !== player.id && game.territories[tid]?.owner === player.id)
+    .map(([tid]) => game.territories[tid])
+    .filter(Boolean);
+  const allLand = [...homeTs, ...foreignTs];
+
+  if (action === 'army') {
+    return allLand.map(t => t.id);
+  }
+
+  // navy: sea zones adjacent to a controlled port
+  const navalZoneIds = new Set<string>();
+  allLand.forEach(t => {
+    if (t.hasPort) t.adjacentSeas.forEach(s => navalZoneIds.add(s));
+  });
+  return Array.from(navalZoneIds).filter(id => !!game.seaZones[id]);
 }
 
 const RESOURCE_NAME: Record<ResourceType, string> = { grain: 'cereal', oil: 'petróleo', mineral: 'minério' };
@@ -2275,110 +2316,81 @@ function cpuMove(state: GameState, player: typeof state.players[SuperpowerId], c
   return results;
 }
 
-// Tenta UMA invasão anfíbia. Lê o mesmo grafo terra↔mar que o humano e executa
-// via embark/moveNavy/disembark. Retorna true se desembarcou (conquistando terra
-// neutra). Bounded: no máximo 1 operação por turno (custo de petróleo + legível).
+// Executa UMA invasão anfíbia a partir do plano do engine (planAmphibiousInvasion,
+// fonte única read-only). Embarca → navega a rota (0..N pernas) → desembarca, usando
+// os MESMOS executores do humano (embark/moveNavy/disembark). disembark conquista
+// terra neutra/vazia e recusa terra inimiga — assalto a inimigo só pela fase de
+// Combate. Retorna true se comprometeu a frota (mesmo que a rota falhe no meio, as
+// tropas ficam embarcadas em estado válido p/ continuar no próximo turno).
 function tryAmphibiousInvasion(
   state: GameState,
   player: typeof state.players[SuperpowerId],
   results: CpuMoveResult[],
 ): boolean {
-  const enemyOn = (tid: string): number => {
-    let f = 0;
-    for (const [pid, p] of Object.entries(state.players)) {
-      if (pid === player.id) continue;
-      f += (p as Player).armies[tid] || 0;
-    }
-    return f;
-  };
-  const landAdjOwn = (tid: string): boolean =>
-    !!state.territories[tid]?.adjacentTerritories.some(a => state.territories[a]?.owner === player.id);
-  const isLandingTarget = (tid: string): boolean => {
-    const terr = state.territories[tid];
-    return !!terr && !terr.nuked && terr.owner === null && enemyOn(tid) === 0 && !landAdjOwn(tid);
-  };
-  const oilForLeg = player.supplies.oil >= RULES.SEA_MOVE_OIL_COST;
+  const plan = planAmphibiousInvasion(state, player);
+  if (!plan) return false;
 
-  for (const [seaId, navies] of Object.entries(player.navies)) {
-    if (navies <= 0) continue;
-    const sea = state.seaZones[seaId];
-    if (!sea) continue;
+  const startLen = results.length;
 
-    // Origem de embarque: território costeiro próprio com tropa sobrando (≥2, mantém 1).
-    const embarkT = sea.adjacentTerritories.find(
-      t => state.territories[t]?.owner === player.id && (player.armies[t] || 0) >= 2,
-    );
-    const alreadyEmbarked = (player.embarked[seaId] || 0) > 0;
-    if (!embarkT && !alreadyEmbarked) continue;
-
-    // Acha (mar de desembarque, território-alvo): 0 pernas no próprio mar, ou 1
-    // perna num mar adjacente (custa petróleo).
-    const candidateSeas = oilForLeg ? [seaId, ...sea.adjacentSeas] : [seaId];
-    let landSea = '';
-    let landT = '';
-    for (const sid of candidateSeas) {
-      const s = state.seaZones[sid];
-      if (!s) continue;
-      const target = s.adjacentTerritories.find(isLandingTarget);
-      if (target) { landSea = sid; landT = target; break; }
-    }
-    if (!landT) continue;
-
-    // Capacidade de transporte da frota nesta zona.
-    const capacity = navies * RULES.NAVY_TRANSPORT_CAPACITY;
-
-    // Embarca (se necessário) — mantém ≥1 defendendo a origem; até 3 por legibilidade.
-    if (embarkT) {
-      const spare = (player.armies[embarkT] || 0) - 1;
-      const toEmbark = Math.min(spare, capacity - (player.embarked[seaId] || 0), 3);
-      if (toEmbark > 0) {
-        const before = player.embarked[seaId] || 0;
-        embark(state, embarkT, seaId, toEmbark);
-        const embarked = (player.embarked[seaId] || 0) - before;
-        if (embarked > 0) {
-          results.push({
-            kind: 'embark',
-            fromId: embarkT, toId: seaId,
-            fromName: state.territories[embarkT]?.name || embarkT, toName: sea.name,
-            count: embarked, claimed: false,
-          });
-        }
+  // 1) Embarca, se há origem (mantém ≥1 defendendo; até 3 por legibilidade).
+  if (plan.embarkTerritory) {
+    const capacity = plan.navies * RULES.NAVY_TRANSPORT_CAPACITY;
+    const toEmbark = Math.min(plan.spareArmies, capacity - (player.embarked[plan.startSea] || 0), 3);
+    if (toEmbark > 0) {
+      const before = player.embarked[plan.startSea] || 0;
+      embark(state, plan.embarkTerritory, plan.startSea, toEmbark);
+      const embarked = (player.embarked[plan.startSea] || 0) - before;
+      if (embarked > 0) {
+        results.push({
+          kind: 'embark',
+          fromId: plan.embarkTerritory, toId: plan.startSea,
+          fromName: state.territories[plan.embarkTerritory]?.name || plan.embarkTerritory,
+          toName: state.seaZones[plan.startSea]?.name || plan.startSea,
+          count: embarked, claimed: false,
+        });
       }
     }
+  }
+  if ((player.embarked[plan.startSea] || 0) <= 0) return results.length > startLen;
 
-    const aboard = player.embarked[seaId] || 0;
-    if (aboard <= 0) continue; // nada embarcou (capacidade/tropa) → desiste desta frota
-
-    // Navega a perna (carrega a tropa embarcada) quando o alvo está num mar vizinho.
-    if (landSea !== seaId) {
-      const beforeNavy = player.navies[landSea] || 0;
-      moveNavy(state, seaId, landSea, navies); // move a frota inteira → capacidade acompanha
-      if ((player.navies[landSea] || 0) <= beforeNavy) continue; // bloqueado (mar costeiro ocupado) → aborta
-      results.push({
-        kind: 'naval',
-        fromId: seaId, toId: landSea,
-        fromName: sea.name, toName: state.seaZones[landSea]?.name || landSea,
-        count: navies, claimed: false,
-      });
-    }
-
-    // Desembarca → conquista a terra neutra desguarnecida (mesma regra do humano).
-    const landed = player.embarked[landSea] || 0;
-    if (landed <= 0) continue;
-    const beforeOwner = state.territories[landT]?.owner ?? null;
-    disembark(state, landSea, landT, landed);
-    const claimed = state.territories[landT]?.owner === player.id && beforeOwner !== player.id;
+  // 2) Navega cada perna da rota, carregando a tropa embarcada (move a frota inteira
+  //    → a capacidade de transporte acompanha). Para se uma perna for bloqueada.
+  let currentSea = plan.startSea;
+  for (let i = 0; i < plan.route.length - 1; i++) {
+    const to = plan.route[i + 1];
+    const navHere = player.navies[currentSea] || 0;
+    if (navHere <= 0) break;
+    const beforeNavy = player.navies[to] || 0;
+    moveNavy(state, currentSea, to, navHere);
+    if ((player.navies[to] || 0) <= beforeNavy) break; // bloqueado / sem petróleo
     results.push({
-      kind: 'amphibious',
-      fromId: landSea, toId: landT,
-      fromName: state.seaZones[landSea]?.name || landSea,
-      toName: state.territories[landT]?.name || landT,
-      count: landed, claimed,
+      kind: 'naval',
+      fromId: currentSea, toId: to,
+      fromName: state.seaZones[currentSea]?.name || currentSea,
+      toName: state.seaZones[to]?.name || to,
+      count: navHere, claimed: false,
     });
-    return true; // uma invasão anfíbia por turno
+    currentSea = to;
   }
 
-  return false;
+  // 3) Desembarca → conquista a terra neutra desguarnecida (mesma regra do humano).
+  //    Só se a frota de fato chegou a um mar que toca o alvo (rota pode ter parado antes).
+  const landed = player.embarked[currentSea] || 0;
+  const touchesTarget = state.seaZones[currentSea]?.adjacentTerritories.includes(plan.landTerritory);
+  if (landed > 0 && touchesTarget) {
+    const beforeOwner = state.territories[plan.landTerritory]?.owner ?? null;
+    disembark(state, currentSea, plan.landTerritory, landed);
+    const claimed = state.territories[plan.landTerritory]?.owner === player.id && beforeOwner !== player.id;
+    results.push({
+      kind: 'amphibious',
+      fromId: currentSea, toId: plan.landTerritory,
+      fromName: state.seaZones[currentSea]?.name || currentSea,
+      toName: state.territories[plan.landTerritory]?.name || plan.landTerritory,
+      count: landed, claimed,
+    });
+  }
+
+  return results.length > startLen; // comprometeu a frota → não faz reposição naval
 }
 
 // ============================================================
@@ -2743,12 +2755,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedTerritory: null,
   selectedSeaZone: null,
   uiMode: 'map',
+  buildAction: null,
 
   startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => {
     const otherIds = shuffleArray(SUPERPOWER_IDS.filter(id => id !== humanPlayer));
     const activeAiIds = otherIds.slice(0, Math.min(aiCount, otherIds.length));
     const game = createInitialGameState(humanPlayer, activeAiIds, aiDifficulty);
-    set({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map' });
+    set({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map', buildAction: null });
     localStorage.setItem('supremacia_save', JSON.stringify(game));
   },
 
@@ -2916,7 +2929,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         break;
       }
       case 'APPLY_AI_STEP':
-        set({ game: action.state });
+        set({ game: action.state, buildAction: null });
         localStorage.setItem('supremacia_save', JSON.stringify(action.state));
         return;
       case 'DECLARE_DETENTE': {
@@ -2943,7 +2956,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
-    set({ game: state });
+    // A pending build target selection only makes sense within the same stage of
+    // the same player's turn — drop it whenever either changes so the map never
+    // stays in "tap to build" mode in another phase.
+    const stageOrPlayerChanged =
+      state.turn.stage !== game.turn.stage || state.turn.currentPlayer !== game.turn.currentPlayer;
+    set({ game: state, ...(stageOrPlayerChanged ? { buildAction: null } : {}) });
     // Auto-save
     localStorage.setItem('supremacia_save', JSON.stringify(state));
   },
@@ -2951,6 +2969,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectTerritory: (id) => set({ selectedTerritory: id, selectedSeaZone: null }),
   selectSeaZone: (id) => set({ selectedSeaZone: id, selectedTerritory: null }),
   setUiMode: (mode) => set({ uiMode: mode }),
+  setBuildAction: (action) => set({ buildAction: action, selectedTerritory: null, selectedSeaZone: null }),
 
   loadGame: (state: GameState) => {
     // Migrate saves that pre-date the config field

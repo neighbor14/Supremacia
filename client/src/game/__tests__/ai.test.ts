@@ -7,6 +7,7 @@ import {
   chooseOptionalStages,
   getLegalOptionalStages,
   evaluateAction,
+  planAmphibiousInvasion,
   EXECUTABLE_OPTIONAL_STAGES,
 } from '../ai';
 import type { AIDifficulty, GameState, Player } from '../types';
@@ -185,6 +186,62 @@ describe('AI movement (stage 5) — land + naval', () => {
 
     useGameStore.getState().dispatch({ type: 'CPU_TURN' });
 
+    const after = useGameStore.getState().game!;
+    expect(after.territories.eastern_usa.owner).toBe('africa');
+  });
+
+  it('planAmphibiousInvasion routes a fleet across multiple ocean legs to reach distant neutral land', () => {
+    // África parte do Golfo da Guiné e precisa cruzar o Atlântico (2 pernas:
+    // gulf_of_guinea → south_atlantic → north_atlantic) p/ desembarcar em eastern_usa,
+    // território neutro inalcançável por terra ou por uma única perna naval.
+    const game = createInitialGameState('china', ['africa']);
+    const af = game.players.africa;
+    af.navies = { gulf_of_guinea: 1 };
+    af.armies = { west_africa: 4 };
+    af.supplies = { grain: 6, oil: 6, mineral: 6 }; // petróleo p/ ≥2 pernas
+    // Bloqueia alvos neutros mais próximos (1 perna) no Atlântico Sul.
+    game.territories.argentina.owner = 'china';
+    game.territories.brazil.owner = 'china';
+
+    const plan = planAmphibiousInvasion(game, af);
+    expect(plan).not.toBeNull();
+    expect(plan!.embarkTerritory).toBe('west_africa');
+    expect(plan!.route).toEqual(['gulf_of_guinea', 'south_atlantic', 'north_atlantic']);
+    expect(plan!.landTerritory).toBe('eastern_usa');
+  });
+
+  it('planAmphibiousInvasion respects the oil budget: too little oil → no long route', () => {
+    const game = createInitialGameState('china', ['africa']);
+    const af = game.players.africa;
+    af.navies = { gulf_of_guinea: 1 };
+    af.armies = { west_africa: 4 };
+    af.supplies = { grain: 6, oil: 1, mineral: 6 }; // só 1 perna paga
+    game.territories.argentina.owner = 'china';
+    game.territories.brazil.owner = 'china';
+    // Com 1 perna e sem alvo a ≤1 perna, não há plano (eastern_usa fica a 2 pernas).
+    expect(planAmphibiousInvasion(game, af)).toBeNull();
+  });
+
+  it('cpuMove (via CPU_TURN) executes a 2-leg amphibious invasion across the Atlantic', () => {
+    const game = createInitialGameState('china', ['africa']);
+    game.turn.currentPlayer = 'africa';
+    game.turn.currentPlayerIndex = game.turn.playerOrder.indexOf('africa');
+    game.turn.isFirstTurn = true; // exclui combate p/ isolar o movimento
+    game.turn.stage = 1;
+    const af = game.players.africa;
+    af.resourceCards = [];
+    af.navies = { gulf_of_guinea: 1 };
+    af.armies = { west_africa: 4 };
+    af.embarked = {};
+    af.supplies = { grain: 6, oil: 6, mineral: 6 };
+    af.money = 60000;
+    game.territories.argentina.owner = 'china';
+    game.territories.brazil.owner = 'china'; // bloqueia alvos a 1 perna
+    useGameStore.setState({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map' });
+
+    useGameStore.getState().dispatch({ type: 'CPU_TURN' });
+
+    // Cruzou o Atlântico e conquistou eastern_usa pela cadeia embark→navega→disembark.
     const after = useGameStore.getState().game!;
     expect(after.territories.eastern_usa.owner).toBe('africa');
   });

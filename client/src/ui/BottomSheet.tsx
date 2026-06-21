@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useGameStore, getMoveBlockReason, moveBlockMessage, companiesInTerritory } from '../game/store';
+import { useGameStore, getMoveBlockReason, moveBlockMessage, companiesInTerritory, getBuildTargets } from '../game/store';
 import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { ResourceType, TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
-import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import ProspectPanel from './ProspectPanel';
 import { getTechCounts, formatOdds } from '../game/researchDeck';
 
@@ -437,116 +437,77 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
 // BUILD PANEL — Mobile-first with cost-before-click UX
 // ============================================================
 
-/** Single resource pill shown in the player resource bar */
-function ResChip({ icon, label, value, dim }: { icon: string; label: string; value: string | number; dim?: boolean }) {
+/** Compact resource pill for the build HUD header / "você tem" strip. */
+function ResChip({ icon, value, dim }: { icon: string; value: string | number; dim?: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono font-semibold ${dim ? 'bg-destructive/15 text-destructive border border-destructive/30' : 'bg-secondary/70 text-foreground'}`}>
-      {icon} <span className="text-[9px] opacity-60 font-normal">{label}</span> {value}
+    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${dim ? 'bg-destructive/15 text-destructive border border-destructive/30' : 'bg-secondary/70 text-foreground'}`}>
+      {icon} {value}
     </span>
   );
 }
 
-interface BuildActionCardProps {
+/** One tappable tile in the compact build menu (army / navy / weapon). */
+function BuildTile({
+  icon, title, cost, ready, badge, onClick,
+}: {
   icon: string;
   title: string;
-  costLabel: string;
-  canAfford: boolean;
-  missing: string[];
-  /** Button label + handler, or null to show location list instead */
-  action?: { label: string; onClick: () => void };
-  extra?: string;
-  children?: React.ReactNode;
-}
-
-/** Card that shows an action's cost and affordability before the player commits */
-function BuildActionCard({ icon, title, costLabel, canAfford, missing, action, extra, children }: BuildActionCardProps) {
+  cost: string;
+  ready: boolean;
+  badge: string;
+  onClick?: () => void;
+}) {
   return (
-    <div className={`rounded-lg border p-2.5 ${canAfford ? 'bg-secondary/30 border-border/50' : 'bg-destructive/5 border-destructive/20'}`}>
-      <div className="flex items-start gap-2">
-        <span className="text-base shrink-0 mt-0.5 leading-none">{icon}</span>
-        <div className="flex-1 min-w-0">
-          {/* Title row + availability badge */}
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <p className="text-[11px] font-semibold text-foreground leading-tight">{title}</p>
-            {canAfford ? (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 shrink-0" style={{ fontFamily: 'var(--font-display)' }}>DISPONÍVEL</span>
-            ) : (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-destructive/20 text-destructive shrink-0" style={{ fontFamily: 'var(--font-display)' }}>BLOQUEADO</span>
-            )}
-          </div>
-
-          {/* Cost line */}
-          <p className="text-[10px] text-muted-foreground mb-1">
-            <span className="text-muted-foreground/60">Custo:</span> {costLabel}
-          </p>
-
-          {/* Missing resources — only when blocked */}
-          {!canAfford && missing.length > 0 && (
-            <p className="text-[10px] text-destructive font-medium mb-1">
-              ⚠ Falta: {missing.join(' · ')}
-            </p>
-          )}
-
-          {/* Extra info (e.g. current weapon count) */}
-          {extra && <p className="text-[10px] text-muted-foreground/60">{extra}</p>}
-
-          {/* Inline children (location buttons) */}
-          {canAfford && children && <div className="mt-2">{children}</div>}
-        </div>
-
-        {/* Inline action button for one-click actions */}
-        {action && (
-          <button
-            onClick={action.onClick}
-            disabled={!canAfford}
-            className={`shrink-0 self-center text-[10px] px-3 py-2 rounded-md uppercase tracking-wide font-bold transition-all active:scale-[0.95] ${
-              canAfford
-                ? 'bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border border-emerald-600/30'
-                : 'bg-secondary/30 text-muted-foreground/30 border border-border/20 cursor-not-allowed'
-            }`}
+    <button
+      onClick={ready ? onClick : undefined}
+      disabled={!ready}
+      className={`flex items-start gap-2 text-left rounded-lg border p-2 transition-all min-h-[3.25rem] ${
+        ready
+          ? 'bg-secondary/40 border-border/60 hover:bg-secondary/60 active:scale-[0.98]'
+          : 'bg-destructive/5 border-destructive/20 opacity-70 cursor-not-allowed'
+      }`}
+    >
+      <span className="text-lg leading-none mt-0.5 shrink-0">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-1">
+          <span className="text-[11px] font-semibold text-foreground leading-tight truncate">{title}</span>
+          <span
+            className={`text-[8px] px-1 py-0.5 rounded-full font-bold shrink-0 ${ready ? 'bg-emerald-500/20 text-emerald-400' : 'bg-destructive/20 text-destructive'}`}
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            {action.label}
-          </button>
-        )}
-      </div>
-    </div>
+            {badge}
+          </span>
+        </span>
+        <span className="block text-[9px] text-muted-foreground leading-tight mt-0.5">{cost}</span>
+      </span>
+    </button>
   );
 }
 
+// Shared compact-panel chrome — small footprint so the map stays visible/clickable.
+const BUILD_PANEL_CLASS =
+  'absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[32vh] overflow-y-auto';
+const BUILD_PANEL_STYLE: React.CSSProperties = {
+  paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)',
+};
+
 function BuildPanel() {
-  const { game, dispatch } = useGameStore();
+  const { game, dispatch, buildAction, setBuildAction } = useGameStore();
+  const [collapsed, setCollapsed] = useState(false);
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
-
-  // Build locations
-  const homeTs = Object.values(game.territories).filter(
-    t => t.superpowerId === player.id && !t.nuked && t.owner === player.id
-  );
-  const foreignTs = Object.entries(player.armies)
-    .filter(([tid, count]) => count > 0 && game.territories[tid]?.superpowerId !== player.id && game.territories[tid]?.owner === player.id)
-    .map(([tid]) => game.territories[tid])
-    .filter(Boolean);
-  const allBuildLocations = [...homeTs, ...foreignTs];
-
-  // Naval zones (adjacent to a port the player controls)
-  const navalZoneIds = new Set<string>();
-  [...homeTs, ...foreignTs].forEach(t => {
-    if (t.hasPort) t.adjacentSeas.forEach(s => navalZoneIds.add(s));
-  });
-  const navalZones = Array.from(navalZoneIds).map(id => game.seaZones[id]).filter(Boolean);
-
-  // Resource snapshot
   const money = player.money;
   const grain = player.supplies.grain;
   const oil = player.supplies.oil;
   const mineral = player.supplies.mineral;
 
+  // Valid placement targets — shared source of truth with the WorldMap highlight.
+  const armyTargets = getBuildTargets(game, 'army');
+  const navyTargets = getBuildTargets(game, 'navy');
+
   // Affordability — units. Fidelidade 3.7.1: 1 conjunto de suprimentos constrói
-  // 3 peças. A próxima unidade só consome um novo conjunto quando a contagem do
-  // turno está num múltiplo de UNITS_PER_SUPPLY_SET; senão entra "de graça" no
-  // conjunto já pago.
+  // UNITS_PER_SUPPLY_SET peças; só cobra novo conjunto ao cruzar um múltiplo.
   const unitsBuiltThisTurn = game.turn.unitsBuiltThisTurn;
   const setSize = RULES.UNITS_PER_SUPPLY_SET;
   const nextUnitNeedsNewSet = unitsBuiltThisTurn % setSize === 0;
@@ -555,181 +516,182 @@ function BuildPanel() {
   const hasMoney = money >= RULES.UNIT_COST;
   const canBuildUnit = hasSupplies && hasMoney;
   const unitMissing: string[] = [];
-  if (!hasMoney) unitMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.UNIT_COST.toLocaleString()}`);
+  if (!hasMoney) unitMissing.push(`💵 $${money.toLocaleString()}/$${RULES.UNIT_COST.toLocaleString()}`);
   if (nextUnitNeedsNewSet) {
-    if (grain < 1) unitMissing.push(`🌾 cereal: ${grain}/1`);
-    if (oil < 1) unitMissing.push(`🛢️ petróleo: ${oil}/1`);
-    if (mineral < 1) unitMissing.push(`⛏️ minério: ${mineral}/1`);
+    if (grain < 1) unitMissing.push('🌾 0/1');
+    if (oil < 1) unitMissing.push('🛢️ 0/1');
+    if (mineral < 1) unitMissing.push('⛏️ 0/1');
   }
 
   // Affordability — special weapons
   const canResearchNuke = !player.hasResearchedNuke && money >= RULES.RESEARCH_COST_PER_CARD;
-  const nukeResearchMissing = !canResearchNuke && !player.hasResearchedNuke
-    ? [`💵 dinheiro: $${money.toLocaleString()} / $${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}`] : [];
-
   const canBuildNuke = player.hasResearchedNuke && money >= RULES.NUKE_COST && mineral >= RULES.NUKE_MINERAL_COST && player.nukes < RULES.MAX_NUKES;
-  const nukeBuildMissing: string[] = [];
-  if (player.hasResearchedNuke && player.nukes < RULES.MAX_NUKES) {
-    if (money < RULES.NUKE_COST) nukeBuildMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.NUKE_COST.toLocaleString()}`);
-    if (mineral < RULES.NUKE_MINERAL_COST) nukeBuildMissing.push(`⛏️ minério: ${mineral}/${RULES.NUKE_MINERAL_COST}`);
-  }
-
+  const nukeMaxed = player.hasResearchedNuke && player.nukes >= RULES.MAX_NUKES;
   const canResearchLaser = !player.hasResearchedLaserStar && money >= RULES.RESEARCH_COST_PER_CARD;
-  const laserResearchMissing = !canResearchLaser && !player.hasResearchedLaserStar
-    ? [`💵 dinheiro: $${money.toLocaleString()} / $${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}`] : [];
-
   const canBuildLaser = player.hasResearchedLaserStar && money >= RULES.LASER_STAR_COST && mineral >= RULES.LASER_STAR_MINERAL_COST && player.laserStars < RULES.MAX_LASER_STARS;
-  const laserBuildMissing: string[] = [];
-  if (player.hasResearchedLaserStar && player.laserStars < RULES.MAX_LASER_STARS) {
-    if (money < RULES.LASER_STAR_COST) laserBuildMissing.push(`💵 dinheiro: $${money.toLocaleString()} / $${RULES.LASER_STAR_COST.toLocaleString()}`);
-    if (mineral < RULES.LASER_STAR_MINERAL_COST) laserBuildMissing.push(`⛏️ minério: ${mineral}/${RULES.LASER_STAR_MINERAL_COST}`);
-  }
+  const laserMaxed = player.hasResearchedLaserStar && player.laserStars >= RULES.MAX_LASER_STARS;
 
   // Real-time research odds derived from the actual deck
   const { nukeCount, laserCount, total: deckTotal } = getTechCounts(game.resourceDeck);
   const nukeOdds = deckTotal > 0 ? formatOdds(nukeCount / deckTotal) : '0,00%';
   const laserOdds = deckTotal > 0 ? formatOdds(laserCount / deckTotal) : '0,00%';
-  const deckInfo = `Baralho: ${deckTotal} ${deckTotal === 1 ? 'carta' : 'cartas'} · ☢️ ${nukeCount} · 🛡️ ${laserCount}`;
 
-  return (
-    <div
-      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[55vh] overflow-y-auto"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
-    >
-      {/* Header + current resources */}
-      <div className="sticky top-0 bg-card/97 backdrop-blur-md px-3 pt-3 pb-2 border-b border-border/40 z-10">
-        <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-          🏗️ Construção
-        </h3>
-        <div className="flex flex-wrap gap-1.5">
-          <ResChip icon="💵" label="Dinheiro" value={`$${money.toLocaleString()}`} />
-          <ResChip icon="🌾" label="Cereal" value={grain} dim={grain === 0} />
-          <ResChip icon="🛢️" label="Petróleo" value={oil} dim={oil === 0} />
-          <ResChip icon="⛏️" label="Minério" value={mineral} dim={mineral === 0} />
+  const resourceStrip = (
+    <div className="flex flex-wrap items-center gap-1">
+      <ResChip icon="💵" value={`$${money.toLocaleString()}`} />
+      <ResChip icon="🌾" value={grain} dim={grain === 0} />
+      <ResChip icon="🛢️" value={oil} dim={oil === 0} />
+      <ResChip icon="⛏️" value={mineral} dim={mineral === 0} />
+    </div>
+  );
+
+  // ── SELECTION MODE: army/navy targets are tapped directly on the map ──
+  if (buildAction === 'army' || buildAction === 'navy') {
+    const isArmy = buildAction === 'army';
+    const targets = isArmy ? armyTargets : navyTargets;
+    const title = isArmy ? '🎖️ Construir Exército' : '⚓ Construir Esquadra (Navio)';
+    const costLabel = isArmy
+      ? `$${RULES.UNIT_COST.toLocaleString()} · 1 conjunto (🌾🛢️⛏️) a cada ${setSize} peças`
+      : `$${RULES.UNIT_COST.toLocaleString()} · requer porto · 1 conjunto a cada ${setSize} peças`;
+    const blocked = !canBuildUnit;
+
+    return (
+      <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
+        <div className="p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{title}</p>
+            <button
+              onClick={() => { playSound('button-click', 0.4); setBuildAction(null); }}
+              className="text-[10px] px-2.5 py-1.5 rounded-md bg-secondary text-foreground hover:bg-secondary/70 active:scale-[0.95] uppercase tracking-wider font-semibold shrink-0"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Cancelar
+            </button>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground">{costLabel}</p>
+
+          {blocked ? (
+            <p className="text-[11px] text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1.5">
+              ⚠ Falta: {unitMissing.join(' · ')}. Venda recursos ou tome empréstimo antes de construir.
+            </p>
+          ) : targets.length === 0 ? (
+            <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
+              {isArmy
+                ? 'Nenhum território seu disponível para construção.'
+                : 'Nenhum porto sob seu controle — conquiste um território com porto para construir esquadras.'}
+            </p>
+          ) : (
+            <p className={`text-[11px] rounded px-2 py-1.5 border ${isArmy ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-blue-300 bg-blue-500/10 border-blue-500/30'}`}>
+              👆 Toque {isArmy ? 'num território' : 'numa zona marítima'} destacado no mapa para construir.
+              <span className="opacity-70"> ({targets.length} {isArmy ? 'território(s)' : 'mar(es)'} válido(s))</span>
+            </p>
+          )}
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0">Você tem:</span>
+            {resourceStrip}
+          </div>
+          {freeUnitsInSet > 0 && !blocked && (
+            <p className="text-[9px] text-emerald-400/80">Conjunto pago: {freeUnitsInSet} peça(s) sem custo de suprimento.</p>
+          )}
         </div>
       </div>
+    );
+  }
 
-      <div className="p-3 space-y-2">
-        {/* ── ARMY ── */}
-        <BuildActionCard
-          icon="🎖️"
-          title="Construir Exército"
-          costLabel={`$${RULES.UNIT_COST.toLocaleString()} por unidade · 1 conjunto (1 cereal + 1 petróleo + 1 minério) a cada ${setSize} peças`}
-          canAfford={canBuildUnit}
-          missing={unitMissing}
-          extra={freeUnitsInSet > 0
-            ? `Conjunto pago: ${freeUnitsInSet} peça(s) restante(s) sem custo de suprimento`
-            : `Próxima peça abre um novo conjunto de suprimentos`}
+  // ── MENU MODE: choose what to build / research ──
+  return (
+    <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
+      {/* Header strip: title + resources + collapse toggle */}
+      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ fontFamily: 'var(--font-display)' }}>🏗️ Construir</h3>
+          <div className="min-w-0 overflow-hidden">{resourceStrip}</div>
+        </div>
+        <button
+          onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
+          className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
+          title={collapsed ? 'Expandir' : 'Recolher'}
         >
-          <p className="text-[10px] text-emerald-400 font-medium mb-1.5">Escolha o território:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {allBuildLocations.map(t => (
-              <button
-                key={t.id}
-                onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'BUILD_UNITS', units: [{ type: 'army', locationId: t.id }] }); }}
-                className="text-[11px] px-2.5 py-1.5 bg-emerald-600/20 text-emerald-300 rounded-md hover:bg-emerald-600/30 active:scale-[0.95] border border-emerald-600/30"
-              >
-                +1 {t.name}
-              </button>
-            ))}
-          </div>
-        </BuildActionCard>
+          {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      </div>
 
-        {/* ── NAVY ── */}
-        {(navalZones.length > 0 || !canBuildUnit) && (
-          <BuildActionCard
-            icon="⚓"
-            title="Construir Esquadra (Navio)"
-            costLabel={`$${RULES.UNIT_COST.toLocaleString()} por esquadra · 1 conjunto a cada ${setSize} peças · requer porto`}
-            canAfford={canBuildUnit && navalZones.length > 0}
-            missing={
-              !canBuildUnit ? unitMissing
-              : navalZones.length === 0 ? ['nenhum porto sob controle']
-              : []
-            }
-          >
-            {navalZones.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {navalZones.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'BUILD_UNITS', units: [{ type: 'navy', locationId: s.id }] }); }}
-                    className="text-[11px] px-2.5 py-1.5 bg-blue-600/20 text-blue-300 rounded-md hover:bg-blue-600/30 active:scale-[0.95] border border-blue-600/30"
-                  >
-                    +1 {s.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </BuildActionCard>
-        )}
+      {!collapsed && (
+        <>
+          <div className="p-2.5 grid grid-cols-2 gap-2">
+            {/* Army */}
+            <BuildTile
+              icon="🎖️"
+              title="Construir Exército"
+              cost={`$${RULES.UNIT_COST.toLocaleString()} + suprimentos`}
+              ready={canBuildUnit && armyTargets.length > 0}
+              badge={armyTargets.length === 0 ? 'SEM ÁREA' : canBuildUnit ? 'DISPONÍVEL' : 'BLOQUEADO'}
+              onClick={() => { playSound('turn-start', 0.4); setBuildAction('army'); }}
+            />
 
-        {/* ── SPECIAL WEAPONS ── */}
-        <div className="pt-1">
-          <p className="text-[10px] text-muted-foreground uppercase mb-2 tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-            Armas Especiais
-          </p>
-          {/* Deck composition info */}
-          <p className="text-[10px] text-muted-foreground mb-2 font-mono">{deckInfo}</p>
-          <div className="space-y-2">
-            {/* Research Nuke */}
-            {!player.hasResearchedNuke && (
-              <BuildActionCard
+            {/* Navy */}
+            <BuildTile
+              icon="⚓"
+              title="Construir Esquadra"
+              cost={`$${RULES.UNIT_COST.toLocaleString()} · requer porto`}
+              ready={canBuildUnit && navyTargets.length > 0}
+              badge={navyTargets.length === 0 ? 'SEM PORTO' : canBuildUnit ? 'DISPONÍVEL' : 'BLOQUEADO'}
+              onClick={() => { playSound('turn-start', 0.4); setBuildAction('navy'); }}
+            />
+
+            {/* Nuke: research → build → maxed */}
+            {!player.hasResearchedNuke ? (
+              <BuildTile
                 icon="🔬"
-                title="Pesquisar Bomba Atômica"
-                costLabel={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()} por carta · chance próxima: ${nukeOdds}`}
-                canAfford={canResearchNuke}
-                missing={nukeResearchMissing}
-                action={{ label: 'Pesquisar', onClick: () => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_NUKE', cardId: '' }); } }}
+                title="Pesquisar Bomba"
+                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}/carta · ${nukeOdds}`}
+                ready={canResearchNuke}
+                badge={canResearchNuke ? 'PESQUISAR' : 'BLOQUEADO'}
+                onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_NUKE', cardId: '' }); }}
               />
-            )}
-
-            {/* Build Nuke */}
-            {player.hasResearchedNuke && player.nukes < RULES.MAX_NUKES && (
-              <BuildActionCard
+            ) : nukeMaxed ? (
+              <BuildTile icon="☢️" title="Bomba Nuclear" cost={`Arsenal máximo (${RULES.MAX_NUKES})`} ready={false} badge="MÁX" />
+            ) : (
+              <BuildTile
                 icon="☢️"
-                title="Construir Bomba Nuclear"
-                costLabel={`$${RULES.NUKE_COST.toLocaleString()} + ${RULES.NUKE_MINERAL_COST} minério`}
-                canAfford={canBuildNuke}
-                missing={nukeBuildMissing}
-                extra={`Ogivas construídas: ${player.nukes} / ${RULES.MAX_NUKES}`}
-                action={{ label: 'Construir', onClick: () => { playSound('missile-launch', 0.5); dispatch({ type: 'BUILD_NUKE' }); } }}
+                title="Construir Bomba"
+                cost={`$${RULES.NUKE_COST.toLocaleString()} + ${RULES.NUKE_MINERAL_COST}⛏️ · ${player.nukes}/${RULES.MAX_NUKES}`}
+                ready={canBuildNuke}
+                badge={canBuildNuke ? 'CONSTRUIR' : 'BLOQUEADO'}
+                onClick={() => { playSound('missile-launch', 0.5); dispatch({ type: 'BUILD_NUKE' }); }}
               />
             )}
-            {player.hasResearchedNuke && player.nukes >= RULES.MAX_NUKES && (
-              <p className="text-[10px] text-muted-foreground px-1">☢️ Arsenal máximo atingido ({RULES.MAX_NUKES} bombas).</p>
-            )}
 
-            {/* Research Laser */}
-            {!player.hasResearchedLaserStar && (
-              <BuildActionCard
+            {/* Laser: research → build → maxed */}
+            {!player.hasResearchedLaserStar ? (
+              <BuildTile
                 icon="🔬"
                 title="Pesquisar Laser-Star"
-                costLabel={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()} por carta · chance próxima: ${laserOdds}`}
-                canAfford={canResearchLaser}
-                missing={laserResearchMissing}
-                action={{ label: 'Pesquisar', onClick: () => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_LASER_STAR', cardId: '' }); } }}
+                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}/carta · ${laserOdds}`}
+                ready={canResearchLaser}
+                badge={canResearchLaser ? 'PESQUISAR' : 'BLOQUEADO'}
+                onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_LASER_STAR', cardId: '' }); }}
               />
-            )}
-
-            {/* Build Laser */}
-            {player.hasResearchedLaserStar && player.laserStars < RULES.MAX_LASER_STARS && (
-              <BuildActionCard
+            ) : laserMaxed ? (
+              <BuildTile icon="🛡️" title="Laser-Star" cost={`Arsenal máximo (${RULES.MAX_LASER_STARS})`} ready={false} badge="MÁX" />
+            ) : (
+              <BuildTile
                 icon="🛡️"
                 title="Construir Laser-Star"
-                costLabel={`$${RULES.LASER_STAR_COST.toLocaleString()} + ${RULES.LASER_STAR_MINERAL_COST} minério`}
-                canAfford={canBuildLaser}
-                missing={laserBuildMissing}
-                extra={`Laser-Stars construídos: ${player.laserStars} / ${RULES.MAX_LASER_STARS}`}
-                action={{ label: 'Construir', onClick: () => { playSound('diplomacy-alert', 0.8); dispatch({ type: 'BUILD_LASER_STAR' }); } }}
+                cost={`$${RULES.LASER_STAR_COST.toLocaleString()} + ${RULES.LASER_STAR_MINERAL_COST}⛏️ · ${player.laserStars}/${RULES.MAX_LASER_STARS}`}
+                ready={canBuildLaser}
+                badge={canBuildLaser ? 'CONSTRUIR' : 'BLOQUEADO'}
+                onClick={() => { playSound('diplomacy-alert', 0.8); dispatch({ type: 'BUILD_LASER_STAR' }); }}
               />
             )}
-            {player.hasResearchedLaserStar && player.laserStars >= RULES.MAX_LASER_STARS && (
-              <p className="text-[10px] text-muted-foreground px-1">🛡️ Arsenal máximo atingido ({RULES.MAX_LASER_STARS} Laser-Stars).</p>
-            )}
           </div>
-        </div>
-      </div>
+          <p className="px-3 pb-1.5 -mt-0.5 text-[9px] text-muted-foreground font-mono">
+            Baralho: {deckTotal} {deckTotal === 1 ? 'carta' : 'cartas'} · ☢️ {nukeCount} · 🛡️ {laserCount}
+          </p>
+        </>
+      )}
     </div>
   );
 }

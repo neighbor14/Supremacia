@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { useGameStore } from '../game/store';
+import { toast } from 'sonner';
+import { useGameStore, getBuildTargets } from '../game/store';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
@@ -58,7 +59,7 @@ function getInitialScale(): number {
 }
 
 export default function WorldMap() {
-  const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone, buildAction, dispatch } = useGameStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Transform state
@@ -82,6 +83,18 @@ export default function WorldMap() {
   });
 
   if (!game) return null;
+
+  // Territories/seas the player may build on right now (drives both the pulsing
+  // highlight and the click routing below). Empty unless a build action is pending.
+  const buildTargetSet = new Set(getBuildTargets(game, buildAction));
+  const armyMode = buildAction === 'army';
+  const navyMode = buildAction === 'navy';
+
+  // A bottom phase panel (Vender/Atacar/Mover/Construir/Comprar) overlays the
+  // lower part of the map. Lift the zoom controls above it so they never sit on
+  // top of the panel's buttons. Build menu is the tallest of these (~32vh).
+  const human = game.players[game.turn.currentPlayer]?.isHuman;
+  const phasePanelOpen = !!human && game.turn.stage >= 3 && game.turn.stage <= 7;
 
   // --- Zoom helpers ---
   const zoomIn = () => setScale(s => Math.min(MAX_SCALE, s * 1.4));
@@ -188,18 +201,52 @@ export default function WorldMap() {
   // --- Click handlers (only if no pan) ---
   const handleTerritoryClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!interactionRef.current.hasMoved) {
-      if (id !== selectedTerritory) playSound('button-click', 0.35);
-      selectTerritory(id === selectedTerritory ? null : id);
+    if (interactionRef.current.hasMoved) return;
+
+    // Build-selection mode: a territory click means "place an army here".
+    if (armyMode) {
+      if (buildTargetSet.has(id)) {
+        playSound('button-click', 0.5);
+        dispatch({ type: 'BUILD_UNITS', units: [{ type: 'army', locationId: id }] });
+      } else {
+        playSound('error', 0.4);
+        toast.error('Você só pode construir exército em território seu (controlado e não destruído).');
+      }
+      return;
     }
+    if (navyMode) {
+      playSound('error', 0.4);
+      toast.error('Esquadras são construídas no mar. Toque numa zona marítima destacada (adjacente a um porto seu).');
+      return;
+    }
+
+    if (id !== selectedTerritory) playSound('button-click', 0.35);
+    selectTerritory(id === selectedTerritory ? null : id);
   };
 
   const handleSeaClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!interactionRef.current.hasMoved) {
-      if (id !== selectedSeaZone) playSound('button-click', 0.35);
-      selectSeaZone(id === selectedSeaZone ? null : id);
+    if (interactionRef.current.hasMoved) return;
+
+    // Build-selection mode: a sea click means "build a fleet here".
+    if (navyMode) {
+      if (buildTargetSet.has(id)) {
+        playSound('button-click', 0.5);
+        dispatch({ type: 'BUILD_UNITS', units: [{ type: 'navy', locationId: id }] });
+      } else {
+        playSound('error', 0.4);
+        toast.error('Esquadra só pode ser construída em mar adjacente a um porto que você controla.');
+      }
+      return;
     }
+    if (armyMode) {
+      playSound('error', 0.4);
+      toast.error('Exércitos vão em terra. Toque num território destacado.');
+      return;
+    }
+
+    if (id !== selectedSeaZone) playSound('button-click', 0.35);
+    selectSeaZone(id === selectedSeaZone ? null : id);
   };
 
   // --- Rendering helpers ---
@@ -290,6 +337,13 @@ export default function WorldMap() {
           {/* Amber glow for the selected shape */}
           <filter id="sel-glow" x="-40%" y="-40%" width="180%" height="180%">
             <feDropShadow dx="0" dy="0" stdDeviation="3.2" floodColor="#fbbf24" floodOpacity="0.95" />
+          </filter>
+          {/* Emerald/blue glow for valid build targets (army / navy) */}
+          <filter id="build-glow-army" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3.4" floodColor="#34d399" floodOpacity="1" />
+          </filter>
+          <filter id="build-glow-navy" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3.4" floodColor="#60a5fa" floodOpacity="1" />
           </filter>
         </defs>
 
@@ -426,10 +480,47 @@ export default function WorldMap() {
             </g>
           );
         })}
+
+        {/* Build-target highlight overlay — pulsing outline over every valid
+            placement so the player sees exactly where a tap will build. Sits on
+            top, non-interactive (clicks fall through to the shapes underneath). */}
+        {buildAction && (
+          <g pointerEvents="none" className="animate-pulse">
+            {armyMode && Object.entries(game.territories).map(([tid, t]) =>
+              buildTargetSet.has(tid) ? (
+                <path
+                  key={`bt-${tid}`}
+                  d={t.svgPath}
+                  fill="#34d39922"
+                  stroke="#6ee7b7"
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                  filter="url(#build-glow-army)"
+                />
+              ) : null
+            )}
+            {navyMode && Object.entries(game.seaZones).map(([sid, s]) =>
+              buildTargetSet.has(sid) ? (
+                <path
+                  key={`bs-${sid}`}
+                  d={s.svgPath}
+                  fill="#60a5fa22"
+                  stroke="#93c5fd"
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                  filter="url(#build-glow-navy)"
+                />
+              ) : null
+            )}
+          </g>
+        )}
       </svg>
 
-      {/* Zoom Controls - above ticker */}
-      <div className="absolute bottom-9 right-4 flex flex-col gap-2 z-30 items-center">
+      {/* Zoom Controls - above ticker; lifted clear of any open bottom panel */}
+      <div
+        className="absolute right-4 flex flex-col gap-2 z-30 items-center transition-[bottom] duration-200"
+        style={{ bottom: phasePanelOpen ? 'calc(32vh + 0.75rem)' : '2.25rem' }}
+      >
         <button
           onClick={zoomIn}
           className="w-10 h-10 rounded-lg bg-slate-800/90 backdrop-blur-sm hover:bg-slate-700 text-white flex items-center justify-center active:scale-[0.9] transition-all shadow-lg border border-slate-600/50"
