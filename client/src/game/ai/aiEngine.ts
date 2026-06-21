@@ -297,11 +297,13 @@ export function getLegalOptionalStages(state: GameState, player: Player): Option
     legal.push(4);
   }
 
-  // 5 — Movimento: terra precisa de cereal; naval precisa de petróleo.
+  // 5 — Movimento: terra precisa de cereal; naval precisa de petróleo. A invasão
+  // anfíbia (embarcar→navegar→desembarcar) já vem com o petróleo conferido em
+  // readAmphibious quando exige perna naval; o caso de 0 pernas não custa nada.
   const move = readMovement(state, player);
   const canLandMove = player.supplies.grain >= RULES.LAND_MOVE_GRAIN_COST &&
     (move.expansionTargets > 0 || move.reinforceTargets > 0);
-  if (canLandMove || move.navalRepositions > 0) legal.push(5);
+  if (canLandMove || move.navalRepositions > 0 || move.amphibiousTargets > 0) legal.push(5);
 
   // 6 — Construção: precisa de dinheiro + 1 conjunto de suprimentos.
   const minSupply = Math.min(player.supplies.grain, player.supplies.oil, player.supplies.mineral);
@@ -390,19 +392,24 @@ export function evaluateAction(
         : 'comprar recursos em falta';
       break;
     }
-    case 5: { // Movimento (terrestre + naval)
+    case 5: { // Movimento (terrestre + naval + anfíbio)
       const move = readMovement(state, player);
-      // Ocupar terra neutra é progresso direto rumo à supremacia.
-      b.expansionScore = move.expansionTargets * 14 * config.expansionPriority;
+      // Ocupar terra neutra (por terra ou por desembarque) é progresso direto rumo
+      // à supremacia. O desembarque além-mar vale um pouco menos por custar a frota.
+      b.expansionScore =
+        move.expansionTargets * 14 * config.expansionPriority +
+        move.amphibiousTargets * 13 * config.expansionPriority;
       // Reforçar fronteira ameaçada é defesa concreta.
       b.defenseScore = move.reinforceTargets * 12 * config.defensePriority;
       // Aproximar a frota de terra inimiga prepara combate/projeção naval.
       b.militaryScore = move.navalRepositions * 8 * config.aggression;
       reason = move.expansionTargets > 0
         ? 'expandir ocupando território neutro'
-        : move.reinforceTargets > 0
-          ? 'reforçar a fronteira ameaçada'
-          : 'reposicionar a frota para o mar contestado';
+        : move.amphibiousTargets > 0
+          ? 'desembarcar tropas além-mar para ocupar território neutro'
+          : move.reinforceTargets > 0
+            ? 'reforçar a fronteira ameaçada'
+            : 'reposicionar a frota para o mar contestado';
       break;
     }
   }

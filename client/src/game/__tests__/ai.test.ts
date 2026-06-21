@@ -141,6 +141,54 @@ describe('AI movement (stage 5) — land + naval', () => {
     expect(ev.reason).toContain('território neutro');
   });
 
+  it('stage 5 is legal and scores > 0 for an amphibious landing across the sea', () => {
+    // Africa holds venezuela (coastal, touches caribbean) + a fleet in caribbean.
+    // eastern_usa is neutral, touches caribbean, and is NOT land-adjacent to venezuela
+    // → only reachable by an amphibious landing.
+    const { game, ai } = aiGame();
+    game.turn.isFirstTurn = false;
+    game.territories.venezuela.owner = 'africa';
+    // Cerca venezuela por terra (vizinhos não-neutros) p/ isolar o anfíbio: sem
+    // expansão terrestre disponível, a única oportunidade do estágio 5 é o desembarque.
+    game.territories.brazil.owner = 'usa';
+    game.territories.peru.owner = 'usa';
+    game.territories.central_america.owner = 'usa'; // bloqueia a ponte terrestre p/ eastern_usa
+    game.territories.eastern_usa.owner = null;      // só alcançável por mar
+    delete game.players.usa.armies.eastern_usa;     // sem defensor → desembarque legal (terra vazia)
+    ai.armies = { venezuela: 3 };
+    ai.navies = { caribbean: 1 };
+    ai.supplies = { grain: 6, oil: 0, mineral: 6 }; // oil 0 → 0-leg landing, combat illegal
+    ai.money = 50000;
+    expect(getLegalOptionalStages(game, ai)).toContain(5);
+    const ev = evaluateAction({ stage: 5 }, game, ai, AI_PROFILES.god);
+    expect(ev.score).toBeGreaterThan(0);
+    expect(ev.reason).toContain('além-mar');
+  });
+
+  it('cpuMove (via CPU_TURN) lands troops across the sea onto neutral land (amphibious)', () => {
+    const game = createInitialGameState('south_america', ['africa'], 'god');
+    game.turn.currentPlayer = 'africa';
+    game.turn.currentPlayerIndex = game.turn.playerOrder.indexOf('africa');
+    game.turn.isFirstTurn = false;
+    game.turn.stage = 1;
+    const af = game.players.africa;
+    af.resourceCards = [];                 // sem produção → não interfere
+    af.armies = { venezuela: 4 };          // território costeiro próprio, com tropa sobrando
+    af.navies = { caribbean: 1 };          // frota na zona costeira adjacente
+    af.embarked = {};
+    af.supplies = { grain: 6, oil: 0, mineral: 6 }; // 0 pernas: embarque+desembarque no mesmo mar
+    af.money = 60000;
+    game.territories.venezuela.owner = 'africa';
+    game.territories.central_america.owner = 'usa'; // bloqueia a ponte terrestre
+    game.territories.eastern_usa.owner = null;      // alvo neutro, só alcançável por mar
+    useGameStore.setState({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map' });
+
+    useGameStore.getState().dispatch({ type: 'CPU_TURN' });
+
+    const after = useGameStore.getState().game!;
+    expect(after.territories.eastern_usa.owner).toBe('africa');
+  });
+
   it('cpuMove (via CPU_TURN) occupies an adjacent neutral territory using the human move rules', () => {
     const game = createInitialGameState('usa', ['africa'], 'god');
     game.turn.currentPlayer = 'africa';

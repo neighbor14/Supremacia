@@ -137,11 +137,31 @@ export interface CombatState {
   defenderDice: number[];
   attackerLosses: number;
   defenderLosses: number;
-  phase: 'select_target' | 'confirm' | 'rolling' | 'result' | 'occupy' | 'counter_attack_available';
+  // 'defender_response' = D6/D7: defensor sobreviveu e pode reforçar e/ou
+  // contra-atacar antes do combate encerrar.
+  phase: 'select_target' | 'confirm' | 'rolling' | 'result' | 'occupy' | 'defender_response';
   defenderChoice: 'resist' | 'retreat' | 'surrender' | null;
-  // D7: manual Grow — defensor pode contra-atacar uma vez por combate
+  // ── D6/D7: resposta do defensor (manual Grow) ──
+  // Reforço pós-combate: mover exércitos de território adjacente para o defendido.
+  reinforceAvailable: boolean;
+  reinforceUsed: boolean;
+  // Contra-ataque: o defensor ataca de volta a origem do atacante (uma vez).
   counterAttackAvailable: boolean;
   counterAttackUsed: boolean;
+  // Resultado do último contra-ataque, para exibição no CombatModal (null = nenhum).
+  counterResult: CounterAttackResult | null;
+}
+
+// D7: resultado de um contra-ataque do defensor, para apresentação.
+export interface CounterAttackResult {
+  counterAttackerId: SuperpowerId;   // quem contra-atacou (defensor original)
+  fromId: string;                    // território defendido (origem do contra-ataque)
+  targetId: string;                  // origem do ataque original (alvo do contra-ataque)
+  attackerDice: number[];            // dados do contra-atacante
+  defenderDice: number[];            // dados de quem recebe o contra-ataque
+  counterAttackerLosses: number;
+  counterDefenderLosses: number;
+  clearedTarget: boolean;            // true se o alvo do contra-ataque ficou sem unidades
 }
 
 export interface NuclearAttackState {
@@ -207,13 +227,6 @@ export interface EventLogEntry {
   type: 'info' | 'combat' | 'nuclear' | 'economy' | 'build' | 'move' | 'elimination';
 }
 
-// D6: manual Grow — defensor pode mover reforços após combate
-export interface DefenderReinforcement {
-  territory: string;          // território que foi defendido
-  defenderPlayer: SuperpowerId;
-  attackerOrigin: string | null; // território de onde o ataque partiu
-}
-
 export interface GameState {
   config: GameConfig;
   players: Record<SuperpowerId, Player>;
@@ -233,8 +246,6 @@ export interface GameState {
   gameOver: boolean;
   winner: SuperpowerId | null;
   endCondition: 'supremacy' | 'detente' | 'holocaust' | null;
-  // D6: janela de reforço do defensor pós-combate (null = sem reforço pendente)
-  defenderReinforcement: DefenderReinforcement | null;
 }
 
 // ============================================================
@@ -337,9 +348,7 @@ export type GameAction =
   | { type: 'DRAW_PROSPECT_CARD' }
   | { type: 'STOP_PROSPECT' }
   | { type: 'APPLY_AI_STEP'; state: GameState }
-  // D7: contra-ataque do defensor
+  // D6/D7: resposta do defensor pós-combate (sub-ações; FINISH encerra)
+  | { type: 'REINFORCE_AFTER_COMBAT'; from: string; count: number } // reforça combat.targetId
   | { type: 'COUNTER_ATTACK' }
-  | { type: 'SKIP_COUNTER_ATTACK' }
-  // D6: reforço do defensor pós-combate
-  | { type: 'REINFORCE_AFTER_COMBAT'; from: string; to: string; count: number }
-  | { type: 'SKIP_REINFORCEMENT' };
+  | { type: 'FINISH_DEFENDER_RESPONSE' };

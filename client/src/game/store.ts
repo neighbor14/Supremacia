@@ -1112,8 +1112,11 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     defenderLosses: 0,
     phase: 'confirm',
     defenderChoice: null,
+    reinforceAvailable: false,
+    reinforceUsed: false,
     counterAttackAvailable: false,
     counterAttackUsed: false,
+    counterResult: null,
   };
 }
 
@@ -1429,7 +1432,8 @@ function resetCombat(state: GameState): void {
     attackerUnitsAfter: 0, defenderUnitsAfter: 0, conquered: false,
     attackerDice: [], defenderDice: [], attackerLosses: 0, defenderLosses: 0,
     phase: 'select_target', defenderChoice: null,
-    counterAttackAvailable: false, counterAttackUsed: false,
+    reinforceAvailable: false, reinforceUsed: false,
+    counterAttackAvailable: false, counterAttackUsed: false, counterResult: null,
   };
 }
 
@@ -2149,7 +2153,7 @@ function cpuBuy(state: GameState, player: typeof state.players[SuperpowerId]): v
 }
 
 interface CpuMoveResult {
-  kind: 'land' | 'naval';
+  kind: 'land' | 'naval' | 'embark' | 'amphibious';
   fromId: string;
   toId: string;
   fromName: string;
@@ -2228,8 +2232,16 @@ function cpuMove(state: GameState, player: typeof state.players[SuperpowerId], c
     }
   }
 
-  // Naval: aproxima UMA frota de um mar adjacente que toque terra inimiga.
-  if (player.supplies.oil >= RULES.SEA_MOVE_OIL_COST) {
+  // Invasão anfíbia (no máximo UMA por turno): embarca tropa de um território
+  // costeiro próprio, navega (se preciso) e desembarca em terra costeira NEUTRA e
+  // desguarnecida que não dá para alcançar por terra. Usa os MESMOS executores do
+  // humano (embark/moveNavy/disembark); disembark conquista terra neutra/vazia e
+  // recusa terra inimiga — assalto a inimigo continua só pela fase de Combate.
+  const didAmphibious = tryAmphibiousInvasion(state, player, results);
+
+  // Naval (reposição): só se NÃO houve invasão anfíbia (a frota já teria sido usada).
+  // Aproxima UMA frota de um mar adjacente que toque terra inimiga.
+  if (!didAmphibious && player.supplies.oil >= RULES.SEA_MOVE_OIL_COST) {
     for (const [seaId, navies] of Object.entries(player.navies)) {
       if (navies <= 0) continue;
       const sea = state.seaZones[seaId];
@@ -2258,6 +2270,112 @@ function cpuMove(state: GameState, player: typeof state.players[SuperpowerId], c
   }
 
   return results;
+}
+
+// Tenta UMA invasão anfíbia. Lê o mesmo grafo terra↔mar que o humano e executa
+// via embark/moveNavy/disembark. Retorna true se desembarcou (conquistando terra
+// neutra). Bounded: no máximo 1 operação por turno (custo de petróleo + legível).
+function tryAmphibiousInvasion(
+  state: GameState,
+  player: typeof state.players[SuperpowerId],
+  results: CpuMoveResult[],
+): boolean {
+  const enemyOn = (tid: string): number => {
+    let f = 0;
+    for (const [pid, p] of Object.entries(state.players)) {
+      if (pid === player.id) continue;
+      f += (p as Player).armies[tid] || 0;
+    }
+    return f;
+  };
+  const landAdjOwn = (tid: string): boolean =>
+    !!state.territories[tid]?.adjacentTerritories.some(a => state.territories[a]?.owner === player.id);
+  const isLandingTarget = (tid: string): boolean => {
+    const terr = state.territories[tid];
+    return !!terr && !terr.nuked && terr.owner === null && enemyOn(tid) === 0 && !landAdjOwn(tid);
+  };
+  const oilForLeg = player.supplies.oil >= RULES.SEA_MOVE_OIL_COST;
+
+  for (const [seaId, navies] of Object.entries(player.navies)) {
+    if (navies <= 0) continue;
+    const sea = state.seaZones[seaId];
+    if (!sea) continue;
+
+    // Origem de embarque: território costeiro próprio com tropa sobrando (≥2, mantém 1).
+    const embarkT = sea.adjacentTerritories.find(
+      t => state.territories[t]?.owner === player.id && (player.armies[t] || 0) >= 2,
+    );
+    const alreadyEmbarked = (player.embarked[seaId] || 0) > 0;
+    if (!embarkT && !alreadyEmbarked) continue;
+
+    // Acha (mar de desembarque, território-alvo): 0 pernas no próprio mar, ou 1
+    // perna num mar adjacente (custa petróleo).
+    const candidateSeas = oilForLeg ? [seaId, ...sea.adjacentSeas] : [seaId];
+    let landSea = '';
+    let landT = '';
+    for (const sid of candidateSeas) {
+      const s = state.seaZones[sid];
+      if (!s) continue;
+      const target = s.adjacentTerritories.find(isLandingTarget);
+      if (target) { landSea = sid; landT = target; break; }
+    }
+    if (!landT) continue;
+
+    // Capacidade de transporte da frota nesta zona.
+    const capacity = navies * RULES.NAVY_TRANSPORT_CAPACITY;
+
+    // Embarca (se necessário) — mantém ≥1 defendendo a origem; até 3 por legibilidade.
+    if (embarkT) {
+      const spare = (player.armies[embarkT] || 0) - 1;
+      const toEmbark = Math.min(spare, capacity - (player.embarked[seaId] || 0), 3);
+      if (toEmbark > 0) {
+        const before = player.embarked[seaId] || 0;
+        embark(state, embarkT, seaId, toEmbark);
+        const embarked = (player.embarked[seaId] || 0) - before;
+        if (embarked > 0) {
+          results.push({
+            kind: 'embark',
+            fromId: embarkT, toId: seaId,
+            fromName: state.territories[embarkT]?.name || embarkT, toName: sea.name,
+            count: embarked, claimed: false,
+          });
+        }
+      }
+    }
+
+    const aboard = player.embarked[seaId] || 0;
+    if (aboard <= 0) continue; // nada embarcou (capacidade/tropa) → desiste desta frota
+
+    // Navega a perna (carrega a tropa embarcada) quando o alvo está num mar vizinho.
+    if (landSea !== seaId) {
+      const beforeNavy = player.navies[landSea] || 0;
+      moveNavy(state, seaId, landSea, navies); // move a frota inteira → capacidade acompanha
+      if ((player.navies[landSea] || 0) <= beforeNavy) continue; // bloqueado (mar costeiro ocupado) → aborta
+      results.push({
+        kind: 'naval',
+        fromId: seaId, toId: landSea,
+        fromName: sea.name, toName: state.seaZones[landSea]?.name || landSea,
+        count: navies, claimed: false,
+      });
+    }
+
+    // Desembarca → conquista a terra neutra desguarnecida (mesma regra do humano).
+    const landed = player.embarked[landSea] || 0;
+    if (landed <= 0) continue;
+    const beforeOwner = state.territories[landT]?.owner ?? null;
+    disembark(state, landSea, landT, landed);
+    const claimed = state.territories[landT]?.owner === player.id && beforeOwner !== player.id;
+    results.push({
+      kind: 'amphibious',
+      fromId: landSea, toId: landT,
+      fromName: state.seaZones[landSea]?.name || landSea,
+      toName: state.territories[landT]?.name || landT,
+      count: landed, claimed,
+    });
+    return true; // uma invasão anfíbia por turno
+  }
+
+  return false;
 }
 
 // ============================================================
@@ -2417,24 +2535,36 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
         break;
       }
 
-      case 5: { // Move (land + naval) — one announcement per move
+      case 5: { // Move (land + naval + anfíbio) — one announcement per move
         const moves = cpuMove(state, state.players[playerId], aiConfig);
         for (const mv of moves) {
-          const title = mv.kind === 'naval'
-            ? `Moveu frota para ${mv.toName}`
-            : mv.claimed
-              ? `Ocupou ${mv.toName}`
-              : `Reforçou ${mv.toName}`;
+          let title: string;
+          let description: string;
+          switch (mv.kind) {
+            case 'naval':
+              title = `Moveu frota para ${mv.toName}`;
+              description = `Frota avança de ${mv.fromName}`;
+              break;
+            case 'embark':
+              title = 'Embarcou tropas';
+              description = `${mv.count} exército(s) de ${mv.fromName} → ${mv.toName}`;
+              break;
+            case 'amphibious':
+              title = mv.claimed ? `Invasão anfíbia: ocupou ${mv.toName}` : `Desembarcou em ${mv.toName}`;
+              description = `${mv.count} exército(s) desembarcaram de ${mv.fromName}`;
+              break;
+            default: // 'land'
+              title = mv.claimed ? `Ocupou ${mv.toName}` : `Reforçou ${mv.toName}`;
+              description = `${mv.count} exército(s) de ${mv.fromName}`;
+          }
           pushStep({
             phase: 5,
             actionType: 'move',
             title,
-            description: mv.kind === 'naval'
-              ? `Frota avança de ${mv.fromName}`
-              : `${mv.count} exército(s) de ${mv.fromName}`,
+            description,
             fromId: mv.fromId,
             toId: mv.toId,
-            armyDelta: mv.kind === 'land' ? mv.count : undefined,
+            armyDelta: mv.kind === 'land' || mv.kind === 'amphibious' ? mv.count : undefined,
             navyDelta: mv.kind === 'naval' ? mv.count : undefined,
             soundKey: mv.claimed ? 'territory-conquered' : 'resource-gain',
             durationMs: STEP_MS,

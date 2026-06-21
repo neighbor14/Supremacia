@@ -131,7 +131,8 @@ export function createInitialGameState(
     attackerUnitsAfter: 0, defenderUnitsAfter: 0, conquered: false,
     attackerDice: [], defenderDice: [], attackerLosses: 0, defenderLosses: 0,
     phase: 'select_target', defenderChoice: null,
-    counterAttackAvailable: false, counterAttackUsed: false,
+    reinforceAvailable: false, reinforceUsed: false,
+    counterAttackAvailable: false, counterAttackUsed: false, counterResult: null,
   };
 
   const nuclearAttack: NuclearAttackState = {
@@ -167,6 +168,5 @@ export function createInitialGameState(
     gameOver: false,
     winner: null,
     endCondition: null,
-    defenderReinforcement: null,
   };
 }
