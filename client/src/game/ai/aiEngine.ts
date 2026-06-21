@@ -164,9 +164,62 @@ function enemyForcesOn(state: GameState, territoryId: string, selfId: string): n
 }
 
 interface MovementRead {
-  expansionTargets: number; // exércitos sobrando ao lado de terra neutra a ocupar
-  reinforceTargets: number; // fronteiras próprias ameaçadas com doador adjacente
-  navalRepositions: number; // frotas que podem se aproximar de um mar contestado
+  expansionTargets: number;  // exércitos sobrando ao lado de terra neutra a ocupar
+  reinforceTargets: number;  // fronteiras próprias ameaçadas com doador adjacente
+  navalRepositions: number;  // frotas que podem se aproximar de um mar contestado
+  amphibiousTargets: number; // desembarques possíveis em terra neutra além-mar
+}
+
+/** Algum território próprio é adjacente por TERRA a este território? */
+function landAdjacentToOwn(state: GameState, territoryId: string, selfId: string): boolean {
+  const t = state.territories[territoryId];
+  if (!t) return false;
+  return t.adjacentTerritories.some(adj => state.territories[adj]?.owner === selfId);
+}
+
+/**
+ * Lê oportunidades de INVASÃO ANFÍBIA (read-only): embarcar tropa de um território
+ * costeiro próprio, navegar e desembarcar em terra costeira NEUTRA e desguarnecida
+ * que NÃO seja alcançável por terra (senão a expansão terrestre, mais barata, já
+ * resolve). Fiel ao manual: desembarque só toma terra neutra/vazia — território
+ * inimigo continua exigindo a fase de Combate (ver docs/regras-supremacia.md §3).
+ * Conta cenários de 0 pernas (mesmo mar costeiro toca as duas praias) e de 1 perna
+ * (uma zona naval adjacente, que custa petróleo).
+ */
+function readAmphibious(state: GameState, player: Player): number {
+  const oilForLeg = player.supplies.oil >= RULES.SEA_MOVE_OIL_COST;
+  let count = 0;
+
+  for (const [seaId, navies] of Object.entries(player.navies)) {
+    if (navies <= 0) continue;
+    const sea = state.seaZones[seaId];
+    if (!sea) continue;
+
+    // Precisa de carga: tropa embarcável (território próprio adjacente com ≥2) ou
+    // tropa já embarcada nesta zona.
+    const hasEmbarkSource = sea.adjacentTerritories.some(
+      t => state.territories[t]?.owner === player.id && (player.armies[t] || 0) >= 2,
+    );
+    const alreadyEmbarked = (player.embarked?.[seaId] || 0) > 0;
+    if (!hasEmbarkSource && !alreadyEmbarked) continue;
+
+    // Mares de onde dá para desembarcar: o próprio (0 pernas) e, se houver
+    // petróleo, os adjacentes (1 perna).
+    const reachableSeas = oilForLeg ? [seaId, ...sea.adjacentSeas] : [seaId];
+    const hasLanding = reachableSeas.some(sid => {
+      const s = state.seaZones[sid];
+      if (!s) return false;
+      return s.adjacentTerritories.some(t => {
+        const terr = state.territories[t];
+        return terr && !terr.nuked && terr.owner === null &&
+          enemyForcesOn(state, t, player.id) === 0 &&
+          !landAdjacentToOwn(state, t, player.id);
+      });
+    });
+    if (hasLanding) count++;
+  }
+
+  return count;
 }
 
 /**
@@ -222,7 +275,9 @@ function readMovement(state: GameState, player: Player): MovementRead {
     }
   }
 
-  return { expansionTargets, reinforceTargets, navalRepositions };
+  const amphibiousTargets = readAmphibious(state, player);
+
+  return { expansionTargets, reinforceTargets, navalRepositions, amphibiousTargets };
 }
 
 // ────────────────────────────────────────────────────────────

@@ -1232,10 +1232,15 @@ function rollCombat(state: GameState): void {
         state.combat.phase = 'occupy';
       }
       // else: both wiped out → stays at 'result', territory uncontested but attacker can't advance
-    } else {
-      // Defender kept territory — check D7 (counter-attack) opportunity
-      checkCounterAttack(state, defender);
     }
+    // else: defensor manteve o território → phase fica em 'result'.
+    // D6/D7 (reforço + contra-ataque do defensor) NÃO são disparados aqui de
+    // propósito: rollCombat é compartilhado pelo fluxo humano (CombatModal espera
+    // phase 'result') e por cpuAttack/planAiTurn (que lê os dados do combate antes
+    // de qualquer reset de estado). Disparar a cadeia aqui corrompe os dois.
+    // A resolução do contra-ataque/reforço deve ser feita pelo caller depois de
+    // capturar o resultado — ver checkCounterAttack/checkDefenderReinforcement,
+    // hoje acessíveis só pelos handlers COUNTER_ATTACK/REINFORCE_AFTER_COMBAT.
   }
 }
 
