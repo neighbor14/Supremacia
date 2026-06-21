@@ -23,6 +23,8 @@ interface GameStore {
   uiMode: 'map' | 'market' | 'build' | 'move' | 'attack' | 'nuclear';
   /** Pending build action awaiting a map click (army/navy), or null. */
   buildAction: BuildAction;
+  /** Private overlay showing which map territories relate to the player's company cards. */
+  companyMapVisible: boolean;
 
   // Actions
   startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => void;
@@ -31,6 +33,7 @@ interface GameStore {
   selectSeaZone: (id: string | null) => void;
   setUiMode: (mode: GameStore['uiMode']) => void;
   setBuildAction: (action: BuildAction) => void;
+  setCompanyMapVisible: (v: boolean) => void;
   loadGame: (state: GameState) => void;
   saveGame: () => string;
 }
@@ -2756,12 +2759,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedSeaZone: null,
   uiMode: 'map',
   buildAction: null,
+  companyMapVisible: false,
+
+  setCompanyMapVisible: (v) => set({ companyMapVisible: v }),
 
   startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => {
     const otherIds = shuffleArray(SUPERPOWER_IDS.filter(id => id !== humanPlayer));
     const activeAiIds = otherIds.slice(0, Math.min(aiCount, otherIds.length));
     const game = createInitialGameState(humanPlayer, activeAiIds, aiDifficulty);
-    set({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map', buildAction: null });
+    set({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map', buildAction: null, companyMapVisible: false });
     localStorage.setItem('supremacia_save', JSON.stringify(game));
   },
 

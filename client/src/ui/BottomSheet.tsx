@@ -8,12 +8,13 @@ import { RULES } from '../game/rulesConfig';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import ProspectPanel from './ProspectPanel';
 import { getTechCounts, formatOdds } from '../game/researchDeck';
+import { getCompanyOpportunities } from '../game/companyMap';
 
 const RESOURCE_PT: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
 const RESOURCE_ICON_PT: Record<ResourceType, string> = { grain: '🌾', oil: '🛢️', mineral: '⛏️' };
 
 export default function BottomSheet() {
-  const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory, selectSeaZone } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory, selectSeaZone, companyMapVisible } = useGameStore();
   if (!game) return null;
 
   const { turn } = game;
@@ -45,6 +46,11 @@ export default function BottomSheet() {
     const myCompanies = myCompanyIds.map(id => game.resourceCards[id]).filter(Boolean);
     // A company exists here but belongs to someone else / undiscovered.
     const hasForeignCompany = companiesInTerritory(game, selectedTerritory).some(id => !myCompanyIds.includes(id) && game.resourceCards[id]?.revealed);
+
+    // Company-map opportunity for this territory (only when overlay is active).
+    const companyOpportunity = companyMapVisible && isHuman
+      ? getCompanyOpportunities(game, currentPlayer.id).get(selectedTerritory) ?? null
+      : null;
 
     // Build eligibility (mirrors BuildPanel rule): own, non-nuked land territory.
     const canBuildHere = isMine && !territory.nuked;
@@ -80,6 +86,26 @@ export default function BottomSheet() {
 
         {territory.nuked && (
           <p className="text-xs text-destructive mb-2">☢ Território destruído por bomba nuclear</p>
+        )}
+
+        {/* Company-map opportunity badge — only visible when overlay is active */}
+        {companyOpportunity && (
+          <div className={`flex items-center gap-1.5 mb-2 px-2 py-1.5 rounded-md text-[11px] border ${
+            companyOpportunity === 'own'
+              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+              : companyOpportunity === 'neutral'
+                ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+          }`}>
+            <span>{companyOpportunity === 'own' ? '🟡' : companyOpportunity === 'neutral' ? '🔵' : '🔴'}</span>
+            <span>
+              {companyOpportunity === 'own'
+                ? 'Você possui companhia aqui e controla o território.'
+                : companyOpportunity === 'neutral'
+                  ? 'Você possui companhia aqui. Conquiste o território para maximizar produção.'
+                  : 'Você possui companhia aqui, mas o território pertence a outro jogador.'}
+            </span>
+          </div>
         )}
 
         {/* Controller / owner line */}

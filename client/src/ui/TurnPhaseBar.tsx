@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
@@ -119,7 +119,7 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
 
 export default function TurnPhaseBar() {
   const [showRoundPanel, setShowRoundPanel] = useState(false);
-  const { game, dispatch } = useGameStore();
+  const { game, dispatch, companyMapVisible, setCompanyMapVisible } = useGameStore();
   if (!game) return null;
 
   const { turn } = game;
@@ -135,6 +135,11 @@ export default function TurnPhaseBar() {
 
   // Choosing phase: after mandatory stages are done
   const isChoosingPhase = isHuman && turn.stage >= 2 && turn.stageComplete;
+
+  // Hide private overlay whenever the active player changes (hotseat privacy).
+  useEffect(() => {
+    setCompanyMapVisible(false);
+  }, [turn.currentPlayer]);
 
   const handleMandatoryAction = () => {
     if (!isHuman) return;
@@ -213,17 +218,35 @@ export default function TurnPhaseBar() {
             <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded uppercase">CPU</span>
           )}
         </div>
-        <button
-          onClick={() => setShowRoundPanel(true)}
-          className="text-xs font-mono text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-secondary/50 active:scale-[0.97]"
-          title="Ver status de todos os jogadores"
-        >
-          <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>Rod.</span>
-          <span className="font-bold">{turn.turnNumber}</span>
-          <span className="text-muted-foreground/40">·</span>
-          <span className="text-[10px]">{turn.currentPlayerIndex + 1}/{turn.playerOrder.length}</span>
-          <span className="text-[9px] text-muted-foreground/40 ml-0.5">ℹ</span>
-        </button>
+        <div className="flex items-center gap-1">
+          {isHuman && (
+            <button
+              onClick={() => setCompanyMapVisible(!companyMapVisible)}
+              title={companyMapVisible ? 'Ocultar mapa de companhias' : 'Ver oportunidades: destaca no mapa os territórios das suas cartas de empresa'}
+              className={`
+                text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-all active:scale-[0.95]
+                ${companyMapVisible
+                  ? 'bg-amber-500/25 text-amber-300 border border-amber-500/50 font-semibold'
+                  : 'bg-secondary/40 text-muted-foreground border border-border/40 hover:bg-secondary/70'}
+              `}
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              <span>🗺</span>
+              <span className="[@media(max-width:360px)]:hidden">Ver</span>
+            </button>
+          )}
+          <button
+            onClick={() => setShowRoundPanel(true)}
+            className="text-xs font-mono text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-secondary/50 active:scale-[0.97]"
+            title="Ver status de todos os jogadores"
+          >
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>Rod.</span>
+            <span className="font-bold">{turn.turnNumber}</span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="text-[10px]">{turn.currentPlayerIndex + 1}/{turn.playerOrder.length}</span>
+            <span className="text-[9px] text-muted-foreground/40 ml-0.5">ℹ</span>
+          </button>
+        </div>
       </div>
 
       {/* Choosing mode: optional stage selection with counter + progress */}

@@ -4,6 +4,7 @@ import { useGameStore, getBuildTargets } from '../game/store';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
+import { getCompanyOpportunities } from '../game/companyMap';
 
 /**
  * WorldMap uses CSS transform (scale + translate) for zoom/pan.
@@ -59,7 +60,7 @@ function getInitialScale(): number {
 }
 
 export default function WorldMap() {
-  const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone, buildAction, dispatch } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone, buildAction, dispatch, companyMapVisible } = useGameStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Transform state
@@ -95,6 +96,18 @@ export default function WorldMap() {
   // top of the panel's buttons. Build menu is the tallest of these (~32vh).
   const human = game.players[game.turn.currentPlayer]?.isHuman;
   const phasePanelOpen = !!human && game.turn.stage >= 3 && game.turn.stage <= 7;
+
+  // Company map: private opportunity overlay for the current human player.
+  // Computed only when the toggle is on to avoid unnecessary iteration.
+  const companyOpportunities = (companyMapVisible && human)
+    ? getCompanyOpportunities(game, game.turn.currentPlayer)
+    : new Map<string, import('../game/companyMap').CompanyOpportunity>();
+
+  // Territory to briefly highlight when the drawn-card modal reveals a resource card.
+  const drawnCardTerritoryId =
+    game.drawnCard?.active && game.drawnCard.type === 'resource' && game.drawnCard.cardId
+      ? (game.resourceCards[game.drawnCard.cardId]?.territoryId ?? null)
+      : null;
 
   // --- Zoom helpers ---
   const zoomIn = () => setScale(s => Math.min(MAX_SCALE, s * 1.4));
@@ -345,6 +358,19 @@ export default function WorldMap() {
           <filter id="build-glow-navy" x="-40%" y="-40%" width="180%" height="180%">
             <feDropShadow dx="0" dy="0" stdDeviation="3.4" floodColor="#60a5fa" floodOpacity="1" />
           </filter>
+          {/* Company-map opportunity glows (three tiers: own / neutral / foreign + drawn-card) */}
+          <filter id="opp-glow-own" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#f59e0b" floodOpacity="1" />
+          </filter>
+          <filter id="opp-glow-neutral" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#06b6d4" floodOpacity="0.9" />
+          </filter>
+          <filter id="opp-glow-foreign" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#f43f5e" floodOpacity="0.75" />
+          </filter>
+          <filter id="opp-glow-drawn" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor="#fbbf24" floodOpacity="1" />
+          </filter>
         </defs>
 
         {/* Background ocean */}
@@ -512,6 +538,48 @@ export default function WorldMap() {
                 />
               ) : null
             )}
+          </g>
+        )}
+
+        {/* Company-map opportunity overlay — private view, non-interactive.
+            Only visible when the human player enables the toggle.
+            Three visual tiers: own territory (amber/pulse) > neutral (cyan) > foreign (rose/dashed). */}
+        {companyOpportunities.size > 0 && (
+          <g pointerEvents="none">
+            {Array.from(companyOpportunities.entries()).map(([tid, opp]) => {
+              const t = game.territories[tid];
+              if (!t) return null;
+              const isOwn = opp === 'own';
+              const isNeutral = opp === 'neutral';
+              return (
+                <path
+                  key={`opp-${tid}`}
+                  d={t.svgPath}
+                  fill={isOwn ? '#f59e0b2a' : isNeutral ? '#06b6d42a' : '#f43f5e1a'}
+                  stroke={isOwn ? '#fcd34d' : isNeutral ? '#22d3ee' : '#fb7185'}
+                  strokeWidth={isOwn ? 2.5 : 1.5}
+                  strokeLinejoin="round"
+                  strokeDasharray={opp === 'foreign' ? '4 3' : undefined}
+                  filter={isOwn ? 'url(#opp-glow-own)' : isNeutral ? 'url(#opp-glow-neutral)' : 'url(#opp-glow-foreign)'}
+                  className={isOwn ? 'animate-pulse' : undefined}
+                />
+              );
+            })}
+          </g>
+        )}
+
+        {/* Drawn-card territory pulse — appears when DrawnCardModal reveals a resource card,
+            letting the player immediately locate the company on the map. */}
+        {drawnCardTerritoryId && game.territories[drawnCardTerritoryId] && (
+          <g pointerEvents="none" className="animate-pulse">
+            <path
+              d={game.territories[drawnCardTerritoryId].svgPath}
+              fill="#fbbf2440"
+              stroke="#fbbf24"
+              strokeWidth={3}
+              strokeLinejoin="round"
+              filter="url(#opp-glow-drawn)"
+            />
           </g>
         )}
       </svg>
