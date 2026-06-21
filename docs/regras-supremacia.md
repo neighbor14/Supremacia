@@ -151,12 +151,32 @@ Todas as 8 divergências identificadas na auditoria do manual Grow foram corrigi
 | D3 | Prospecção por turno | 1× | 3× (`MAX_PROSPECT_ATTEMPTS`) | `prospect()` |
 | D4 | Múltiplo de empréstimo | $5.000 | $10.000 | `LOAN_MULTIPLE` |
 | D5 | Juros de empréstimo | 10% | 5% | `LOAN_INTEREST_RATE` |
-| D6 | Reforço do defensor pós-combate | ausente | implementado | `checkDefenderReinforcement()` |
-| D7 | Contra-ataque do defensor | ausente | implementado | `executeCounterAttack()` |
+| D6 | Reforço do defensor pós-combate | ausente | implementado (interativo) | `performReinforcement()` |
+| D7 | Contra-ataque do defensor | ausente | implementado (interativo) | `performCounterAttack()` |
 | D8 | Mar costeiro — uso restrito | sem restrição | 1 jogador por zona costeira | `moveNavy()` |
 
-**D6/D7 — notas de implementação:**
-- Quando humano ataca IA: IA decide contra-atacar (baseado em perfil de agressividade) e reforça automaticamente.
-- Quando IA ataca humano: turno da IA pausa, humano recebe prompt para contra-atacar (`COUNTER_ATTACK`/`SKIP_COUNTER_ATTACK`) e reforçar (`REINFORCE_AFTER_COMBAT`/`SKIP_REINFORCEMENT`). Após ação humana, turno da IA é finalizado.
+**D6/D7 — resposta do defensor pós-combate (implementação interativa):**
 
-**D8 — nota:** combate naval em mares costeiros ainda não implementado. Entrar em mar costeiro já ocupado por outro jogador é bloqueado com mensagem explicativa.
+Quando o defensor mantém o território, abre-se a fase `combat.phase === 'defender_response'`:
+- **Reforço (D6):** mover exércitos de território adjacente próprio para o defendido.
+  Reação defensiva sem custo de cereal (≠ movimento do Estágio 5). Uma vez por combate.
+- **Contra-ataque (D7):** o defensor ataca a origem do ataque, custando 1 conjunto de
+  suprimentos; é uma troca de baixas. Uma vez por combate.
+
+Fluxos:
+- **Humano ataca IA** (síncrono): a IA defensora resolve a resposta automaticamente
+  (`resolveDefenderResponseAuto` — reforça do vizinho mais forte; contra-ataca conforme
+  a agressividade do perfil). O resultado do contra-ataque aparece no `CombatModal`.
+- **IA ataca humano** (camada de apresentação): `planAiTurn` pausa no ataque, o humano
+  responde no `CombatModal` (`REINFORCE_AFTER_COMBAT` / `COUNTER_ATTACK` / `FINISH_DEFENDER_RESPONSE`).
+
+Marcadas com `// TODO: confirmar regra original`:
+- Custo de suprimentos do reforço (assumido grátis).
+- Se um contra-ataque vitorioso permite **avançar** para a origem (hoje é só dano, não conquista).
+
+**Simplificação documentada:** quando a IA ataca o humano e o humano responde, o turno
+da IA **encerra** após a resposta (abre mão dos estágios opcionais restantes). Evita o
+replanejamento da apresentação pré-computada e o risco de exceder o limite de 3 estágios.
+
+**D8 — nota:** combate naval em mares costeiros ainda não implementado. Entrar em mar
+costeiro já ocupado por outro jogador é bloqueado com mensagem explicativa.

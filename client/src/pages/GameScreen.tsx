@@ -120,6 +120,9 @@ export default function GameScreen() {
     const currentPlayer = game.players[game.turn.currentPlayer];
     if (currentPlayer.isHuman || currentPlayer.isEliminated) return;
     if (presentation.isPresenting) return; // already presenting (or skip in progress)
+    // D6/D7: a IA atacou o humano e o combate está pausado aguardando a resposta
+    // do defensor (CombatModal). Não replanejar o turno da IA enquanto isso.
+    if (game.combat.active && game.combat.phase === 'defender_response') return;
 
     const timer = setTimeout(() => {
       const steps = planAiTurn(game);
