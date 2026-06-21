@@ -28,14 +28,21 @@ export default function PlayerStatusBar() {
 
   const sp = SUPERPOWERS[humanPlayer.id];
 
+  // Auto-collapse when a phase panel is open and the viewport is short/landscape,
+  // to prevent the draggable panel from covering the bottom build/sell/buy HUD.
+  const currentTurnPlayer = game.players[game.turn.currentPlayer];
+  const phasePanelOpen = !!currentTurnPlayer?.isHuman && game.turn.stage >= 3 && game.turn.stage <= 7;
+  const isSmallViewport = window.innerHeight < 600 || window.innerWidth > window.innerHeight;
+  const isExpanded = expanded && !(phasePanelOpen && isSmallViewport);
+
   return (
     <div ref={containerRef} style={{ ...containerStyle, zIndex: 20 }} className="flex items-start gap-0">
       {/* Main panel */}
       <div
         className="bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-xl overflow-hidden transition-all duration-200"
-        style={{ width: expanded ? 160 : 42 }}
+        style={{ width: isExpanded ? 160 : 42 }}
       >
-        {expanded ? (
+        {isExpanded ? (
           <div className="p-2.5">
             {/* Drag handle */}
             <div

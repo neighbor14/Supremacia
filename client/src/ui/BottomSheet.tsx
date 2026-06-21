@@ -557,7 +557,7 @@ function BuildPanel() {
 
     return (
       <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
-        <div className="p-3 space-y-2">
+        <div className="max-w-2xl mx-auto p-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{title}</p>
             <button
@@ -583,7 +583,7 @@ function BuildPanel() {
             </p>
           ) : (
             <p className={`text-[11px] rounded px-2 py-1.5 border ${isArmy ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-blue-300 bg-blue-500/10 border-blue-500/30'}`}>
-              👆 Toque {isArmy ? 'num território' : 'numa zona marítima'} destacado no mapa para construir.
+              👆 Toque {isArmy ? 'num território destacado' : 'numa zona marítima destacada'} no mapa para construir.
               <span className="opacity-70"> ({targets.length} {isArmy ? 'território(s)' : 'mar(es)'} válido(s))</span>
             </p>
           )}
@@ -603,6 +603,7 @@ function BuildPanel() {
   // ── MENU MODE: choose what to build / research ──
   return (
     <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
+      <div className="max-w-2xl mx-auto">
       {/* Header strip: title + resources + collapse toggle */}
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
         <div className="flex items-center gap-2 min-w-0">
@@ -620,7 +621,7 @@ function BuildPanel() {
 
       {!collapsed && (
         <>
-          <div className="p-2.5 grid grid-cols-2 gap-2">
+          <div className="p-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2">
             {/* Army */}
             <BuildTile
               icon="🎖️"
@@ -692,6 +693,7 @@ function BuildPanel() {
           </p>
         </>
       )}
+      </div>
     </div>
   );
 }
