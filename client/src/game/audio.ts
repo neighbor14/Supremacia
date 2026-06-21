@@ -22,7 +22,8 @@ export type SoundEffect =
   | 'error'
   | 'victory'
   | 'defeat'
-  | 'dice-roll';
+  | 'dice-roll'
+  | 'card-reveal';
 
 export type MusicTrack = 'menu' | 'gameplay' | 'battle';
 
@@ -266,6 +267,19 @@ const SOUNDS: Record<SoundEffect, (c: AudioContext) => void> = {
     for (let i = 0; i < 4; i++) {
       burst(c, 0.065, { vol: 0.28, filterFreq: 3800, startAt: i * 0.075 });
     }
+  },
+
+  // Card flip: snap noise + motion whoosh + reveal shimmer
+  'card-reveal': (c) => {
+    // Snap of the card being flipped — crisp high-freq burst
+    burst(c, 0.040, { vol: 0.30, filterFreq: 4000 });
+    // Low thud as card leaves the deck
+    burst(c, 0.055, { vol: 0.14, filterFreq: 300, filterType: 'bandpass' });
+    // Whoosh: card sweeping through air
+    tone(c, 160, 0.09, { freqEnd: 640, vol: 0.09, type: 'sine', startAt: 0.006 });
+    // Shimmer as card face is revealed
+    tone(c, 920,  0.17, { vol: 0.18, type: 'sine', attack: 0.003, startAt: 0.040 });
+    tone(c, 1380, 0.13, { vol: 0.10, type: 'sine', attack: 0.003, startAt: 0.055 });
   },
 
   'missile-launch': (c) => {

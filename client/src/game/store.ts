@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameState, GameAction, SuperpowerId, ResourceType, ResourceCard, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep } from './types';
+import { GameState, GameAction, SuperpowerId, ResourceType, ResourceCard, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep, ProspectingSession } from './types';
 import { createInitialGameState } from './setup';
 import { RULES } from './rulesConfig';
 import { rollDice, sumDice, shuffleArray } from './rng';
@@ -292,10 +292,10 @@ function acquireCompany(state: GameState, player: Player, cardId: string): void 
  *
  * - Without a target type: reveals the single top card. A company is acquired; a
  *   tech card is returned to the deck (cost refunded — tech only via research).
- * - With a target type (grain/oil/mineral): keeps flipping, charging per card,
- *   until a company of that type appears. Non-matching company cards and tech
- *   cards are set aside and returned/reshuffled into the deck afterwards. This
- *   mirrors the physical rule of searching for a company of the chosen resource.
+ * - With a target type (grain/oil/mineral): opens a ProspectingSession and flips
+ *   one card at a time. Each flip sets state.drawnCard so DrawnCardModal can show
+ *   the card to the player. Non-matching cards are set aside and reshuffled back
+ *   into the deck when the session ends (found, stopped, or exhausted).
  */
 function prospect(state: GameState, targetType?: ResourceType): void {
   const player = state.players[state.turn.currentPlayer];
@@ -308,50 +308,12 @@ function prospect(state: GameState, targetType?: ResourceType): void {
     return;
   }
 
-  // ── Targeted prospecting: flip until the chosen resource type appears ──
+  // ── Targeted prospecting: step-by-step, one card per dispatch ──
   if (targetType) {
-    const setAside: string[] = [];
-    let flips = 0;
-    let cost = 0;
-    let found: string | null = null;
-
-    while (state.resourceDeck.length > 0 && player.money >= RULES.RESEARCH_COST_PER_CARD) {
-      player.money -= RULES.RESEARCH_COST_PER_CARD;
-      cost += RULES.RESEARCH_COST_PER_CARD;
-      flips++;
-      const id = state.resourceDeck.shift()!;
-      if (isTechCard(id)) { setAside.push(id); continue; }
-      const card = state.resourceCards[id];
-      // Tipo certo E território prospectável (não inimigo, não nuclearizado) → fica.
-      // Tipo certo mas território inimigo/nuke → devolve ao maço e continua buscando.
-      if (card && card.type === targetType && isProspectableTerritory(state, card, player.id)) {
-        found = id;
-        break;
-      }
-      setAside.push(id);
+    if (!state.prospectingSession) {
+      state.prospectingSession = { targetType, cardsSetAside: [], found: false, totalCost: 0, cardsFlipped: 0 };
     }
-
-    // Non-matching + tech cards always return to the deck and reshuffle.
-    if (setAside.length > 0) {
-      state.resourceDeck.push(...setAside);
-      state.resourceDeck = shuffleArray(state.resourceDeck);
-    }
-
-    const typeIcon = RESOURCE_ICON[targetType];
-    if (found) {
-      addEvent(state, player.id, `Prospecção de ${typeIcon}: ${flips} carta(s) virada(s), custo $${cost.toLocaleString()}.`, 'economy');
-      acquireCompany(state, player, found);
-    } else {
-      addEvent(state, player.id, `Prospecção de ${typeIcon}: nenhuma companhia encontrada (${flips} carta(s), $${cost.toLocaleString()}).`, 'info');
-      state.drawnCard = {
-        active: true,
-        type: 'resource',
-        success: false,
-        cardName: `Companhia de ${typeIcon} não encontrada`,
-        cardEffect: `Você virou ${flips} carta(s) e não saiu nenhuma companhia de ${typeIcon}. As cartas voltaram ao baralho.`,
-        context: 'Prospecção de Recursos',
-      };
-    }
+    drawProspectCardInternal(state);
     return;
   }
 
@@ -431,9 +393,204 @@ function finalizeResearch(state: GameState): void {
   state.researchSession = null;
 }
 
+// Returns all set-aside cards from a targeted prospecting session to the deck.
+// Called when prospecting ends (found+dismissed, stopped, or deck exhausted).
+function finalizeProspect(state: GameState): void {
+  const session = state.prospectingSession;
+  if (!session) return;
+  if (session.cardsSetAside.length > 0) {
+    state.resourceDeck.push(...session.cardsSetAside);
+    state.resourceDeck = shuffleArray(state.resourceDeck);
+  }
+  state.prospectingSession = null;
+}
+
+const RESOURCE_LABEL: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
+
+/**
+ * Flip one card from the deck for a targeted prospecting session.
+ * Sets state.drawnCard so the DrawnCardModal shows the card.
+ * When the matching card is found, the session.found flag is set and the card is
+ * acquired immediately; the session is NOT finalized here — finalizeProspect() is
+ * called by DISMISS_DRAWN_CARD so the set-aside cards return to the deck.
+ */
+function drawProspectCardInternal(state: GameState): void {
+  const session = state.prospectingSession;
+  if (!session || session.found) return;
+
+  const player = state.players[state.turn.currentPlayer];
+  const typeLabel = RESOURCE_LABEL[session.targetType];
+  const typeIcon = RESOURCE_ICON[session.targetType];
+
+  // Deck exhausted — finalize immediately, show failure card
+  if (state.resourceDeck.length === 0) {
+    addEvent(state, player.id,
+      `Prospecção de ${typeLabel}: baralho esgotado após ${session.cardsFlipped} carta(s). Custo total: $${session.totalCost.toLocaleString()}. Cartas devolvidas.`, 'info');
+    state.drawnCard = {
+      active: true,
+      type: 'resource',
+      success: false,
+      cardName: `${typeLabel} não encontrada`,
+      cardEffect: `Baralho esgotado após ${session.cardsFlipped} carta(s). As cartas voltaram ao baralho.`,
+      context: `Prospecção de ${typeLabel}`,
+      prospectTarget: session.targetType,
+      prospectCardsFlipped: session.cardsFlipped,
+      prospectCostSoFar: session.totalCost,
+    };
+    finalizeProspect(state);
+    return;
+  }
+
+  // Insufficient funds — finalize immediately, show failure card
+  if (player.money < RULES.RESEARCH_COST_PER_CARD) {
+    addEvent(state, player.id,
+      `Prospecção de ${typeLabel}: dinheiro insuficiente após ${session.cardsFlipped} carta(s). Custo total: $${session.totalCost.toLocaleString()}. Cartas devolvidas.`, 'info');
+    state.drawnCard = {
+      active: true,
+      type: 'resource',
+      success: false,
+      cardName: `${typeLabel} não encontrada`,
+      cardEffect: `Dinheiro insuficiente para continuar. As cartas voltaram ao baralho.`,
+      context: `Prospecção de ${typeLabel}`,
+      prospectTarget: session.targetType,
+      prospectCardsFlipped: session.cardsFlipped,
+      prospectCostSoFar: session.totalCost,
+    };
+    finalizeProspect(state);
+    return;
+  }
+
+  player.money -= RULES.RESEARCH_COST_PER_CARD;
+  session.totalCost += RULES.RESEARCH_COST_PER_CARD;
+  session.cardsFlipped++;
+
+  const cardId = state.resourceDeck.shift()!;
+  const context = `Prospecção de ${typeLabel} · Carta ${session.cardsFlipped}`;
+
+  // ── Tech card (nuke or laser): set aside, show it ──
+  if (isTechCard(cardId)) {
+    session.cardsSetAside.push(cardId);
+    const techName = isNukeCard(cardId) ? 'Ogiva Nuclear' : 'Estrela Laser';
+    addEvent(state, player.id,
+      `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — ${techName} (tecnologia, voltará ao baralho). Procurando ${typeLabel}.`, 'economy');
+    state.drawnCard = {
+      active: true,
+      type: isNukeCard(cardId) ? 'nuke' : 'laser',
+      success: false,
+      cardName: techName,
+      cardEffect: `Carta de tecnologia — não é uma companhia de ${typeLabel}. Voltará ao baralho.`,
+      context,
+      cardId,
+      prospectTarget: session.targetType,
+      prospectCardsFlipped: session.cardsFlipped,
+      prospectCostSoFar: session.totalCost,
+    };
+    return;
+  }
+
+  const card = state.resourceCards[cardId];
+
+  // ── Matching type AND territory available: SUCCESS ──
+  if (card && card.type === session.targetType && isProspectableTerritory(state, card, player.id)) {
+    session.found = true;
+    const where = state.territories[card.territoryId]?.name ?? card.territoryId;
+    const icon = RESOURCE_ICON[card.type];
+
+    card.ownerId = player.id;
+    card.revealed = true;
+    if (!player.resourceCards.includes(cardId)) player.resourceCards.push(cardId);
+
+    addEvent(state, player.id,
+      `Prospecção de ${typeLabel}: ${card.companyName} (+${card.production} ${icon}, ${where}) adquirida. ${session.cardsFlipped} carta(s) virada(s), custo $${session.totalCost.toLocaleString()}.`, 'economy');
+
+    state.drawnCard = {
+      active: true,
+      type: 'resource',
+      success: true,
+      cardName: card.companyName,
+      cardEffect: `+${card.production} ${icon} por turno · localizada em ${where}`,
+      context,
+      cardId,
+      resourceType: card.type,
+      companyName: card.companyName,
+      production: card.production,
+      prospectTarget: session.targetType,
+      prospectCardsFlipped: session.cardsFlipped,
+      prospectCostSoFar: session.totalCost,
+    };
+    // Session kept alive until DISMISS_DRAWN_CARD so set-aside cards are returned
+    return;
+  }
+
+  // ── Non-matching or blocked: set aside, show it ──
+  session.cardsSetAside.push(cardId);
+
+  if (!card) {
+    addEvent(state, player.id, `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — desconhecida. Procurando ${typeLabel}.`, 'economy');
+    state.drawnCard = {
+      active: true,
+      type: 'resource',
+      success: false,
+      cardName: 'Carta desconhecida',
+      cardEffect: `Não era ${typeLabel}. Voltará ao baralho.`,
+      context,
+      cardId,
+      prospectTarget: session.targetType,
+      prospectCardsFlipped: session.cardsFlipped,
+      prospectCostSoFar: session.totalCost,
+    };
+    return;
+  }
+
+  const resourceLabel = RESOURCE_LABEL[card.type];
+  const where = state.territories[card.territoryId]?.name ?? card.territoryId;
+
+  if (card.type !== session.targetType) {
+    addEvent(state, player.id,
+      `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — ${card.companyName} (${resourceLabel}). Não era ${typeLabel}. Voltará ao baralho.`, 'economy');
+    state.drawnCard = {
+      active: true,
+      type: 'resource',
+      success: false,
+      cardName: card.companyName,
+      cardEffect: `${resourceLabel} (+${card.production}) em ${where} — não era ${typeLabel}. Voltará ao baralho.`,
+      context,
+      cardId,
+      resourceType: card.type,
+      companyName: card.companyName,
+      production: card.production,
+      prospectTarget: session.targetType,
+      prospectCardsFlipped: session.cardsFlipped,
+      prospectCostSoFar: session.totalCost,
+    };
+  } else {
+    // Right type, but territory is blocked (enemy-held or nuked)
+    const territory = state.territories[card.territoryId];
+    const motivo = territory?.nuked ? 'território nuclearizado' : 'território sob controle inimigo';
+    addEvent(state, player.id,
+      `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — ${card.companyName} (${typeLabel}) indisponível em ${where}: ${motivo}. Voltará ao baralho.`, 'economy');
+    state.drawnCard = {
+      active: true,
+      type: 'resource',
+      success: false,
+      cardName: card.companyName,
+      cardEffect: `${typeLabel} em ${where} — ${motivo}. Voltará ao baralho.`,
+      context,
+      cardId,
+      resourceType: card.type,
+      companyName: card.companyName,
+      production: card.production,
+      prospectTarget: session.targetType,
+      prospectCardsFlipped: session.cardsFlipped,
+      prospectCostSoFar: session.totalCost,
+    };
+  }
+}
+
 function advanceToNextPlayer(state: GameState): void {
-  // Clear any orphaned research session before changing players
+  // Clear any orphaned sessions before changing players
   if (state.researchSession) finalizeResearch(state);
+  if (state.prospectingSession) finalizeProspect(state);
   // Reset per-turn attack tracking
   state.turn.attackedFrom = [];
 
@@ -2007,23 +2164,62 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
     }
   }
 
-  // ── Research nukes (AI instant resolve — no UI modals) ───────
+  // ── Research nukes — card-by-card so human player sees each draw ────────────
   if (!player.hasResearchedNuke && state.players[playerId].money > 15000 && sorted.includes(6)) {
-    const hadNuke = state.players[playerId].hasResearchedNuke;
-    researchInstant(state, 'nuke');
-    if (!hadNuke && state.players[playerId].hasResearchedNuke) {
-      const builtNuke = state.players[playerId].nukes > 0;
+    const techName = 'Bomba Atômica';
+    const drawnForResearch: string[] = [];
+    let researchCost = 0;
+    let foundNuke = false;
+
+    while (
+      state.resourceDeck.length > 0 &&
+      state.players[playerId].money >= RULES.RESEARCH_COST_PER_CARD
+    ) {
+      state.players[playerId].money -= RULES.RESEARCH_COST_PER_CARD;
+      researchCost += RULES.RESEARCH_COST_PER_CARD;
+      const cardId = state.resourceDeck.shift()!;
+      drawnForResearch.push(cardId);
+
+      const isTargetCard = isNukeCard(cardId);
+      const card = state.resourceCards[cardId];
+      const cardEmoji = isNukeCard(cardId) ? '☢️'
+        : isLaserCard(cardId) ? '🛡️'
+        : card?.type === 'grain' ? '🌾'
+        : card?.type === 'oil' ? '🛢️'
+        : '⛏️';
+      const cardName = isNukeCard(cardId) ? 'Ogiva Nuclear'
+        : isLaserCard(cardId) ? 'Estrela Laser'
+        : card?.companyName ?? 'Carta de Recurso';
+
       pushStep({
         phase: 6,
-        actionType: 'research',
-        title: 'Pesquisa Nuclear concluída!',
-        description: builtNuke
-          ? 'Primeira ogiva nuclear construída'
-          : 'Tecnologia nuclear desbloqueada',
-        soundKey: 'missile-launch',
+        actionType: 'card_reveal',
+        title: isTargetCard ? `${techName} encontrada!` : `Revelou: ${cardEmoji} ${cardName}`,
+        description: isTargetCard
+          ? `${sp.shortName} pesquisou ${drawnForResearch.length} carta(s) — $${researchCost.toLocaleString()}`
+          : `Procurando ${techName}... carta ${drawnForResearch.length}`,
+        soundKey: isTargetCard ? 'territory-conquered' : 'resource-gain',
         durationMs: STEP_MS,
       });
+
+      if (isTargetCard) {
+        state.players[playerId].hasResearchedNuke = true;
+        foundNuke = true;
+        break;
+      }
     }
+
+    // Return all drawn cards to deck (per manual: cards always return)
+    if (drawnForResearch.length > 0) {
+      state.resourceDeck.push(...drawnForResearch);
+      state.resourceDeck = shuffleArray(state.resourceDeck);
+    }
+
+    if (!foundNuke && drawnForResearch.length > 0) {
+      addEvent(state, playerId,
+        `Pesquisa IA: ${techName} não encontrada (${drawnForResearch.length} carta(s), $${researchCost.toLocaleString()} gastos). Cartas devolvidas.`, 'build');
+    }
+
     state.drawnCard = null;
   }
 
@@ -2179,7 +2375,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         cpuTurn(state);
         break;
       case 'DISMISS_DRAWN_CARD':
-        finalizeResearch(state); // Returns drawn cards to deck if session active
+        finalizeResearch(state);  // Returns drawn research cards to deck if session active
+        finalizeProspect(state);  // Returns set-aside prospect cards to deck if session active
         state.drawnCard = null;
         break;
       case 'DRAW_RESEARCH_CARD':
@@ -2188,6 +2385,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
         break;
       case 'STOP_RESEARCH':
         finalizeResearch(state); // Return all drawn cards to deck + reshuffle
+        state.drawnCard = null;
+        break;
+      case 'DRAW_PROSPECT_CARD':
+        state.drawnCard = null;
+        drawProspectCardInternal(state);
+        break;
+      case 'STOP_PROSPECT':
+        finalizeProspect(state); // Return all set-aside cards to deck + reshuffle
         state.drawnCard = null;
         break;
       case 'APPLY_AI_STEP':
@@ -2209,9 +2414,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         break;
       }
       case 'LOAD_GAME': {
-        // Migrate saves that pre-date researchSession field
+        // Migrate saves that pre-date newer fields
         const loaded = action.state;
         if (loaded.researchSession === undefined) loaded.researchSession = null;
+        if (loaded.prospectingSession === undefined) loaded.prospectingSession = null;
         set({ game: loaded });
         return;
       }
@@ -2241,6 +2447,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     for (const p of Object.values(state.players)) {
       if (!p.type) (p as any).type = p.isHuman ? 'human' : 'ai';
     }
+    if (state.prospectingSession === undefined) (state as any).prospectingSession = null;
     set({ game: state });
   },
 

@@ -150,6 +150,7 @@ export function createInitialGameState(
     nuclearAttack,
     drawnCard: null as DrawnCardReveal | null,
     researchSession: null,
+    prospectingSession: null,
     eventLog: [],
     nukedTerritoryCount: 0,
     gameOver: false,

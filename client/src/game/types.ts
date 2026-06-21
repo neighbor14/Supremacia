@@ -149,7 +149,7 @@ export interface DrawnCardReveal {
   cardEffect: string;
   context: string;
   cardId?: string;
-  // Resource card details (populated when revealing a resource card during research)
+  // Resource card details (populated when revealing a resource card during research/prospect)
   resourceType?: ResourceType;
   companyName?: string;
   production?: number;
@@ -160,6 +160,10 @@ export interface DrawnCardReveal {
   deckRemaining?: number;
   nukeCardsRemaining?: number;
   laserCardsRemaining?: number;
+  // Prospecting session snapshot — present when this reveal came from targeted prospecting
+  prospectTarget?: ResourceType;
+  prospectCardsFlipped?: number;
+  prospectCostSoFar?: number;
 }
 
 // Tracks an active research session across multiple card draws
@@ -168,6 +172,15 @@ export interface ResearchSession {
   cardsRevealed: string[];
   found: boolean;
   totalCost: number;
+}
+
+// Tracks an active targeted-prospecting session (one card flip at a time)
+export interface ProspectingSession {
+  targetType: ResourceType;
+  cardsSetAside: string[];  // non-matching cards waiting to be reshuffled back
+  found: boolean;
+  totalCost: number;
+  cardsFlipped: number;
 }
 
 export interface EventLogEntry {
@@ -193,6 +206,7 @@ export interface GameState {
   nuclearAttack: NuclearAttackState;
   drawnCard: DrawnCardReveal | null;
   researchSession: ResearchSession | null;
+  prospectingSession: ProspectingSession | null;
   eventLog: EventLogEntry[];
   nukedTerritoryCount: number;
   gameOver: boolean;
@@ -216,6 +230,7 @@ export type ActionEventType =
   | 'attack_result_victory'
   | 'attack_result_defeat'
   | 'research'
+  | 'card_reveal'
   | 'end_turn';
 
 export interface CombatDetails {
@@ -295,4 +310,6 @@ export type GameAction =
   | { type: 'DISMISS_DRAWN_CARD' }
   | { type: 'DRAW_RESEARCH_CARD' }
   | { type: 'STOP_RESEARCH' }
+  | { type: 'DRAW_PROSPECT_CARD' }
+  | { type: 'STOP_PROSPECT' }
   | { type: 'APPLY_AI_STEP'; state: GameState };

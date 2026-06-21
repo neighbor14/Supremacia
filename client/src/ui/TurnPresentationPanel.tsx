@@ -24,6 +24,7 @@ const ACTION_ICONS: Record<ActionEventType, string> = {
   attack_result_victory: '🏆',
   attack_result_defeat:  '💥',
   research:              '☢️',
+  card_reveal:           '🃏',
   end_turn:              '🔁',
 };
 

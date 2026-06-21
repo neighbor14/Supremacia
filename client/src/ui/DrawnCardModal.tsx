@@ -36,44 +36,69 @@ const TYPE_CONFIG = {
 
 export default function DrawnCardModal() {
   const { game, dispatch } = useGameStore();
-  const soundPlayedRef = useRef(false);
+  // Track which card ID last triggered sounds — resets on modal close so each
+  // new card (even within the same prospecting/research session) plays fresh sounds.
+  const lastSoundedCardRef = useRef<string | null>(null);
 
   const drawnCard = game?.drawnCard;
   const isResearch = !!drawnCard?.researchTarget;
   const researchFound = isResearch && drawnCard?.success;
 
-  // Can the player continue searching?
+  // Prospecting session state
+  const isProspecting = !!drawnCard?.prospectTarget;
+  const prospectFound = isProspecting && drawnCard?.success;
+  // Session still active (not yet finalized inline) = can flip more cards
+  const prospectSessionActive = !!game?.prospectingSession && !game.prospectingSession.found;
+
+  // Can the player continue research?
   const currentPlayer = game?.players[game.turn.currentPlayer];
-  const canContinue =
+  const canContinueResearch =
     isResearch &&
     !researchFound &&
     !!currentPlayer &&
     currentPlayer.money >= RULES.RESEARCH_COST_PER_CARD &&
     (game?.resourceDeck.length ?? 0) > 0;
 
-  useEffect(() => {
-    if (!drawnCard?.active || soundPlayedRef.current) return;
-    soundPlayedRef.current = true;
+  // Can the player flip the next prospect card?
+  const canContinueProspect =
+    prospectSessionActive &&
+    !!currentPlayer &&
+    currentPlayer.money >= RULES.RESEARCH_COST_PER_CARD &&
+    (game?.resourceDeck.length ?? 0) > 0;
 
-    if (drawnCard.success && isResearch) {
-      playSound('territory-conquered', 1.0);
-      setTimeout(() => playSound('diplomacy-alert', 0.7), 600);
-    } else if (drawnCard.type === 'resource') {
-      playSound('resource-gain', 0.9);
-    } else {
-      playSound('error', 0.6);
+  useEffect(() => {
+    if (!drawnCard?.active) {
+      lastSoundedCardRef.current = null;
+      return;
     }
-  }, [drawnCard?.active, drawnCard?.cardId]);
+    // Use cardId (or context as fallback) as unique key per reveal
+    const cardKey = drawnCard.cardId ?? drawnCard.context;
+    if (lastSoundedCardRef.current === cardKey) return;
+    lastSoundedCardRef.current = cardKey;
 
-  useEffect(() => {
-    if (!drawnCard?.active) soundPlayedRef.current = false;
-  }, [drawnCard?.active]);
+    // Card flip sound plays immediately as the card arrives on screen
+    playSound('card-reveal', 0.9);
+
+    // Result sound plays shortly after, letting the flip finish first
+    const t = setTimeout(() => {
+      if (drawnCard.success && (isResearch || isProspecting)) {
+        playSound('territory-conquered', 1.0);
+        setTimeout(() => playSound('diplomacy-alert', 0.7), 600);
+      } else if (drawnCard.type === 'resource') {
+        playSound('resource-gain', 0.8);
+      } else {
+        playSound('error', 0.6);
+      }
+    }, 160);
+
+    return () => clearTimeout(t);
+  }, [drawnCard?.active, drawnCard?.cardId, drawnCard?.context]);
 
   if (!game || !drawnCard?.active) return null;
 
   const cfg = TYPE_CONFIG[drawnCard.type];
 
-  // For resource cards revealed during research, overlay the resource color
+  // For resource cards, overlay the resource color
   const resourceCfg = drawnCard.resourceType ? RESOURCE_CONFIG[drawnCard.resourceType] : null;
   const cardBg = resourceCfg ? resourceCfg.bg : cfg.bgClass;
   const cardIcon = resourceCfg ? resourceCfg.icon : cfg.icon;
@@ -81,14 +106,24 @@ export default function DrawnCardModal() {
   const cardLabelClass = resourceCfg ? '' : cfg.labelClass;
   const cardLabelStyle = resourceCfg ? { color: resourceCfg.color } : {};
 
-  const handleContinue = () => {
+  const handleContinueResearch = () => {
     playSound('button-click', 0.5);
     dispatch({ type: 'DRAW_RESEARCH_CARD' });
   };
 
-  const handleStop = () => {
+  const handleStopResearch = () => {
     playSound('button-click', 0.3);
     dispatch({ type: 'STOP_RESEARCH' });
+  };
+
+  const handleContinueProspect = () => {
+    playSound('button-click', 0.5);
+    dispatch({ type: 'DRAW_PROSPECT_CARD' });
+  };
+
+  const handleStopProspect = () => {
+    playSound('button-click', 0.3);
+    dispatch({ type: 'STOP_PROSPECT' });
   };
 
   const handleDismiss = () => {
@@ -97,9 +132,15 @@ export default function DrawnCardModal() {
   };
 
   const targetName = drawnCard.researchTarget === 'nuke' ? 'Bomba Atômica' : 'Laser-Star';
+  const prospectTargetLabel = drawnCard.prospectTarget
+    ? (drawnCard.prospectTarget === 'grain' ? 'Cereal' : drawnCard.prospectTarget === 'oil' ? 'Petróleo' : 'Minério')
+    : '';
+  const prospectTargetIcon = drawnCard.prospectTarget
+    ? (drawnCard.prospectTarget === 'grain' ? '🌾' : drawnCard.prospectTarget === 'oil' ? '🛢️' : '⛏️')
+    : '';
 
-  // Updated odds after this draw
-  const deckLeft = drawnCard.deckRemaining ?? 0;
+  // Updated odds after this draw (research only)
+  const deckLeft = drawnCard.deckRemaining ?? (game.resourceDeck.length);
   const nukeLeft = drawnCard.nukeCardsRemaining ?? 0;
   const laserLeft = drawnCard.laserCardsRemaining ?? 0;
   const nextOdds = drawnCard.researchTarget && deckLeft > 0
@@ -109,6 +150,12 @@ export default function DrawnCardModal() {
           : laserLeft / deckLeft
       )
     : null;
+
+  // Which buttons section to show
+  const showResearchButtons = isResearch && !researchFound;
+  // Only show prospect buttons when the current reveal came from a prospecting session (isProspecting),
+  // not just because a session happens to be active in the background
+  const showProspectButtons = !showResearchButtons && isProspecting && prospectSessionActive && !prospectFound;
 
   return (
     <div
@@ -148,7 +195,7 @@ export default function DrawnCardModal() {
                   {cardLabel}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {isResearch ? 'Carta revelada do baralho' : 'Carta sorteada do baralho'}
+                  {(isResearch || isProspecting) ? 'Carta revelada do baralho' : 'Carta sorteada do baralho'}
                 </p>
               </div>
             </div>
@@ -161,14 +208,16 @@ export default function DrawnCardModal() {
               {drawnCard.cardEffect}
             </p>
 
-            {/* Resource card details during research */}
+            {/* Resource card details */}
             {resourceCfg && drawnCard.production && (
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-lg">{resourceCfg.icon}</span>
                 <span className="text-xs font-mono font-semibold" style={{ color: resourceCfg.color }}>
                   +{drawnCard.production} por turno
                 </span>
-                <span className="text-xs text-muted-foreground">· voltará ao baralho</span>
+                {(isResearch || (isProspecting && !prospectFound)) && (
+                  <span className="text-xs text-muted-foreground">· voltará ao baralho</span>
+                )}
               </div>
             )}
           </div>
@@ -194,28 +243,48 @@ export default function DrawnCardModal() {
             </div>
           )}
 
-          {/* Result badge */}
-          {(!isResearch || researchFound) && (
+          {/* Prospecting session progress */}
+          {isProspecting && (
+            <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 mb-3 space-y-1">
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>
+                  Procurando: <strong className="text-foreground">{prospectTargetIcon} {prospectTargetLabel}</strong>
+                </span>
+                <span className="font-mono">${drawnCard.prospectCostSoFar?.toLocaleString() ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Cartas viradas: <strong className="text-foreground">{drawnCard.prospectCardsFlipped}</strong></span>
+                <span>Baralho: <strong className="text-foreground">{game.resourceDeck.length} restantes</strong></span>
+              </div>
+            </div>
+          )}
+
+          {/* Result badge (shown for non-session reveals and for found cards) */}
+          {(!isResearch || researchFound) && (!isProspecting || prospectFound) && (
             <div className={`flex items-center gap-2 rounded-lg px-3 py-2 mb-4 ${
               drawnCard.success
                 ? 'bg-emerald-500/10 border border-emerald-500/30'
                 : 'bg-secondary border border-border'
             }`}>
-              <span className="text-lg">{drawnCard.success ? '✅' : (isResearch ? '🃏' : '❌')}</span>
+              <span className="text-lg">{drawnCard.success ? '✅' : '❌'}</span>
               <p className={`text-xs font-semibold ${drawnCard.success ? 'text-emerald-400' : 'text-muted-foreground'}`}>
                 {drawnCard.success
-                  ? `${targetName || 'Carta'} encontrada!`
-                  : (isResearch ? 'Não foi desta vez.' : 'Não encontrada desta vez.')}
+                  ? isProspecting
+                    ? `${prospectTargetLabel} encontrada!`
+                    : isResearch
+                    ? `${targetName} encontrada!`
+                    : 'Carta adquirida!'
+                  : 'Não encontrada desta vez.'}
               </p>
             </div>
           )}
 
           {/* Buttons */}
-          {isResearch && !researchFound ? (
+          {showResearchButtons ? (
             <div className="flex gap-2">
-              {canContinue ? (
+              {canContinueResearch ? (
                 <button
-                  onClick={handleContinue}
+                  onClick={handleContinueResearch}
                   className="flex-1 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-all active:scale-[0.97]"
                   style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
                 >
@@ -229,7 +298,32 @@ export default function DrawnCardModal() {
                 </div>
               )}
               <button
-                onClick={handleStop}
+                onClick={handleStopResearch}
+                className="px-4 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-secondary hover:bg-secondary/80 text-muted-foreground transition-all active:scale-[0.97] border border-border"
+                style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
+              >
+                Parar
+              </button>
+            </div>
+          ) : showProspectButtons ? (
+            <div className="flex gap-2">
+              {canContinueProspect ? (
+                <button
+                  onClick={handleContinueProspect}
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-all active:scale-[0.97]"
+                  style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
+                >
+                  Virar Próxima — ${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}
+                </button>
+              ) : (
+                <div className="flex-1 py-3 rounded-xl text-sm text-center text-muted-foreground bg-secondary border border-border">
+                  {(currentPlayer?.money ?? 0) < RULES.RESEARCH_COST_PER_CARD
+                    ? 'Dinheiro insuficiente'
+                    : 'Baralho esgotado'}
+                </div>
+              )}
+              <button
+                onClick={handleStopProspect}
                 className="px-4 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-secondary hover:bg-secondary/80 text-muted-foreground transition-all active:scale-[0.97] border border-border"
                 style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
               >
