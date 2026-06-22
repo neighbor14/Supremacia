@@ -111,3 +111,41 @@ Se a mudança afeta a matemática, estratégia ou equilíbrio do jogo, **pedir c
 **Proibido:** transformar o jogo em War/Risk genérico removendo mares, fundindo territórios ou eliminando a economia de recursos.
 
 **O motor de jogo deve sempre ler dos arquivos de fonte de verdade**, nunca hardcodar valores mecânicos fora do `rulesConfig.ts`.
+
+---
+
+## Deployment
+
+**LIVE:** https://supremacia.srv1031356.hstgr.cloud (VPS Hostinger com Traefik + Docker + HTTPS automático)
+
+**Infraestrutura:**
+- VPS Hostinger: 72.60.155.198
+- Docker Compose com Traefik (reverse proxy)
+- Container nginx:alpine para servir SPA React
+- Config nginx em `/etc/nginx-supremacia.conf` (fallback `/index.html` para React Router)
+
+**Como publicar após commit:**
+```bash
+./deploy.sh
+```
+
+O script faz:
+1. `pnpm run build` (local)
+2. Sincroniza `dist/public/` → VPS via rsync
+3. Reinicia o container Docker
+4. Pronto em ~10s
+
+**Não usar Netlify** — tem limite de créditos de build. Use a VPS local.
+
+**Para acessar a VPS direto** (não recomendado — use `deploy.sh`):
+```bash
+ssh root@72.60.155.198
+/root/deploy-supremacia.sh  # ou qualquer comando
+```
+
+**SSH sem senha** já configurado via chave ed25519 (`~/.ssh/id_ed25519`).
+
+**Domínio DNS:**
+- Gerenciado via Hostinger
+- Aponta para Traefik (ip público da VPS)
+- HTTPS via Let's Encrypt (automático)
