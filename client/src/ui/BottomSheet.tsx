@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useGameStore, getMoveBlockReason, moveBlockMessage, companiesInTerritory, getBuildTargets } from '../game/store';
 import { playSound } from '../game/audio';
@@ -23,7 +23,7 @@ export default function BottomSheet() {
 
   // Phase panels take priority - territory details shown inline
   if (isHuman) {
-    if (turn.stage === 3) return <MarketPanel mode="sell" />;
+    if (turn.stage === 3) return <SellPanel />;
     if (turn.stage === 7) return <BuyAndProspectPanel />;
     if (turn.stage === 6) return <BuildPanel />;
     if (turn.stage === 5) return <MovePanel />;
@@ -249,40 +249,108 @@ export default function BottomSheet() {
 }
 
 // ============================================================
+// PHASE BADGE — shows which optional action slot is being played (Ação X/3)
+// ============================================================
+
+function PhaseBadge() {
+  const { game } = useGameStore();
+  if (!game) return null;
+  const slot = game.turn.optionalStagesUsed.length + 1;
+  const max = RULES.MAX_OPTIONAL_STAGES;
+  const isLast = slot >= max;
+  return (
+    <span
+      className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+        isLast ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'
+      }`}
+      style={{ fontFamily: 'var(--font-display)' }}
+    >
+      Ação {slot}/{max}
+    </span>
+  );
+}
+
+// ============================================================
+// SELL PANEL (Stage 3) — collapsible wrapper around MarketPanel
+// ============================================================
+
+function SellPanel() {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>📈 Vender</h3>
+            <PhaseBadge />
+          </div>
+          <button
+            onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
+            className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
+            title={collapsed ? 'Expandir' : 'Recolher'}
+          >
+            {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+        {!collapsed && <MarketPanel mode="sell" />}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // BUY AND PROSPECT PANEL (Stage 7) - Toggle between buy and prospect
 // ============================================================
 
 function BuyAndProspectPanel() {
   const [mode, setMode] = useState<'buy' | 'prospect'>('buy');
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div
-      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[45vh] overflow-y-auto"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-    >
-      {/* Tab toggle */}
-      <div className="flex border-b border-border">
-        <button
-          onClick={() => { setMode('buy'); playSound('button-click', 0.4); }}
-          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-            mode === 'buy' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
-          }`}
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          <ShoppingCart size={12} /> Comprar Suprimentos
-        </button>
-        <button
-          onClick={() => { setMode('prospect'); playSound('button-click', 0.4); }}
-          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-            mode === 'prospect' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
-          }`}
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          <Search size={12} /> Prospectar Cartas
-        </button>
-      </div>
+    <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
+      <div className="max-w-2xl mx-auto">
+        {/* Header with collapse toggle */}
+        <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>🛒 Comprar</h3>
+            <PhaseBadge />
+          </div>
+          <button
+            onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
+            className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
+            title={collapsed ? 'Expandir' : 'Recolher'}
+          >
+            {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
 
-      {mode === 'buy' ? <MarketPanel mode="buy" /> : <ProspectPanel />}
+        {!collapsed && (
+          <>
+            {/* Tab toggle */}
+            <div className="flex border-b border-border">
+              <button
+                onClick={() => { setMode('buy'); playSound('button-click', 0.4); }}
+                className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                  mode === 'buy' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
+                }`}
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                <ShoppingCart size={12} /> Comprar Suprimentos
+              </button>
+              <button
+                onClick={() => { setMode('prospect'); playSound('button-click', 0.4); }}
+                className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                  mode === 'prospect' ? 'bg-primary/10 text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
+                }`}
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                <Search size={12} /> Prospectar Cartas
+              </button>
+            </div>
+            {mode === 'buy' ? <MarketPanel mode="buy" /> : <ProspectPanel />}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -730,68 +798,61 @@ function BuildPanel() {
 
 function MovePanel() {
   const { game, selectedTerritory, selectedSeaZone } = useGameStore();
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Auto-expand when the player taps a territory/sea on the map
+  useEffect(() => {
+    if ((selectedTerritory || selectedSeaZone) && collapsed) setCollapsed(false);
+  }, [selectedTerritory, selectedSeaZone]);
+
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
-  const myTerritories = Object.entries(player.armies).filter(([, count]) => count > 0);
-  const myNavies = Object.entries(player.navies).filter(([, count]) => count > 0);
+  const grainOk = player.supplies.grain > 0;
+  const hasSelection = !!(selectedTerritory || selectedSeaZone);
 
   return (
-    <div
-      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          🚀 Movimento
-        </h3>
-        {/* Movement consumes cereal — show the live balance up front */}
-        <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${player.supplies.grain > 0 ? 'bg-secondary text-foreground' : 'bg-destructive/20 text-destructive'}`}>
-          🌾 {player.supplies.grain} cereal
-        </span>
-      </div>
-      <p className="text-[10px] text-muted-foreground mb-2">
-        Toque num território (exércitos) ou zona marítima (esquadras) para ver destinos.
-        Em território costeiro com frota adjacente aparece <strong className="text-blue-300">⚓ Embarcar</strong>;
-        numa frota com tropas a bordo aparece <strong className="text-emerald-300">🪖 Desembarcar</strong>.
-        <strong className="text-foreground"> Mover tropas consome {RULES.LAND_MOVE_GRAIN_COST} cereal por território</strong> · 2 petróleo/voo · 1 petróleo/mar.
-      </p>
-      {player.supplies.grain <= 0 && (
-        <p className="text-[10px] text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1 mb-2">
-          ⚠ Você está sem cereal. Movimentos terrestres ficam bloqueados até produzir ou comprar cereal.
-        </p>
-      )}
-
-      {/* Show selected territory/sea actions */}
-      {selectedTerritory && <SelectedTerritoryMoveActions />}
-      {selectedSeaZone && <SelectedSeaZoneMoveActions />}
-
-      {/* List of territories with armies */}
-      <div className="flex flex-wrap gap-1 mt-2">
-        {myTerritories.map(([tid, count]) => (
-          <span key={tid} className={`text-[10px] px-1.5 py-0.5 rounded ${
-            selectedTerritory === tid ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-secondary'
-          }`}>
-            {game.territories[tid]?.name}: {count}
-          </span>
-        ))}
-      </div>
-
-      {/* List of sea zones with navies */}
-      {myNavies.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {myNavies.map(([sid, count]) => {
-            const emb = player.embarked[sid] || 0;
-            return (
-              <span key={sid} className={`text-[10px] px-1.5 py-0.5 rounded ${
-                selectedSeaZone === sid ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-secondary'
-              }`}>
-                ⚓ {game.seaZones[sid]?.name}: {count}{emb > 0 ? ` · 🪖${emb}` : ''}
+    <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
+      <div className="max-w-2xl mx-auto">
+        {/* Compact header */}
+        <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <h3 className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ fontFamily: 'var(--font-display)' }}>🚀 Mover</h3>
+            <PhaseBadge />
+            {!grainOk && (
+              <span className="text-[10px] bg-destructive/20 text-destructive border border-destructive/30 px-1.5 py-0.5 rounded font-mono shrink-0">
+                ⚠ sem cereal
               </span>
-            );
-          })}
+            )}
+          </div>
+          <button
+            onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
+            className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
+            title={collapsed ? 'Expandir' : 'Recolher'}
+          >
+            {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
         </div>
-      )}
+
+        {!collapsed && (
+          <div className="p-2.5 space-y-2">
+            {hasSelection ? (
+              <>
+                {selectedTerritory && <SelectedTerritoryMoveActions />}
+                {selectedSeaZone && <SelectedSeaZoneMoveActions />}
+              </>
+            ) : (
+              <p className="text-[11px] rounded px-2 py-1.5 border text-emerald-300 bg-emerald-500/10 border-emerald-500/30">
+                👆 Toque num território (exército) ou zona marítima (esquadra) destacada no mapa.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-3 text-[9px] text-muted-foreground">
+              <span>🌾 {RULES.LAND_MOVE_GRAIN_COST} cereal/território terrestre</span>
+              <span>🛢️ {RULES.AIRLIFT_OIL_COST} petróleo/aerotransporte · {RULES.SEA_MOVE_OIL_COST}/mar</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -991,33 +1052,60 @@ function SelectedSeaZoneMoveActions() {
 // ============================================================
 
 function AttackPanel() {
-  const { game, selectedTerritory, selectedSeaZone, dispatch } = useGameStore();
+  const { game, selectedTerritory, selectedSeaZone } = useGameStore();
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Auto-expand when the player taps a territory/sea on the map
+  useEffect(() => {
+    if ((selectedTerritory || selectedSeaZone) && collapsed) setCollapsed(false);
+  }, [selectedTerritory, selectedSeaZone]);
+
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
+  const hasSelection = !!(selectedTerritory || selectedSeaZone);
 
   return (
-    <div
-      className="absolute bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-3 animate-in slide-in-from-bottom-4 duration-200 z-10 max-h-[35vh] overflow-y-auto"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
-    >
-      <h3 className="text-xs font-semibold uppercase tracking-wider mb-1 text-destructive" style={{ fontFamily: 'var(--font-display)' }}>
-        ⚔️ Fase de Ataque
-      </h3>
-      <p className="text-[10px] text-muted-foreground mb-2">
-        Território com 2+ exércitos ataca adjacentes; zona marítima com esquadras ataca mares vizinhos.
-        Custo: 1 de cada suprimento por batalha.
-      </p>
+    <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
+      <div className="max-w-2xl mx-auto">
+        {/* Compact header */}
+        <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-destructive shrink-0" style={{ fontFamily: 'var(--font-display)' }}>⚔️ Atacar</h3>
+            <PhaseBadge />
+            {player.nukes > 0 && (
+              <span className="text-[9px] bg-destructive/20 text-destructive border border-destructive/30 px-1.5 py-0.5 rounded font-bold shrink-0">
+                ☢ {player.nukes}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
+            className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
+            title={collapsed ? 'Expandir' : 'Recolher'}
+          >
+            {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
 
-      {/* Show attack options for selected territory/sea */}
-      {selectedTerritory && <SelectedTerritoryAttackActions />}
-      {selectedSeaZone && <SelectedSeaZoneAttackActions />}
-
-      {player.nukes > 0 && (
-        <p className="text-[10px] text-destructive mt-2 p-1.5 bg-destructive/10 rounded">
-          ☢ Você tem {player.nukes} bomba(s) nuclear(es). Selecione qualquer território alvo no mapa.
-        </p>
-      )}
+        {!collapsed && (
+          <div className="p-2.5 space-y-2">
+            {hasSelection ? (
+              <>
+                {selectedTerritory && <SelectedTerritoryAttackActions />}
+                {selectedSeaZone && <SelectedSeaZoneAttackActions />}
+              </>
+            ) : (
+              <p className="text-[11px] rounded px-2 py-1.5 border text-destructive/80 bg-destructive/10 border-destructive/30">
+                👆 Toque num território destacado (2+ exércitos) ou zona marítima (esquadras) no mapa.
+              </p>
+            )}
+            <div className="text-[9px] text-muted-foreground">
+              Custo: 1🌾 1🛢️ 1⛏️ por batalha · Atacante precisa de 2+ exércitos
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -197,14 +197,14 @@ export default function TurnPhaseBar() {
 
   const getContextMessage = () => {
     if (usedCount === 0) {
-      return `Escolha até ${MAX_OPTIONAL} ações: vender, atacar, mover, construir ou comprar.`;
+      return `Você tem direito a ${MAX_OPTIONAL} ações opcionais por turno, escolhidas em sequência (não pode voltar a uma fase anterior).`;
     }
     if (isAtLimit) {
-      return `Você usou todas as ${MAX_OPTIONAL} ações opcionais. Avance para o próximo jogador.`;
+      return `Todas as ${MAX_OPTIONAL} ações usadas — avance para o próximo jogador.`;
     }
     const ordinal = ORDINALS[usedCount - 1] ?? `${usedCount}ª`;
     const remainText = remaining === 1 ? 'mais 1 ação' : `mais ${remaining} ações`;
-    return `${ordinal} ação concluída. Você ainda pode fazer ${remainText}.`;
+    return `${ordinal} ação concluída. Ainda pode fazer ${remainText} — somente fases à frente da última.`;
   };
 
   return (
@@ -291,7 +291,7 @@ export default function TurnPhaseBar() {
               const isUsed = availability === 'used';
               const disabledTitle =
                 availability === 'used' ? 'Já usada neste turno'
-                : availability === 'past' ? 'Não pode voltar atrás'
+                : availability === 'past' ? 'Fase anterior — as ações devem ser escolhidas em ordem crescente'
                 : `Limite de ${MAX_OPTIONAL} ações atingido neste turno`;
 
               return (
@@ -305,7 +305,9 @@ export default function TurnPhaseBar() {
                       ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 active:scale-[0.95] animate-pulse-subtle'
                       : isUsed
                         ? 'bg-accent/20 text-accent-foreground/50 border border-accent/20 cursor-default'
-                        : 'bg-secondary/20 text-muted-foreground/25 border border-border/10 cursor-not-allowed'
+                        : availability === 'past'
+                          ? 'bg-orange-500/8 text-orange-400/35 border border-orange-500/15 cursor-not-allowed'
+                          : 'bg-secondary/20 text-muted-foreground/25 border border-border/10 cursor-not-allowed'
                     }
                   `}
                   style={{ fontFamily: 'var(--font-display)' }}
@@ -322,6 +324,12 @@ export default function TurnPhaseBar() {
                   )}
                   {isUsed && (
                     <span className="text-accent-foreground/40 text-[8px] leading-none [@media(max-height:600px)]:hidden">✓</span>
+                  )}
+                  {availability === 'past' && (
+                    <span className="text-orange-400/40 text-[8px] leading-none [@media(max-height:600px)]:hidden">← anterior</span>
+                  )}
+                  {availability === 'locked' && (
+                    <span className="text-muted-foreground/25 text-[8px] leading-none [@media(max-height:600px)]:hidden">⛔</span>
                   )}
                 </button>
               );

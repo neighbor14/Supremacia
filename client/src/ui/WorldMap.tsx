@@ -97,6 +97,24 @@ export default function WorldMap() {
   const human = game.players[game.turn.currentPlayer]?.isHuman;
   const phasePanelOpen = !!human && game.turn.stage >= 3 && game.turn.stage <= 7;
 
+  // Move / Attack highlight sources (only when the stage is active, not in "choosing" mode)
+  const currentPlayer = game.players[game.turn.currentPlayer];
+  const stageActive = !game.turn.stageComplete;
+  const moveMode = !!human && game.turn.stage === 5 && stageActive && !buildAction;
+  const attackMode = !!human && game.turn.stage === 4 && stageActive && !buildAction;
+  const moveArmySets = moveMode && currentPlayer
+    ? new Set(Object.entries(currentPlayer.armies).filter(([, c]) => c > 0).map(([id]) => id))
+    : new Set<string>();
+  const moveNavySets = moveMode && currentPlayer
+    ? new Set(Object.entries(currentPlayer.navies).filter(([, c]) => c > 0).map(([id]) => id))
+    : new Set<string>();
+  const attackLandSets = attackMode && currentPlayer
+    ? new Set(Object.entries(currentPlayer.armies).filter(([, c]) => c >= 2).map(([id]) => id))
+    : new Set<string>();
+  const attackSeaSets = attackMode && currentPlayer
+    ? new Set(Object.entries(currentPlayer.navies).filter(([, c]) => c >= 1).map(([id]) => id))
+    : new Set<string>();
+
   // Company map: private opportunity overlay for the current human player.
   // Computed only when the toggle is on to avoid unnecessary iteration.
   const companyOpportunities = (companyMapVisible && human)
@@ -358,6 +376,16 @@ export default function WorldMap() {
           <filter id="build-glow-navy" x="-40%" y="-40%" width="180%" height="180%">
             <feDropShadow dx="0" dy="0" stdDeviation="3.4" floodColor="#60a5fa" floodOpacity="1" />
           </filter>
+          {/* Move-phase and Attack-phase source glows */}
+          <filter id="move-glow-land" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3.4" floodColor="#4ade80" floodOpacity="0.9" />
+          </filter>
+          <filter id="move-glow-sea" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3.4" floodColor="#38bdf8" floodOpacity="0.9" />
+          </filter>
+          <filter id="attack-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3.4" floodColor="#f87171" floodOpacity="0.9" />
+          </filter>
           {/* Company-map opportunity glows (three tiers: own / neutral / foreign + drawn-card) */}
           <filter id="opp-glow-own" x="-40%" y="-40%" width="180%" height="180%">
             <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#f59e0b" floodOpacity="1" />
@@ -538,6 +566,54 @@ export default function WorldMap() {
                 />
               ) : null
             )}
+          </g>
+        )}
+
+        {/* Move-phase source highlights: territories/seas with your units, pulsing green/blue */}
+        {moveMode && (
+          <g pointerEvents="none" className="animate-pulse">
+            {Array.from(moveArmySets).map(tid => {
+              const t = game.territories[tid];
+              return t ? (
+                <path key={`mv-${tid}`} d={t.svgPath}
+                  fill="#4ade8015" stroke="#86efac" strokeWidth={2} strokeLinejoin="round"
+                  filter="url(#move-glow-land)"
+                />
+              ) : null;
+            })}
+            {Array.from(moveNavySets).map(sid => {
+              const s = game.seaZones[sid];
+              return s ? (
+                <path key={`mv-${sid}`} d={s.svgPath}
+                  fill="#38bdf815" stroke="#7dd3fc" strokeWidth={2} strokeLinejoin="round"
+                  filter="url(#move-glow-sea)"
+                />
+              ) : null;
+            })}
+          </g>
+        )}
+
+        {/* Attack-phase source highlights: territories with 2+ armies / seas with navies, pulsing red */}
+        {attackMode && (
+          <g pointerEvents="none" className="animate-pulse">
+            {Array.from(attackLandSets).map(tid => {
+              const t = game.territories[tid];
+              return t ? (
+                <path key={`atk-${tid}`} d={t.svgPath}
+                  fill="#f8717115" stroke="#fca5a5" strokeWidth={2} strokeLinejoin="round"
+                  filter="url(#attack-glow)"
+                />
+              ) : null;
+            })}
+            {Array.from(attackSeaSets).map(sid => {
+              const s = game.seaZones[sid];
+              return s ? (
+                <path key={`atk-${sid}`} d={s.svgPath}
+                  fill="#f8717112" stroke="#fca5a5" strokeWidth={2} strokeLinejoin="round"
+                  filter="url(#attack-glow)"
+                />
+              ) : null;
+            })}
           </g>
         )}
 
