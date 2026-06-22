@@ -2,10 +2,16 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Volume2 } from 'lucide-react';
 import { useGameStore } from '../game/store';
-import { SuperpowerId, AIDifficulty } from '../game/types';
+import { SuperpowerId, AIDifficulty, MarketMode } from '../game/types';
 import { AI_DIFFICULTY_LABELS, DEFAULT_AI_DIFFICULTY } from '../game/ai';
+import { RULES } from '../game/rulesConfig';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { GameState } from '../game/types';
+
+const MARKET_MODES: { id: MarketMode; label: string; hint: string }[] = [
+  { id: 'balanced', label: 'Digital Balanceado', hint: 'Venda simultânea no início da rodada — reduz a vantagem econômica do 1º jogador.' },
+  { id: 'classic', label: 'Clássico Grow', hint: 'Fiel ao modo básico da Grow. Mercado em $5.000 e venda na ordem do turno.' },
+];
 import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
 
 type Step = 'menu' | 'superpower' | 'ai_count';
@@ -17,6 +23,7 @@ export default function Home() {
   const [selectedSuperpower, setSelectedSuperpower] = useState<SuperpowerId | null>(null);
   const [aiCount, setAiCount] = useState(3);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>(DEFAULT_AI_DIFFICULTY);
+  const [marketMode, setMarketMode] = useState<MarketMode>(RULES.DEFAULT_MARKET_MODE);
 
   const { initialized, activate } = useAudioInit();
   const { play } = useMusicPlayer();
@@ -43,7 +50,7 @@ export default function Home() {
 
   const handleStartGame = () => {
     if (!selectedSuperpower) return;
-    startGame(selectedSuperpower, aiCount, aiDifficulty);
+    startGame(selectedSuperpower, aiCount, aiDifficulty, marketMode);
     setLocation('/setup');
   };
 
@@ -84,19 +91,12 @@ export default function Home() {
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
       {/* Logo / Title */}
       <div className="text-center mb-12">
-        <div className="w-20 h-20 mx-auto mb-6 relative">
-          <svg viewBox="0 0 80 80" className="w-full h-full">
-            <polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
-            <polygon points="40,12 64,26 64,54 40,68 16,54 16,26" fill="none" stroke="currentColor" strokeWidth="1" className="text-muted-foreground" />
-            <line x1="40" y1="4" x2="40" y2="76" stroke="currentColor" strokeWidth="0.5" className="text-border" />
-            <line x1="8" y1="40" x2="72" y2="40" stroke="currentColor" strokeWidth="0.5" className="text-border" />
-            <line x1="8" y1="22" x2="72" y2="58" stroke="currentColor" strokeWidth="0.5" className="text-border" />
-            <line x1="72" y1="22" x2="8" y2="58" stroke="currentColor" strokeWidth="0.5" className="text-border" />
-          </svg>
-        </div>
-        <h1 className="text-4xl font-bold tracking-tight text-foreground" style={{ fontFamily: 'var(--font-display)' }}>
-          SUPREMACIA
-        </h1>
+        <img
+          src="/logo.png"
+          alt="Command the Map"
+          className="w-56 h-auto mx-auto mb-2 drop-shadow-lg"
+          draggable={false}
+        />
         <p className="text-sm text-muted-foreground mt-2 tracking-widest uppercase" style={{ fontFamily: 'var(--font-display)' }}>
           Simulador Geopolítico Digital
         </p>
@@ -252,6 +252,38 @@ export default function Home() {
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-1 block leading-tight">
                     {info.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Modo de mercado */}
+          <h2 className="text-lg font-semibold text-center mb-1 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
+            Modo de Mercado
+          </h2>
+          <p className="text-xs text-muted-foreground text-center mb-3">
+            Como funcionam preços e vendas na partida.
+          </p>
+          <div className="grid grid-cols-1 gap-2 mb-6">
+            {MARKET_MODES.map(mode => {
+              const active = marketMode === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => setMarketMode(mode.id)}
+                  className={`p-3 rounded-md border text-left transition-all active:scale-[0.98] ${
+                    active ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'
+                  }`}
+                >
+                  <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${active ? 'text-primary' : 'text-foreground'}`} style={{ fontFamily: 'var(--font-display)' }}>
+                    {mode.label}
+                    {mode.id === RULES.DEFAULT_MARKET_MODE && (
+                      <span className="text-[9px] bg-primary/20 text-primary px-1.5 py-0.5 rounded normal-case tracking-normal">Padrão</span>
+                    )}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground mt-1 block leading-tight">
+                    {mode.hint}
                   </span>
                 </button>
               );

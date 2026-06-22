@@ -94,6 +94,33 @@ tomado pela **fase de Combate**.
 - Preço **muda conforme compra/venda** (sobe ao comprar, desce ao vender), sem
   preço fixo artificial, limitado por `MARKET_MIN_PRICE`/`MARKET_MAX_PRICE`.
 
+### Modos de mercado (escolha no setup)
+
+A partida tem dois modos de mercado (`config.marketMode`):
+
+- **Clássico Grow** (`'classic'`) — fiel ao modo básico do manual: mercado abre
+  em $5.000 e a venda acontece no **Estágio 3**, na ordem sequencial do turno do
+  jogador. Mantido para puristas; **não é o default**.
+- **Digital Balanceado** (`'balanced'`, **default de partidas novas**) — adaptação
+  digital para reduzir a vantagem econômica do primeiro jogador em multiplayer/IA.
+  No início de **cada rodada**, numa fase global: (1) todos pagam salários,
+  (2) todos recebem produção, (3) abre a **Venda Simultânea de Recursos**. Todos
+  declaram quanto vender de cada recurso **sem ver a declaração dos outros**;
+  ao resolver, **todos recebem o mesmo preço** (snapshot tirado antes da
+  resolução) e o mercado de cada recurso cai pelo **total vendido por todos**
+  (clamp no piso). Vender ≥ 1 consome **1 das 3 ações opcionais** da rodada; o
+  Estágio 3 sequencial fica indisponível neste modo (a venda é só a simultânea).
+  Implementado em `game/simultaneousSell` (funções no `store.ts`); estado próprio
+  `state.simultaneousSell` com as fases `SIMULTANEOUS_SELL_DECLARE`/`_RESOLVE`,
+  preparado para multiplayer (Supabase futuro). Coberto por
+  `__tests__/simultaneous-sell.test.ts`.
+
+  > **Pendência sinalizada:** o manual Grow do projeto não traz a tabela oficial
+  > de **preço inicial por dados (2d6)**. Por decisão registrada, o preço inicial
+  > segue **fixo em $5.000 nos dois modos** por ora; a função `rollInitialMarketPrice`
+  > (`game/marketSetup.ts`) existe isolada e documentada, marcada com TODO, mas
+  > **ainda não conectada** ao setup — aguardando confirmação da tabela oficial.
+
 ## 7. Estrutura de turno (7 estágios)
 
 1. Pagar salários (obrigatório) · 2. Transferir produção (obrigatório) ·
@@ -155,6 +182,14 @@ múltiplo de `RULES.UNITS_PER_SUPPLY_SET` (3). O contador **reseta a cada turno*
 - **Prospecção por tipo de recurso.** Conveniência digital: o jogador escolhe
   cereal/petróleo/minério e o jogo vira cartas reais do baralho até achar uma
   companhia do tipo, cobrando por carta; as não-correspondentes voltam ao baralho.
+- **Estoque inicial fixo (3 × 3 × 3).** Cada jogador começa com 3 cereal, 3
+  petróleo e 3 minério (`STARTING_SUPPLIES = 3`). No Random Opening do manual
+  Grow, o estoque inicial de cada recurso é determinado por rolagem de 1d6
+  separada. O valor fixo evita variância extrema na abertura e simplifica o setup.
+- **Preço inicial de mercado fixo ($5.000).** Os três mercados abrem em
+  `MARKET_START_PRICE = 5.000`. No Random Opening, cada mercado tem seu preço
+  inicial definido por rolagem de dois dados (2d6 × passo). O preço fixo garante
+  abertura simétrica e previsível.
 
 ---
 

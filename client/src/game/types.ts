@@ -8,6 +8,14 @@ export type UnitType = 'army' | 'navy';
 export type SeaType = 'coastal' | 'deep';
 export type PlayerType = 'human' | 'ai' | 'remote';
 
+// Modo de mercado da partida.
+//  - 'classic'  → Modo Clássico Grow: mercado abre em $5.000, venda na ordem
+//                 sequencial do turno (Estágio 3). Fiel ao modo básico do manual.
+//  - 'balanced' → Modo Digital Balanceado (DEFAULT de partidas novas): venda
+//                 simultânea no início de cada rodada para remover a vantagem
+//                 econômica do primeiro jogador. Ver game/simultaneousSell.ts.
+export type MarketMode = 'classic' | 'balanced';
+
 // Níveis de dificuldade da IA. Afetam SÓ a qualidade da decisão —
 // nunca concedem bônus de recurso, dado ou informação oculta.
 // Perfis e pesos ficam em game/ai/aiConfig.ts.
@@ -19,6 +27,9 @@ export interface GameConfig {
   totalActivePlayers: number;
   maxPlayers: number;
   multiplayerReady: boolean;
+  // Modo de mercado escolhido no setup. Ausente em saves antigos → fallback
+  // 'classic' (ver loadGame/LOAD_GAME), preservando o comportamento original.
+  marketMode: MarketMode;
 }
 
 export type SuperpowerId = 'south_america' | 'africa' | 'europe' | 'china' | 'usa' | 'ussr';
@@ -117,6 +128,13 @@ export interface TurnState {
   // unidades construídas neste turno e só cobramos 1 conjunto a cada 3 peças.
   // Reseta a cada turno.
   unitsBuiltThisTurn: number;
+  // Modo Digital Balanceado: no início da rodada, todos os jogadores pagam
+  // salários e recebem produção numa fase global (ver simultaneousSell.ts).
+  // Enquanto true, os Estágios 1 e 2 individuais de cada jogador viram
+  // confirmações no-op (não cobram salário nem produzem de novo). Reseta para
+  // false a cada nova rodada (startNewRound) e volta a true ao abrir a venda
+  // simultânea. Sempre false/ausente no Modo Clássico Grow.
+  upkeepPreprocessed?: boolean;
 }
 
 export interface MarketState {
@@ -125,6 +143,61 @@ export interface MarketState {
   minPrice: number;
   maxPrice: number;
   priceStep: number;
+}
+
+// ============================================================
+// MODO DIGITAL BALANCEADO — Venda Simultânea de Recursos
+// Estado próprio, compatível com multiplayer (Supabase futuro). Cada jogador
+// declara quanto quer vender de cada recurso SEM ver as declarações dos outros;
+// quando todos confirmam, a venda é resolvida com um preço único por recurso
+// (snapshot tirado ANTES da resolução) e o mercado cai pelo total vendido.
+// ============================================================
+
+// Declaração de venda de um jogador na fase simultânea. Persistida no estado
+// (e no save) para sobreviver a recarregamento/reconexão.
+export interface SellDeclaration {
+  playerId: SuperpowerId;
+  grain: number;   // cereal a vender
+  oil: number;     // petróleo a vender
+  mineral: number; // minério a vender
+  confirmed: boolean;
+  timestamp: number; // ms epoch — quando o jogador confirmou (0 = ainda não)
+}
+
+export interface SellResolutionPerResource {
+  totalSold: number;   // soma vendida por TODOS os jogadores
+  priceBefore: number; // preço de snapshot (todos recebem este)
+  priceAfter: number;  // preço após cair `totalSold` posições (clamp no mínimo)
+}
+
+export interface SellResolutionPerPlayer {
+  playerId: SuperpowerId;
+  playerName: string;
+  grain: number;
+  oil: number;
+  mineral: number;
+  revenue: number;                 // total recebido (qtd × preço de snapshot)
+  soldAny: boolean;                // vendeu ≥ 1 de qualquer recurso?
+  optionalActionsRemaining: number; // ações opcionais restantes nesta rodada (3 ou 2)
+}
+
+export interface SellResolution {
+  round: number;
+  perResource: Record<ResourceType, SellResolutionPerResource>;
+  perPlayer: SellResolutionPerPlayer[];
+}
+
+export interface SimultaneousSellState {
+  // 'inactive' = sem fase ativa (Modo Clássico fica sempre aqui).
+  // 'declare'  = SIMULTANEOUS_SELL_DECLARE: coletando declarações.
+  // 'resolve'  = SIMULTANEOUS_SELL_RESOLVE: resolvida, exibindo o resumo.
+  phase: 'inactive' | 'declare' | 'resolve';
+  round: number;                                 // rodada da declaração atual
+  lastResolvedRound: number;                     // última rodada já resolvida (init 0)
+  priceSnapshot: Record<ResourceType, number>;   // preços no momento da abertura
+  declarations: Partial<Record<SuperpowerId, SellDeclaration>>;
+  soldThisRound: SuperpowerId[];                 // quem gastou 1 ação de venda
+  resolution: SellResolution | null;             // resumo da última resolução (UI)
 }
 
 export interface CombatState {
@@ -242,6 +315,9 @@ export interface GameState {
   resourceDeck: string[]; // unified deck: resource card IDs + tech card IDs ('nuke_0', 'laser_0', …)
   market: MarketState;
   turn: TurnState;
+  // Modo Digital Balanceado — fase de Venda Simultânea. Sempre presente; fica
+  // em phase 'inactive' no Modo Clássico. Ausente em saves antigos → migrado.
+  simultaneousSell: SimultaneousSellState;
   combat: CombatState;
   nuclearAttack: NuclearAttackState;
   drawnCard: DrawnCardReveal | null;
@@ -354,6 +430,18 @@ export type GameAction =
   | { type: 'DRAW_PROSPECT_CARD' }
   | { type: 'STOP_PROSPECT' }
   | { type: 'APPLY_AI_STEP'; state: GameState }
+  // ── Modo Digital Balanceado: Venda Simultânea de Recursos ──
+  // Abre a fase: roda salários+produção globais e coleta declarações (IA
+  // auto-declara). Idempotente — não reabre se já aberta/resolvida na rodada.
+  | { type: 'OPEN_SIMULTANEOUS_SELL' }
+  // Um jogador declara/atualiza sua venda (validada: clamp ao estoque, sem
+  // negativos, zero permitido). Marca confirmed=true.
+  | { type: 'SUBMIT_SELL_DECLARATION'; playerId: SuperpowerId; grain: number; oil: number; mineral: number }
+  // Resolve a venda quando todos confirmaram: preço único de snapshot, mercado
+  // cai pelo total vendido, contabiliza a ação opcional de venda.
+  | { type: 'RESOLVE_SIMULTANEOUS_SELL' }
+  // Fecha o resumo de resolução e libera a rodada normal de ações.
+  | { type: 'ACK_SIMULTANEOUS_SELL' }
   // D6/D7: resposta do defensor pós-combate (sub-ações; FINISH encerra)
   | { type: 'REINFORCE_AFTER_COMBAT'; from: string; count: number } // reforça combat.targetId
   | { type: 'COUNTER_ATTACK' }

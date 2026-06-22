@@ -185,6 +185,9 @@ export default function TurnPhaseBar() {
 
   const getStageAvailability = (stage: number) => {
     if (stage <= 2) return 'mandatory';
+    // Modo Digital Balanceado: a venda (Estágio 3) é resolvida na fase de Venda
+    // Simultânea no início da rodada — aqui ela aparece como já tratada.
+    if (stage === 3 && game.config.marketMode === 'balanced') return 'used';
     if (turn.optionalStagesUsed.includes(stage as TurnStage)) return 'used';
     const lastUsed = turn.optionalStagesUsed[turn.optionalStagesUsed.length - 1] || 2;
     if (stage <= lastUsed) return 'past';

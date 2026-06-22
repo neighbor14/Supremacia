@@ -357,8 +357,10 @@ export function getLegalOptionalStages(state: GameState, player: Player): Option
   const hasCombatSupplies =
     player.supplies.grain >= 1 && player.supplies.oil >= 1 && player.supplies.mineral >= 1;
 
-  // 3 — Vender: precisa ter excedente.
-  if (excess(player) > 0) legal.push(3);
+  // 3 — Vender: precisa ter excedente. No Modo Digital Balanceado a venda é só
+  // na fase de Venda Simultânea (início da rodada), então o Estágio 3 individual
+  // não é uma opção de turno aqui.
+  if (state.config.marketMode !== 'balanced' && excess(player) > 0) legal.push(3);
 
   // 4 — Combate: não no 1º turno, precisa de suprimentos e de um alvo viável.
   if (!state.turn.isFirstTurn && hasCombatSupplies && readAttacks(state, player).opportunities > 0) {

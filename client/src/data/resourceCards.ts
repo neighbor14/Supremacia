@@ -44,7 +44,7 @@ const CARD_TEMPLATES: CardTemplate[] = [
   { type: 'mineral', companyName: 'Mongólia Metais', territoryId: 'mongolia', production: 2, originSuperpower: 'china' },
   { type: 'mineral', companyName: 'Shantung Minerais', territoryId: 'shantung', production: 3, originSuperpower: 'china' },
 
-  // USA
+  // USA — total inicial: 17 (vs 16 dos demais blocos). TODO: confirmar regra original se é intencional ou erro de design
   { type: 'grain', companyName: 'Great Plains Co.', territoryId: 'midwest_usa', production: 3, originSuperpower: 'usa' },
   { type: 'grain', companyName: 'California Farms', territoryId: 'western_usa', production: 3, originSuperpower: 'usa' },
   { type: 'oil', companyName: 'Texas Energy', territoryId: 'midwest_usa', production: 3, originSuperpower: 'usa' },
@@ -52,7 +52,7 @@ const CARD_TEMPLATES: CardTemplate[] = [
   { type: 'mineral', companyName: 'Rockies Mining', territoryId: 'western_usa', production: 2, originSuperpower: 'usa' },
   { type: 'mineral', companyName: 'Appalachian Ore', territoryId: 'eastern_usa', production: 3, originSuperpower: 'usa' },
 
-  // USSR
+  // USSR — total inicial: 17 (vs 16 dos demais blocos). TODO: confirmar regra original se é intencional ou erro de design
   { type: 'grain', companyName: 'Estepe Cereais', territoryId: 'kazakh', production: 3, originSuperpower: 'ussr' },
   { type: 'grain', companyName: 'Volga Agrícola', territoryId: 'russia', production: 3, originSuperpower: 'ussr' },
   { type: 'oil', companyName: 'Sibéria Petro', territoryId: 'siberia', production: 3, originSuperpower: 'ussr' },
@@ -70,6 +70,7 @@ const CARD_TEMPLATES: CardTemplate[] = [
   { type: 'grain', companyName: 'Hokkaido Farms', territoryId: 'japan', production: 2, originSuperpower: 'china' },
   { type: 'grain', companyName: 'Java Rice', territoryId: 'indonesia', production: 2, originSuperpower: 'china' },
 
+  // TODO: confirmar regra original — produção 4 não existe no deck físico Grow (máx. 3); criada digitalmente para representar o Oriente Médio
   { type: 'oil', companyName: 'Golfo Persa', territoryId: 'middle_east', production: 4, originSuperpower: 'ussr' },
   { type: 'oil', companyName: 'Líbia Petro', territoryId: 'north_africa', production: 3, originSuperpower: 'africa' },
   { type: 'oil', companyName: 'México Petróleo', territoryId: 'mexico', production: 3, originSuperpower: 'usa' },

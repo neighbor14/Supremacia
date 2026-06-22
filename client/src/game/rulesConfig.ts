@@ -12,6 +12,9 @@ export const RULES = {
   MARKET_MIN_PRICE: 10,        // manual Grow: piso $10
   MARKET_MAX_PRICE: 10000,     // manual Grow: teto $10.000
   MARKET_PRICE_STEP: 1000,
+  // Modo de mercado padrão para PARTIDAS NOVAS. Saves antigos sem o campo caem
+  // em 'classic' (ver loadGame). Ver types.ts MarketMode.
+  DEFAULT_MARKET_MODE: 'balanced' as const,
 
   // Salaries (Stage 1)
   SALARY_PER_UNIT: 100,        // per army or navy

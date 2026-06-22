@@ -20,6 +20,7 @@ import NewsTicker from '../ui/NewsTicker';
 import MarketDrawer from '../ui/MarketDrawer';
 import DrawnCardModal from '../ui/DrawnCardModal';
 import TurnPresentationPanel from '../ui/TurnPresentationPanel';
+import SimultaneousSellModal from '../ui/SimultaneousSellModal';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
@@ -114,12 +115,45 @@ export default function GameScreen() {
     }
   }, [game?.combat.active, game?.gameOver, initialized, playMusicTrack, stopMusicTrack]);
 
+  // ── Modo Digital Balanceado: abrir/resolver a Venda Simultânea da rodada ───
+  // A fase global (salários+produção+venda) precede a vez do 1º jogador. O
+  // engine é autoritativo; aqui só disparamos as transições no momento certo.
+  const ss = game?.simultaneousSell;
+  const needsSellOpen =
+    !!game && !game.gameOver &&
+    game.config.marketMode === 'balanced' &&
+    ss?.phase === 'inactive' &&
+    (ss?.lastResolvedRound ?? 0) < game.turn.turnNumber;
+
+  useEffect(() => {
+    if (needsSellOpen) dispatch({ type: 'OPEN_SIMULTANEOUS_SELL' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsSellOpen, game?.turn.turnNumber]);
+
+  // Resolve automaticamente quando todos (humano + IAs) confirmaram.
+  useEffect(() => {
+    if (!game || game.config.marketMode !== 'balanced') return;
+    if (ss?.phase !== 'declare') return;
+    const actives = game.turn.playerOrder.filter(id => !game.players[id].isEliminated);
+    const allConfirmed = actives.every(id => ss.declarations[id]?.confirmed === true);
+    if (allConfirmed) {
+      const t = setTimeout(() => dispatch({ type: 'RESOLVE_SIMULTANEOUS_SELL' }), 250);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ss?.phase, ss?.declarations, game?.turn.turnNumber]);
+
   // ── AI Turn: start presentation when it's an AI player's turn ──────────────
   useEffect(() => {
     if (!game || game.gameOver) return;
     const currentPlayer = game.players[game.turn.currentPlayer];
     if (currentPlayer.isHuman || currentPlayer.isEliminated) return;
     if (presentation.isPresenting) return; // already presenting (or skip in progress)
+    // Modo Digital Balanceado: enquanto a Venda Simultânea da rodada não resolver,
+    // ninguém (nem a IA que abre a rodada) joga sua vez normal.
+    if (game.config.marketMode === 'balanced' &&
+        (game.simultaneousSell.phase !== 'inactive' ||
+         game.simultaneousSell.lastResolvedRound < game.turn.turnNumber)) return;
     // D6/D7: a IA atacou o humano e o combate está pausado aguardando a resposta
     // do defensor (CombatModal). Não replanejar o turno da IA enquanto isso.
     if (game.combat.active && game.combat.phase === 'defender_response') return;
@@ -136,7 +170,7 @@ export default function GameScreen() {
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.turn.currentPlayer, game?.turn.turnNumber, game?.gameOver]);
+  }, [game?.turn.currentPlayer, game?.turn.turnNumber, game?.gameOver, game?.simultaneousSell.phase]);
 
   // ── Presentation: play sound when a new event appears ───────────────────────
   useEffect(() => {
@@ -214,6 +248,7 @@ export default function GameScreen() {
         <BottomSheet />
 
         {/* Modals */}
+        <SimultaneousSellModal />
         {game.drawnCard?.active && <DrawnCardModal />}
         {game.combat.active && <CombatModal />}
         {game.nuclearAttack.active && <NuclearModal />}

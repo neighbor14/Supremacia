@@ -14,9 +14,12 @@ import type { AIDifficulty, GameState, Player } from '../types';
 
 const LEVELS: AIDifficulty[] = ['beginner', 'intermediate', 'advanced', 'god'];
 
-/** AI player 'africa' in a fresh game, ready to be tweaked per scenario. */
+/** AI player 'africa' in a fresh game, ready to be tweaked per scenario.
+ * Modo Clássico: estes testes exercitam a decisão de venda sequencial (Estágio
+ * 3), que só existe no Clássico. A venda no Modo Balanceado é coberta em
+ * simultaneous-sell.test.ts. */
 function aiGame(): { game: GameState; ai: Player } {
-  const game = createInitialGameState('usa', ['africa']);
+  const game = createInitialGameState('usa', ['africa'], undefined, 'classic');
   return { game, ai: game.players.africa };
 }
 
@@ -167,7 +170,7 @@ describe('AI movement (stage 5) — land + naval', () => {
   });
 
   it('cpuMove (via CPU_TURN) lands troops across the sea onto neutral land (amphibious)', () => {
-    const game = createInitialGameState('south_america', ['africa'], 'god');
+    const game = createInitialGameState('south_america', ['africa'], 'god', 'classic');
     game.turn.currentPlayer = 'africa';
     game.turn.currentPlayerIndex = game.turn.playerOrder.indexOf('africa');
     game.turn.isFirstTurn = false;
@@ -194,7 +197,7 @@ describe('AI movement (stage 5) — land + naval', () => {
     // África parte do Golfo da Guiné e precisa cruzar o Atlântico (2 pernas:
     // gulf_of_guinea → south_atlantic → north_atlantic) p/ desembarcar em eastern_usa,
     // território neutro inalcançável por terra ou por uma única perna naval.
-    const game = createInitialGameState('china', ['africa']);
+    const game = createInitialGameState('china', ['africa'], undefined, 'classic');
     const af = game.players.africa;
     af.navies = { gulf_of_guinea: 1 };
     af.armies = { west_africa: 4 };
@@ -211,7 +214,7 @@ describe('AI movement (stage 5) — land + naval', () => {
   });
 
   it('planAmphibiousInvasion respects the oil budget: too little oil → no long route', () => {
-    const game = createInitialGameState('china', ['africa']);
+    const game = createInitialGameState('china', ['africa'], undefined, 'classic');
     const af = game.players.africa;
     af.navies = { gulf_of_guinea: 1 };
     af.armies = { west_africa: 4 };
@@ -223,7 +226,7 @@ describe('AI movement (stage 5) — land + naval', () => {
   });
 
   it('cpuMove (via CPU_TURN) executes a 2-leg amphibious invasion across the Atlantic', () => {
-    const game = createInitialGameState('china', ['africa']);
+    const game = createInitialGameState('china', ['africa'], undefined, 'classic');
     game.turn.currentPlayer = 'africa';
     game.turn.currentPlayerIndex = game.turn.playerOrder.indexOf('africa');
     game.turn.isFirstTurn = true; // exclui combate p/ isolar o movimento
@@ -247,7 +250,7 @@ describe('AI movement (stage 5) — land + naval', () => {
   });
 
   it('cpuMove (via CPU_TURN) occupies an adjacent neutral territory using the human move rules', () => {
-    const game = createInitialGameState('usa', ['africa'], 'god');
+    const game = createInitialGameState('usa', ['africa'], 'god', 'classic');
     game.turn.currentPlayer = 'africa';
     game.turn.currentPlayerIndex = game.turn.playerOrder.indexOf('africa');
     game.turn.isFirstTurn = false;

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameState, GameAction, SuperpowerId, ResourceType, ResourceCard, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep, ProspectingSession, AIDifficulty } from './types';
+import { GameState, GameAction, SuperpowerId, ResourceType, ResourceCard, TurnStage, EventLogEntry, UnitType, Player, PlayerActionEvent, PlannedStep, ProspectingSession, AIDifficulty, MarketMode, SellDeclaration, SellResolutionPerPlayer } from './types';
 import { createInitialGameState } from './setup';
 import { RULES } from './rulesConfig';
 import { rollDice, sumDice, shuffleArray } from './rng';
@@ -27,7 +27,7 @@ interface GameStore {
   companyMapVisible: boolean;
 
   // Actions
-  startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => void;
+  startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty, marketMode?: MarketMode) => void;
   dispatch: (action: GameAction) => void;
   selectTerritory: (id: string | null) => void;
   selectSeaZone: (id: string | null) => void;
@@ -137,16 +137,35 @@ function dropOverCapacityEmbarked(player: Player, seaZoneId: string): void {
   }
 }
 
+// Modo Digital Balanceado: no início da rodada, salários e produção de TODOS os
+// jogadores já foram processados na fase global (openSimultaneousSell). Logo, os
+// Estágios 1 e 2 individuais de cada jogador viram confirmações no-op.
+function upkeepAlreadyDone(state: GameState): boolean {
+  return state.config.marketMode === 'balanced' && state.turn.upkeepPreprocessed === true;
+}
+
 function paySalaries(state: GameState): void {
-  const player = state.players[state.turn.currentPlayer];
+  if (upkeepAlreadyDone(state)) {
+    // Salário já cobrado na fase global da rodada — nada a fazer.
+    state.turn.unpaidCompanies = [];
+    addEvent(state, state.turn.currentPlayer, 'Salários já pagos na fase global da rodada (Modo Digital Balanceado).', 'economy');
+    return;
+  }
+  state.turn.unpaidCompanies = paySalariesFor(state, state.turn.currentPlayer);
+}
+
+// Cobra salários de um jogador específico e devolve os ids das companhias que
+// ficaram DORMENTES por falta de pagamento (não produzem nesta rodada). Fonte
+// única de upkeep — usada pelo Estágio 1 individual e pela fase global do Modo
+// Digital Balanceado.
+function paySalariesFor(state: GameState, playerId: SuperpowerId): string[] {
+  const player = state.players[playerId];
   const { unitCost, companyCost, loanInterest, total: totalCost } = computeSalaryDue(player);
-  // Recalcula a dormência de companhias a cada Estágio 1 (sempre parte do zero).
-  state.turn.unpaidCompanies = [];
 
   if (player.money >= totalCost) {
     player.money -= totalCost;
     addEvent(state, player.id, `Pagou salários: ${unitCost.toLocaleString()} (unidades) + ${companyCost.toLocaleString()} (companhias) + ${loanInterest.toLocaleString()} (juros)`, 'economy');
-    return;
+    return [];
   }
 
   // ── Fundos insuficientes ── Prioridade fiel ao manual:
@@ -192,7 +211,6 @@ function paySalaries(state: GameState): void {
       dormant.push(c.id);
     }
   }
-  state.turn.unpaidCompanies = dormant;
   player.money = money;
 
   const parts: string[] = ['Fundos insuficientes para salários.'];
@@ -202,13 +220,24 @@ function paySalaries(state: GameState): void {
     parts.push(`${dormant.length} companhia(s) sem salário não vão produzir: ${names}.`);
   }
   addEvent(state, player.id, parts.join(' '), 'economy');
+  return dormant;
 }
 
 function transferProduction(state: GameState): void {
-  const player = state.players[state.turn.currentPlayer];
+  if (upkeepAlreadyDone(state)) {
+    // Produção já transferida na fase global da rodada — nada a fazer.
+    addEvent(state, state.turn.currentPlayer, 'Produção já recebida na fase global da rodada (Modo Digital Balanceado).', 'economy');
+    return;
+  }
+  transferProductionFor(state, state.turn.currentPlayer, state.turn.unpaidCompanies);
+}
+
+// Transfere a produção das companhias de um jogador para a Central de
+// Suprimentos. `dormantIds` = companhias sem salário pago (não produzem).
+function transferProductionFor(state: GameState, playerId: SuperpowerId, dormantIds: string[]): void {
+  const player = state.players[playerId];
   let produced = { grain: 0, oil: 0, mineral: 0 };
-  // Companhias sem salário pago no Estágio 1 não transferem produção (manual Grow).
-  const dormant = new Set(state.turn.unpaidCompanies);
+  const dormant = new Set(dormantIds);
   let dormantCount = 0;
 
   for (const cardId of player.resourceCards) {
@@ -225,6 +254,222 @@ function transferProduction(state: GameState): void {
     ? ` (${dormantCount} companhia(s) dormente(s) por salário não pago não produziram)`
     : '';
   addEvent(state, player.id, `Produção: +${produced.grain} cereal, +${produced.oil} petróleo, +${produced.mineral} minério${suffix}`, 'economy');
+}
+
+// ============================================================
+// MODO DIGITAL BALANCEADO — Venda Simultânea de Recursos
+// Estado: state.simultaneousSell (ver types.ts). Fluxo por rodada:
+//   OPEN  → salários+produção globais; snapshot de preços; IA auto-declara.
+//   SUBMIT→ cada humano declara/atualiza sua venda (validada).
+//   RESOLVE→ preço único de snapshot p/ todos; mercado cai pelo total; conta
+//            1 ação opcional de venda para quem vendeu ≥ 1.
+//   ACK   → fecha o resumo; segue a rodada normal.
+// ============================================================
+
+const RESOURCE_TYPES: ResourceType[] = ['grain', 'oil', 'mineral'];
+
+function activePlayerIds(state: GameState): SuperpowerId[] {
+  return state.turn.playerOrder.filter(id => !state.players[id].isEliminated);
+}
+
+// Declaração automática da IA (decisão simples inicial, evoluível): vende todo
+// excedente acima de 3 de cada recurso — espelha cpuSell, mas na fase global.
+function computeAiSellDeclaration(state: GameState, playerId: SuperpowerId): SellDeclaration {
+  const p = state.players[playerId];
+  const over = (r: ResourceType) => Math.max(0, p.supplies[r] - 3);
+  return {
+    playerId,
+    grain: over('grain'),
+    oil: over('oil'),
+    mineral: over('mineral'),
+    confirmed: true,
+    timestamp: nowMs(),
+  };
+}
+
+// Date.now isolado num único ponto (facilita futura semente determinística p/
+// multiplayer e mantém o resto do engine puro).
+function nowMs(): number {
+  return Date.now();
+}
+
+// Abre a fase de Venda Simultânea no início de uma rodada (idempotente).
+function openSimultaneousSell(state: GameState): void {
+  if (state.config.marketMode !== 'balanced') return;
+  const ss = state.simultaneousSell;
+  // Já aberta ou já resolvida nesta rodada → não reabrir.
+  if (ss.phase !== 'inactive') return;
+  if (ss.lastResolvedRound >= state.turn.turnNumber) return;
+
+  const actives = activePlayerIds(state);
+
+  // 1) Salários + 2) Produção de TODOS os jogadores ativos (ordem da rodada).
+  for (const id of actives) {
+    const dormant = paySalariesFor(state, id);
+    transferProductionFor(state, id, dormant);
+  }
+  // A partir daqui os Estágios 1 e 2 individuais viram no-op nesta rodada.
+  state.turn.upkeepPreprocessed = true;
+
+  // 3) Abre a declaração: snapshot de preços + IA auto-declara, humanos pendentes.
+  const snapshot: Record<ResourceType, number> = { ...state.market.prices };
+  const declarations: Partial<Record<SuperpowerId, SellDeclaration>> = {};
+  for (const id of actives) {
+    const pl = state.players[id];
+    declarations[id] = pl.isHuman
+      ? { playerId: id, grain: 0, oil: 0, mineral: 0, confirmed: false, timestamp: 0 }
+      : computeAiSellDeclaration(state, id);
+  }
+
+  ss.phase = 'declare';
+  ss.round = state.turn.turnNumber;
+  ss.priceSnapshot = snapshot;
+  ss.declarations = declarations;
+  ss.soldThisRound = [];
+  ss.resolution = null;
+
+  addEvent(state, state.turn.currentPlayer, 'Fase de Venda Simultânea iniciada.', 'economy');
+}
+
+// Valida e registra a declaração de um jogador. Clampa ao estoque, sem
+// negativos, zero permitido. Idempotente enquanto phase==='declare'.
+function submitSellDeclaration(
+  state: GameState,
+  playerId: SuperpowerId,
+  grain: number, oil: number, mineral: number,
+): void {
+  const ss = state.simultaneousSell;
+  if (ss.phase !== 'declare') return; // impede confirmação fora da fase
+  const p = state.players[playerId];
+  if (!p || p.isEliminated) return;
+
+  const clamp = (q: number, r: ResourceType) =>
+    Math.max(0, Math.min(Math.floor(q) || 0, p.supplies[r]));
+  const decl: SellDeclaration = {
+    playerId,
+    grain: clamp(grain, 'grain'),
+    oil: clamp(oil, 'oil'),
+    mineral: clamp(mineral, 'mineral'),
+    confirmed: true,
+    timestamp: nowMs(),
+  };
+  ss.declarations[playerId] = decl;
+}
+
+function allDeclarationsConfirmed(state: GameState): boolean {
+  const ss = state.simultaneousSell;
+  if (ss.phase !== 'declare') return false;
+  return activePlayerIds(state).every(id => ss.declarations[id]?.confirmed === true);
+}
+
+// Resolve a venda simultânea: todos recebem o preço de SNAPSHOT; o mercado de
+// cada recurso cai pelo total vendido por todos; quem vendeu ≥ 1 gasta 1 ação.
+function resolveSimultaneousSell(state: GameState): void {
+  const ss = state.simultaneousSell;
+  if (ss.phase !== 'declare') return;
+  if (!allDeclarationsConfirmed(state)) return;
+
+  const actives = activePlayerIds(state);
+  addEvent(state, state.turn.currentPlayer, 'Todos os jogadores confirmaram suas vendas.', 'economy');
+
+  // Preço único por recurso = snapshot tirado na abertura (antes de qualquer venda).
+  const perResource: Record<ResourceType, { totalSold: number; priceBefore: number; priceAfter: number }> = {
+    grain: { totalSold: 0, priceBefore: ss.priceSnapshot.grain, priceAfter: ss.priceSnapshot.grain },
+    oil: { totalSold: 0, priceBefore: ss.priceSnapshot.oil, priceAfter: ss.priceSnapshot.oil },
+    mineral: { totalSold: 0, priceBefore: ss.priceSnapshot.mineral, priceAfter: ss.priceSnapshot.mineral },
+  };
+
+  // 1) Paga cada jogador ao preço de snapshot e debita o estoque.
+  const perPlayer: SellResolutionPerPlayer[] = [];
+  const soldThisRound: SuperpowerId[] = [];
+  for (const id of actives) {
+    const decl = ss.declarations[id]!;
+    const pl = state.players[id];
+    let revenue = 0;
+    for (const r of RESOURCE_TYPES) {
+      const qty = Math.min(decl[r], pl.supplies[r]); // segurança extra contra estoque vencido
+      if (qty <= 0) continue;
+      const price = ss.priceSnapshot[r];
+      revenue += qty * price;
+      pl.supplies[r] -= qty;
+      perResource[r].totalSold += qty;
+    }
+    const soldAny = (decl.grain + decl.oil + decl.mineral) > 0;
+    if (soldAny) {
+      pl.money += revenue;
+      soldThisRound.push(id);
+      const pieces = RESOURCE_TYPES
+        .filter(r => decl[r] > 0)
+        .map(r => `${decl[r]} ${RESOURCE_NAME[r]}`)
+        .join(' e ');
+      addEvent(state, id, `${pl.name} vendeu ${pieces} e recebeu $${revenue.toLocaleString()}.`, 'economy');
+    }
+    perPlayer.push({
+      playerId: id, playerName: pl.name,
+      grain: decl.grain, oil: decl.oil, mineral: decl.mineral,
+      revenue, soldAny,
+      // 3 ações opcionais por rodada; a venda consome 1 quando soldAny.
+      optionalActionsRemaining: RULES.MAX_OPTIONAL_STAGES - (soldAny ? 1 : 0),
+    });
+  }
+
+  // 2) Mercado cai pelo total vendido (em posições de priceStep), clamp no mínimo.
+  for (const r of RESOURCE_TYPES) {
+    const before = perResource[r].priceBefore;
+    const after = Math.max(
+      state.market.minPrice,
+      before - perResource[r].totalSold * state.market.priceStep,
+    );
+    state.market.prices[r] = after;
+    perResource[r].priceAfter = after;
+    if (perResource[r].totalSold > 0) {
+      addEvent(
+        state, state.turn.currentPlayer,
+        `Total vendido de ${RESOURCE_NAME[r]}: ${perResource[r].totalSold}. O preço caiu de $${before.toLocaleString()} para $${after.toLocaleString()}.`,
+        'economy',
+      );
+    }
+  }
+
+  // 3) Log de ações opcionais consumidas pela venda.
+  for (const pp of perPlayer) {
+    if (pp.soldAny) {
+      addEvent(
+        state, pp.playerId,
+        `${pp.playerName} usou 1 ação de venda e ainda possui ${pp.optionalActionsRemaining} ações opcionais.`,
+        'economy',
+      );
+    }
+  }
+
+  ss.phase = 'resolve';
+  ss.soldThisRound = soldThisRound;
+  ss.lastResolvedRound = state.turn.turnNumber;
+  ss.resolution = { round: state.turn.turnNumber, perResource, perPlayer };
+
+  // O primeiro jogador da rodada já é o currentPlayer: aplica a pré-consumação
+  // da ação de venda (os demais recebem ao entrar no turno via advanceToNextPlayer).
+  applySoldOptionalStage(state, state.turn.currentPlayer);
+}
+
+// Pré-consome o Estágio 3 (venda) para um jogador que vendeu na fase simultânea,
+// deixando-o com 2 ações opcionais na sua vez. No Modo Digital Balanceado o
+// Estágio 3 individual fica indisponível (a venda é só a simultânea).
+function applySoldOptionalStage(state: GameState, playerId: SuperpowerId): void {
+  if (state.config.marketMode !== 'balanced') return;
+  if (state.turn.currentPlayer !== playerId) return;
+  if (state.simultaneousSell.soldThisRound.includes(playerId)) {
+    if (!state.turn.optionalStagesUsed.includes(3)) {
+      state.turn.optionalStagesUsed = [3, ...state.turn.optionalStagesUsed];
+    }
+  }
+}
+
+function ackSimultaneousSell(state: GameState): void {
+  const ss = state.simultaneousSell;
+  if (ss.phase !== 'resolve') return;
+  ss.phase = 'inactive';
+  // resolution permanece para consulta no log/UI até a próxima abertura.
 }
 
 function sellResource(state: GameState, resource: ResourceType, quantity: number): void {
@@ -429,6 +674,8 @@ function prospect(state: GameState, targetType?: ResourceType): void {
 function startNewRound(state: GameState): void {
   state.turn.turnNumber++;
   state.turn.isFirstTurn = false;
+  // Modo Digital Balanceado: a nova rodada reabre a fase global de upkeep+venda.
+  state.turn.upkeepPreprocessed = false;
   // Record price history at end of round
   state.market.priceHistory.push({
     turn: state.turn.turnNumber,
@@ -685,10 +932,17 @@ function advanceToNextPlayer(state: GameState): void {
   state.turn.stage = 1;
   state.turn.optionalStagesUsed = [];
   state.turn.stageComplete = false;
+
+  // Modo Digital Balanceado: se a venda simultânea desta rodada já resolveu e
+  // este jogador vendeu, pré-consome o Estágio 3 (resta 2 ações opcionais).
+  applySoldOptionalStage(state, state.turn.currentPlayer);
 }
 
 function canUseOptionalStage(state: GameState, stage: TurnStage): boolean {
   if (stage <= 2) return true; // mandatory
+  // Modo Digital Balanceado: o Estágio 3 (venda sequencial) não é selecionável —
+  // a venda acontece só na fase de Venda Simultânea no início da rodada.
+  if (stage === 3 && state.config.marketMode === 'balanced') return false;
   if (state.turn.optionalStagesUsed.length >= RULES.MAX_OPTIONAL_STAGES) return false;
   if (state.turn.optionalStagesUsed.includes(stage)) return false;
   // Must be in order
@@ -815,16 +1069,22 @@ function claimTerritory(state: GameState, territoryId: string, playerId: Superpo
   const attacker = state.players[playerId];
   territory.owner = playerId;
 
-  // Capturing a territory captures the company located there (manual rule).
+  // Capturing a territory captures ALL companies located there, regardless of
+  // who holds the card. This covers: (a) cards owned by the previous territory
+  // controller, and (b) cards prospected by a third player from when the
+  // territory was neutral — without this, those players would keep producing
+  // from a territory they no longer control.
   const capturedNames: string[] = [];
-  if (previousOwner) {
-    const prevPlayer = state.players[previousOwner];
-    for (const cid of companiesInTerritory(state, territoryId, previousOwner)) {
-      prevPlayer.resourceCards = prevPlayer.resourceCards.filter(id => id !== cid);
-      if (!attacker.resourceCards.includes(cid)) attacker.resourceCards.push(cid);
-      state.resourceCards[cid].ownerId = playerId;
-      capturedNames.push(state.resourceCards[cid].companyName);
+  for (const cid of companiesInTerritory(state, territoryId)) {
+    const card = state.resourceCards[cid];
+    if (!card || card.ownerId === null || card.ownerId === playerId) continue;
+    const cardOwner = state.players[card.ownerId];
+    if (cardOwner) {
+      cardOwner.resourceCards = cardOwner.resourceCards.filter(id => id !== cid);
     }
+    if (!attacker.resourceCards.includes(cid)) attacker.resourceCards.push(cid);
+    card.ownerId = playerId;
+    capturedNames.push(card.companyName);
   }
 
   if (capturedNames.length > 0) {
@@ -1991,7 +2251,9 @@ function cpuTurn(state: GameState): void {
   // Decisão de estágios opcionais delegada ao AIEngine, conforme o perfil de
   // dificuldade deste jogador. O motor já respeita RULES.MAX_OPTIONAL_STAGES.
   const aiConfig = getPlayerAIConfig(player);
-  const { stages: sorted, decisions } = chooseOptionalStages(state, player, aiConfig);
+  // Modo Digital Balanceado: se a venda simultânea já consumiu 1 ação, restam 2.
+  const cpuCap = RULES.MAX_OPTIONAL_STAGES - state.turn.optionalStagesUsed.length;
+  const { stages: sorted, decisions } = chooseOptionalStages(state, player, aiConfig, cpuCap);
   for (const d of decisions) {
     addEvent(state, player.id, `IA ${player.name} — ${d.reason}.`, 'info');
   }
@@ -2479,7 +2741,8 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
 
   // ── Choose optional stages via AIEngine (perfil de dificuldade) ──────────
   const p = state.players[playerId];
-  const { stages: sorted, decisions } = chooseOptionalStages(state, p, aiConfig);
+  const planCap = RULES.MAX_OPTIONAL_STAGES - state.turn.optionalStagesUsed.length;
+  const { stages: sorted, decisions } = chooseOptionalStages(state, p, aiConfig, planCap);
   const reasonByStage = new Map<OptionalStage, string>(decisions.map(d => [d.stage, d.reason]));
   let actionIndex = 0;
 
@@ -2753,6 +3016,27 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
 // STORE
 // ============================================================
 
+// Migração de saves anteriores ao Modo Digital Balanceado. Saves antigos não
+// têm marketMode (→ 'classic', preserva o comportamento original) nem a fatia
+// simultaneousSell (→ inativa). Nunca dispara a fase nova em jogos antigos.
+function migrateBalancedFields(state: GameState): void {
+  if (!state.config.marketMode) state.config.marketMode = 'classic';
+  if (state.simultaneousSell === undefined) {
+    state.simultaneousSell = {
+      phase: 'inactive',
+      round: 0,
+      lastResolvedRound: 0,
+      priceSnapshot: { ...state.market.prices },
+      declarations: {},
+      soldThisRound: [],
+      resolution: null,
+    };
+  }
+  if (state.turn && (state.turn as any).upkeepPreprocessed === undefined) {
+    state.turn.upkeepPreprocessed = false;
+  }
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
   game: null,
   selectedTerritory: null,
@@ -2763,10 +3047,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setCompanyMapVisible: (v) => set({ companyMapVisible: v }),
 
-  startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty) => {
+  startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty, marketMode?: MarketMode) => {
     const otherIds = shuffleArray(SUPERPOWER_IDS.filter(id => id !== humanPlayer));
     const activeAiIds = otherIds.slice(0, Math.min(aiCount, otherIds.length));
-    const game = createInitialGameState(humanPlayer, activeAiIds, aiDifficulty);
+    const game = createInitialGameState(humanPlayer, activeAiIds, aiDifficulty, marketMode);
     set({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map', buildAction: null, companyMapVisible: false });
     localStorage.setItem('supremacia_save', JSON.stringify(game));
   },
@@ -2938,6 +3222,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set({ game: action.state, buildAction: null });
         localStorage.setItem('supremacia_save', JSON.stringify(action.state));
         return;
+      case 'OPEN_SIMULTANEOUS_SELL':
+        openSimultaneousSell(state);
+        break;
+      case 'SUBMIT_SELL_DECLARATION':
+        submitSellDeclaration(state, action.playerId, action.grain, action.oil, action.mineral);
+        break;
+      case 'RESOLVE_SIMULTANEOUS_SELL':
+        resolveSimultaneousSell(state);
+        break;
+      case 'ACK_SIMULTANEOUS_SELL':
+        ackSimultaneousSell(state);
+        break;
       case 'DECLARE_DETENTE': {
         state.gameOver = true;
         state.endCondition = 'detente';
@@ -2957,6 +3253,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const loaded = action.state;
         if (loaded.researchSession === undefined) loaded.researchSession = null;
         if (loaded.prospectingSession === undefined) loaded.prospectingSession = null;
+        migrateBalancedFields(loaded);
         set({ game: loaded });
         return;
       }
@@ -2986,8 +3283,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         totalActivePlayers: 6,
         maxPlayers: 6,
         multiplayerReady: false,
+        marketMode: 'classic',
       };
     }
+    migrateBalancedFields(state);
     // Migrate players that pre-date the type field
     for (const p of Object.values(state.players)) {
       if (!p.type) (p as any).type = p.isHuman ? 'human' : 'ai';

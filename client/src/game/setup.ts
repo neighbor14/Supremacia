@@ -1,4 +1,4 @@
-import { GameState, GameConfig, Player, SuperpowerId, MarketState, TurnState, CombatState, NuclearAttackState, DrawnCardReveal, AIDifficulty } from './types';
+import { GameState, GameConfig, Player, SuperpowerId, MarketState, TurnState, CombatState, NuclearAttackState, DrawnCardReveal, AIDifficulty, MarketMode, SimultaneousSellState } from './types';
 import { DEFAULT_AI_DIFFICULTY } from './ai';
 import { RULES } from './rulesConfig';
 import { TERRITORIES } from '../data/territories';
@@ -12,7 +12,9 @@ export function createInitialGameState(
   activeAiIds: SuperpowerId[],
   // Dificuldade aplicada às IAs ativas. Aceita um nível global ou um mapa
   // por superpotência (cada IA com o seu nível). Padrão: intermediate.
-  aiDifficulty: AIDifficulty | Partial<Record<SuperpowerId, AIDifficulty>> = DEFAULT_AI_DIFFICULTY
+  aiDifficulty: AIDifficulty | Partial<Record<SuperpowerId, AIDifficulty>> = DEFAULT_AI_DIFFICULTY,
+  // Modo de mercado. Partidas novas → Digital Balanceado (default da regra).
+  marketMode: MarketMode = RULES.DEFAULT_MARKET_MODE,
 ): GameState {
   const difficultyFor = (id: SuperpowerId): AIDifficulty =>
     typeof aiDifficulty === 'string'
@@ -100,6 +102,11 @@ export function createInitialGameState(
   const cardState: Record<string, typeof resourceCards[0]> = {};
   resourceCards.forEach(c => { cardState[c.id] = c; });
 
+  // Preço inicial: FIXO em $5.000 nos dois modos por ora. O Modo Digital
+  // Balanceado prevê preço inicial variável (2d6), mas a tabela oficial Grow
+  // ainda não está confirmada no projeto — ver game/marketSetup.ts
+  // (rollInitialMarketPrices, isolada e documentada, ainda desconectada).
+  // TODO: confirmar regra original e ligar rollInitialMarketPrices no modo balanced.
   const market: MarketState = {
     prices: { grain: RULES.MARKET_START_PRICE, oil: RULES.MARKET_START_PRICE, mineral: RULES.MARKET_START_PRICE },
     priceHistory: [{ turn: 0, grain: RULES.MARKET_START_PRICE, oil: RULES.MARKET_START_PRICE, mineral: RULES.MARKET_START_PRICE }],
@@ -120,6 +127,7 @@ export function createInitialGameState(
     currentPlayerIndex: 0,
     isFirstTurn: true,
     stageComplete: false,
+    upkeepPreprocessed: false,
     attackedFrom: [],
     unpaidCompanies: [],
     prospectAttemptsUsed: 0,
@@ -148,6 +156,18 @@ export function createInitialGameState(
     totalActivePlayers: activePlayers.length,
     maxPlayers: SUPERPOWER_IDS.length,
     multiplayerReady: false,
+    marketMode,
+  };
+
+  // Modo Digital Balanceado — fatia da Venda Simultânea (inativa no Clássico).
+  const simultaneousSell: SimultaneousSellState = {
+    phase: 'inactive',
+    round: 0,
+    lastResolvedRound: 0,
+    priceSnapshot: { grain: RULES.MARKET_START_PRICE, oil: RULES.MARKET_START_PRICE, mineral: RULES.MARKET_START_PRICE },
+    declarations: {},
+    soldThisRound: [],
+    resolution: null,
   };
 
   return {
@@ -159,6 +179,7 @@ export function createInitialGameState(
     resourceDeck,
     market,
     turn,
+    simultaneousSell,
     combat,
     nuclearAttack,
     drawnCard: null as DrawnCardReveal | null,
