@@ -3,31 +3,30 @@ import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import { formatOdds } from '../game/researchDeck';
 import { RULES } from '../game/rulesConfig';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
 const RESOURCE_CONFIG = {
-  grain:   { icon: '🌾', label: 'Cereal',    color: '#eab308', bg: 'bg-yellow-900/20 border-yellow-500/40' },
-  oil:     { icon: '🛢️',  label: 'Petróleo',  color: '#ef4444', bg: 'bg-red-900/20 border-red-500/40' },
-  mineral: { icon: '⛏️',  label: 'Minério',   color: '#a855f7', bg: 'bg-purple-900/20 border-purple-500/40' },
+  grain:   { icon: '🌾', color: '#eab308', bg: 'bg-yellow-900/20 border-yellow-500/40' },
+  oil:     { icon: '🛢️',  color: '#ef4444', bg: 'bg-red-900/20 border-red-500/40' },
+  mineral: { icon: '⛏️',  color: '#a855f7', bg: 'bg-purple-900/20 border-purple-500/40' },
 };
 
 const TYPE_CONFIG = {
   nuke: {
     icon: '☢️',
-    label: 'Bomba Atômica',
     bgClass: 'bg-destructive/10 border-destructive/40',
     iconBgClass: 'bg-destructive/20',
     labelClass: 'text-destructive',
   },
   laser: {
     icon: '🛡️',
-    label: 'Guerra nas Estrelas',
     bgClass: 'bg-blue-900/20 border-blue-500/40',
     iconBgClass: 'bg-blue-600/20',
     labelClass: 'text-blue-300',
   },
   resource: {
     icon: '📋',
-    label: 'Carta de Empresa',
     bgClass: 'bg-emerald-900/20 border-emerald-500/40',
     iconBgClass: 'bg-emerald-600/20',
     labelClass: 'text-emerald-300',
@@ -36,6 +35,7 @@ const TYPE_CONFIG = {
 
 export default function DrawnCardModal() {
   const { game, dispatch } = useGameStore();
+  const t = useT();
   // Track which card ID last triggered sounds — resets on modal close so each
   // new card (even within the same prospecting/research session) plays fresh sounds.
   const lastSoundedCardRef = useRef<string | null>(null);
@@ -102,7 +102,9 @@ export default function DrawnCardModal() {
   const resourceCfg = drawnCard.resourceType ? RESOURCE_CONFIG[drawnCard.resourceType] : null;
   const cardBg = resourceCfg ? resourceCfg.bg : cfg.bgClass;
   const cardIcon = resourceCfg ? resourceCfg.icon : cfg.icon;
-  const cardLabel = resourceCfg ? resourceCfg.label : cfg.label;
+  const cardLabel = resourceCfg
+    ? t(`resource.${drawnCard.resourceType}` as TranslationKey)
+    : t(`draw.type.${drawnCard.type}` as TranslationKey);
   const cardLabelClass = resourceCfg ? '' : cfg.labelClass;
   const cardLabelStyle = resourceCfg ? { color: resourceCfg.color } : {};
 
@@ -131,9 +133,9 @@ export default function DrawnCardModal() {
     dispatch({ type: 'DISMISS_DRAWN_CARD' });
   };
 
-  const targetName = drawnCard.researchTarget === 'nuke' ? 'Bomba Atômica' : 'Laser-Star';
+  const targetName = drawnCard.researchTarget === 'nuke' ? t('draw.target.nuke') : t('draw.target.laser');
   const prospectTargetLabel = drawnCard.prospectTarget
-    ? (drawnCard.prospectTarget === 'grain' ? 'Cereal' : drawnCard.prospectTarget === 'oil' ? 'Petróleo' : 'Minério')
+    ? t(`resource.${drawnCard.prospectTarget}` as TranslationKey)
     : '';
   const prospectTargetIcon = drawnCard.prospectTarget
     ? (drawnCard.prospectTarget === 'grain' ? '🌾' : drawnCard.prospectTarget === 'oil' ? '🛢️' : '⛏️')
@@ -195,7 +197,7 @@ export default function DrawnCardModal() {
                   {cardLabel}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {(isResearch || isProspecting) ? 'Carta revelada do baralho' : 'Carta sorteada do baralho'}
+                  {(isResearch || isProspecting) ? t('draw.revealedFromDeck') : t('draw.drawnFromDeck')}
                 </p>
               </div>
             </div>
@@ -213,10 +215,10 @@ export default function DrawnCardModal() {
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-lg">{resourceCfg.icon}</span>
                 <span className="text-xs font-mono font-semibold" style={{ color: resourceCfg.color }}>
-                  +{drawnCard.production} por turno
+                  +{drawnCard.production} {t('draw.perTurn')}
                 </span>
                 {(isResearch || (isProspecting && !prospectFound)) && (
-                  <span className="text-xs text-muted-foreground">· voltará ao baralho</span>
+                  <span className="text-xs text-muted-foreground">· {t('draw.backToDeck')}</span>
                 )}
               </div>
             )}
@@ -226,18 +228,18 @@ export default function DrawnCardModal() {
           {isResearch && (
             <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 mb-3 space-y-1">
               <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>Procurando: <strong className="text-foreground">{targetName}</strong></span>
+                <span>{t('draw.searching')} <strong className="text-foreground">{targetName}</strong></span>
                 <span className="font-mono">${drawnCard.researchCostSoFar?.toLocaleString() ?? 0}</span>
               </div>
               <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>Cartas viradas: <strong className="text-foreground">{drawnCard.researchCardsDrawn}</strong></span>
-                <span>Baralho: <strong className="text-foreground">{deckLeft} restantes</strong></span>
+                <span>{t('draw.cardsFlipped')} <strong className="text-foreground">{drawnCard.researchCardsDrawn}</strong></span>
+                <span>{t('draw.deckLabel')} <strong className="text-foreground">{t('draw.remaining', { n: deckLeft })}</strong></span>
               </div>
               {nextOdds && !researchFound && (
                 <div className="text-[10px] text-muted-foreground">
-                  Chance na próxima carta:{' '}
+                  {t('draw.chanceNext')}{' '}
                   <strong className="text-amber-400">{nextOdds}</strong>
-                  {' '}({drawnCard.researchTarget === 'nuke' ? nukeLeft : laserLeft} {targetName}(s) restante(s))
+                  {' '}{t('draw.weaponsRemaining', { n: drawnCard.researchTarget === 'nuke' ? nukeLeft : laserLeft, name: targetName })}
                 </div>
               )}
             </div>
@@ -248,13 +250,13 @@ export default function DrawnCardModal() {
             <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 mb-3 space-y-1">
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>
-                  Procurando: <strong className="text-foreground">{prospectTargetIcon} {prospectTargetLabel}</strong>
+                  {t('draw.searching')} <strong className="text-foreground">{prospectTargetIcon} {prospectTargetLabel}</strong>
                 </span>
                 <span className="font-mono">${drawnCard.prospectCostSoFar?.toLocaleString() ?? 0}</span>
               </div>
               <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>Cartas viradas: <strong className="text-foreground">{drawnCard.prospectCardsFlipped}</strong></span>
-                <span>Baralho: <strong className="text-foreground">{game.resourceDeck.length} restantes</strong></span>
+                <span>{t('draw.cardsFlipped')} <strong className="text-foreground">{drawnCard.prospectCardsFlipped}</strong></span>
+                <span>{t('draw.deckLabel')} <strong className="text-foreground">{t('draw.remaining', { n: game.resourceDeck.length })}</strong></span>
               </div>
             </div>
           )}
@@ -270,11 +272,11 @@ export default function DrawnCardModal() {
               <p className={`text-xs font-semibold ${drawnCard.success ? 'text-emerald-400' : 'text-muted-foreground'}`}>
                 {drawnCard.success
                   ? isProspecting
-                    ? `${prospectTargetLabel} encontrada!`
+                    ? t('draw.found', { name: prospectTargetLabel })
                     : isResearch
-                    ? `${targetName} encontrada!`
-                    : 'Carta adquirida!'
-                  : 'Não encontrada desta vez.'}
+                    ? t('draw.found', { name: targetName })
+                    : t('draw.acquired')
+                  : t('draw.notFound')}
               </p>
             </div>
           )}
@@ -288,13 +290,13 @@ export default function DrawnCardModal() {
                   className="flex-1 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-all active:scale-[0.97]"
                   style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
                 >
-                  Virar Próxima — ${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}
+                  {t('draw.flipNext', { cost: `$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}` })}
                 </button>
               ) : (
                 <div className="flex-1 py-3 rounded-xl text-sm text-center text-muted-foreground bg-secondary border border-border">
                   {(currentPlayer?.money ?? 0) < RULES.RESEARCH_COST_PER_CARD
-                    ? 'Dinheiro insuficiente'
-                    : 'Baralho esgotado'}
+                    ? t('draw.insufficientMoney')
+                    : t('draw.deckEmpty')}
                 </div>
               )}
               <button
@@ -302,7 +304,7 @@ export default function DrawnCardModal() {
                 className="px-4 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-secondary hover:bg-secondary/80 text-muted-foreground transition-all active:scale-[0.97] border border-border"
                 style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
               >
-                Parar
+                {t('draw.stop')}
               </button>
             </div>
           ) : showProspectButtons ? (
@@ -313,13 +315,13 @@ export default function DrawnCardModal() {
                   className="flex-1 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-all active:scale-[0.97]"
                   style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
                 >
-                  Virar Próxima — ${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}
+                  {t('draw.flipNext', { cost: `$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}` })}
                 </button>
               ) : (
                 <div className="flex-1 py-3 rounded-xl text-sm text-center text-muted-foreground bg-secondary border border-border">
                   {(currentPlayer?.money ?? 0) < RULES.RESEARCH_COST_PER_CARD
-                    ? 'Dinheiro insuficiente'
-                    : 'Baralho esgotado'}
+                    ? t('draw.insufficientMoney')
+                    : t('draw.deckEmpty')}
                 </div>
               )}
               <button
@@ -327,7 +329,7 @@ export default function DrawnCardModal() {
                 className="px-4 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-secondary hover:bg-secondary/80 text-muted-foreground transition-all active:scale-[0.97] border border-border"
                 style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
               >
-                Parar
+                {t('draw.stop')}
               </button>
             </div>
           ) : (
@@ -343,7 +345,7 @@ export default function DrawnCardModal() {
               `}
               style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
             >
-              Continuar
+              {t('common.continue')}
             </button>
           )}
         </div>

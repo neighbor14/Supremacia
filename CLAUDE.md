@@ -20,6 +20,8 @@ Matemática, estrutura de turnos, quantidade de territórios/mares/cartas, regra
 - **Bugs de regra têm prioridade P0/P1** — nunca corrija só a UI quando o bug é de regra.
 - **Preparado para multiplayer futuro**, mesmo que o MVP seja contra IA (ver `multiplayerSchema.md` e a Turn Presentation Layer).
 - **Não copiar arte, texto longo ou material protegido** do jogo original; usar apenas como referência de regra e criar arte/interface própria.
+- **i18n obrigatório (pt/en/es) — daqui pra frente, sem exceção.** Nenhum texto novo de UI pode ser hardcoded. Todo rótulo, botão, tooltip, alerta, erro, menu, fase, tutorial e explicação vem de `client/src/i18n/locales/{pt,en,es}.json` via `useT()`/`t()`. `pt.json` é a fonte canônica de chaves; en/es são tipados contra ela (chave faltando quebra o `tsc`). **Qualquer texto novo precisa ser escrito nas três línguas no mesmo commit.** Ver [`docs/i18n.md`](docs/i18n.md).
+- **Tutorial acompanha as features.** Sempre que uma feature ou função for **criada, editada, corrigida ou removida**, revise o tutorial progressivo (`ui/TutorialCoach.tsx` + chaves `tutorial.*` nos 3 idiomas) para que continue fiel ao comportamento atual: o que a fase/ação faz, quando aparece, custo e boa jogada. Tutorial desatualizado é considerado bug.
 
 Regras detalhadas para alterações de mecânica: [`.claude/rules/game-rules.md`](.claude/rules/game-rules.md).
 

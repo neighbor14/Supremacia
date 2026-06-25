@@ -4,6 +4,7 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { ScrollText, X, GripHorizontal } from 'lucide-react';
 import { EventLogEntry } from '../game/types';
 import { useDraggable } from '../hooks/useDraggable';
+import { useT } from '../i18n/useI18n';
 
 const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
   info: '📋',
@@ -17,6 +18,7 @@ const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
 
 export default function EventLogDrawer() {
   const { game } = useGameStore();
+  const t = useT();
   const [isOpen, setIsOpen] = useState(false);
   const { containerRef, dragHandleProps, containerStyle } = useDraggable(() => ({
     x: Math.max(52, window.innerWidth - 310),
@@ -41,7 +43,7 @@ export default function EventLogDrawer() {
             hover:bg-card active:scale-[0.93] transition-all
             ${events.length > 0 ? '' : 'opacity-50'}
           `}
-          aria-label="Log de eventos"
+          aria-label={t('eventLog.title')}
         >
           <ScrollText size={16} className="text-muted-foreground" />
           {events.length > 0 && (
@@ -68,7 +70,7 @@ export default function EventLogDrawer() {
                 className="text-xs font-bold uppercase tracking-wider"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                Log de Eventos
+                {t('eventLog.title')}
               </h3>
             </div>
             <button
@@ -85,7 +87,7 @@ export default function EventLogDrawer() {
           <div className="flex-1 overflow-y-auto overscroll-contain">
             {events.length === 0 ? (
               <div className="p-4 text-center text-xs text-muted-foreground">
-                Nenhum evento ainda.
+                {t('eventLog.empty')}
               </div>
             ) : (
               <div className="divide-y divide-border/50">
@@ -125,7 +127,7 @@ export default function EventLogDrawer() {
               className="text-[9px] text-muted-foreground hover:text-foreground uppercase tracking-wider"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Fechar
+              {t('common.close')}
             </button>
           </div>
         </div>

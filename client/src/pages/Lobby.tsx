@@ -6,18 +6,19 @@ import { isMultiplayerConfigured } from '../game/multiplayer';
 import { AIDifficulty, MarketMode } from '../game/types';
 import { AI_DIFFICULTY_LABELS, DEFAULT_AI_DIFFICULTY } from '../game/ai';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
 // MVP online: apenas Modo Clássico. O Digital Balanceado depende da fase de
 // Venda Simultânea (declaração privada por jogador), que é uma feature
 // multiplayer à parte — ver docs/multiplayer-status.md.
-const MARKET_MODES: { id: MarketMode; label: string }[] = [
-  { id: 'classic', label: 'Clássico Grow' },
-];
+const MARKET_MODE_IDS: MarketMode[] = ['classic'];
 
 type View = 'choose' | 'create' | 'join' | 'room';
 
 export default function Lobby() {
   const [, setLocation] = useLocation();
+  const t = useT();
   const mp = useMultiplayerStore();
   const [view, setView] = useState<View>('choose');
   const [name, setName] = useState('');
@@ -81,33 +82,31 @@ export default function Lobby() {
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
       <div className="w-full max-w-sm">
         <h1 className="text-xl font-bold text-center mb-1 uppercase tracking-wider" style={dispFont}>
-          Multiplayer Online
+          {t('lobby.title')}
         </h1>
         <p className="text-xs text-muted-foreground text-center mb-6">
-          {usingLocal
-            ? 'Modo de teste local (mesmo dispositivo, várias abas) — Supabase não configurado.'
-            : 'Jogue por salas com amigos e IAs.'}
+          {usingLocal ? t('lobby.localMode') : t('lobby.subtitle')}
         </p>
 
         {/* Escolha inicial */}
         {view === 'choose' && (
           <div className="flex flex-col gap-3">
-            <button className={btnPrimary} style={dispFont} onClick={() => setView('create')}>Criar partida</button>
+            <button className={btnPrimary} style={dispFont} onClick={() => setView('create')}>{t('lobby.create')}</button>
             <button className="w-full py-4 px-6 bg-secondary text-secondary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 active:scale-[0.97]" style={dispFont} onClick={() => setView('join')}>
-              Entrar por código
+              {t('lobby.joinByCode')}
             </button>
-            <button className={btnGhost} style={dispFont} onClick={() => setLocation('/')}>Voltar</button>
+            <button className={btnGhost} style={dispFont} onClick={() => setLocation('/')}>{t('common.back')}</button>
           </div>
         )}
 
         {/* Criar sala */}
         {view === 'create' && (
           <div className="flex flex-col gap-4">
-            <input className={inputCls} placeholder="Seu nome" value={name} maxLength={20}
+            <input className={inputCls} placeholder={t('lobby.yourName')} value={name} maxLength={20}
               onChange={e => setName(e.target.value)} />
 
             <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>Jogadores humanos (vagas)</label>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>{t('lobby.humanSlots')}</label>
               <div className="flex gap-2">
                 {[1, 2, 3, 4, 5, 6].map(n => (
                   <button key={n} onClick={() => { setHumanSlots(n); if (aiCount > maxTotal - n) setAiCount(maxTotal - n); }}
@@ -117,7 +116,7 @@ export default function Lobby() {
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>Oponentes IA ({maxAi} máx.)</label>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>{t('lobby.aiOpponents', { max: maxAi })}</label>
               <div className="flex gap-2">
                 {Array.from({ length: maxAi + 1 }, (_, i) => i).map(n => (
                   <button key={n} onClick={() => setAiCount(n)}
@@ -128,12 +127,12 @@ export default function Lobby() {
 
             {aiCount > 0 && (
               <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>Dificuldade da IA</label>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>{t('setup.aiDifficulty')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(Object.keys(AI_DIFFICULTY_LABELS) as AIDifficulty[]).map(level => (
                     <button key={level} onClick={() => setDifficulty(level)}
                       className={`p-2 rounded-md border text-xs font-bold uppercase tracking-wider ${difficulty === level ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground'}`} style={dispFont}>
-                      {AI_DIFFICULTY_LABELS[level].label}
+                      {t(`ai.diff.${level}.label` as TranslationKey)}
                     </button>
                   ))}
                 </div>
@@ -141,35 +140,35 @@ export default function Lobby() {
             )}
 
             <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>Modo de mercado</label>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2" style={dispFont}>{t('setup.marketMode')}</label>
               <div className="grid grid-cols-2 gap-2">
-                {MARKET_MODES.map(m => (
-                  <button key={m.id} onClick={() => setMarketMode(m.id)}
-                    className={`p-2 rounded-md border text-xs font-bold uppercase tracking-wider ${marketMode === m.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground'}`} style={dispFont}>
-                    {m.label}
+                {MARKET_MODE_IDS.map(m => (
+                  <button key={m} onClick={() => setMarketMode(m)}
+                    className={`p-2 rounded-md border text-xs font-bold uppercase tracking-wider ${marketMode === m ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground'}`} style={dispFont}>
+                    {t(`market.${m}.label` as TranslationKey)}
                   </button>
                 ))}
               </div>
             </div>
 
             <button className={btnPrimary} style={dispFont} disabled={!name.trim() || mp.status === 'connecting'} onClick={handleCreate}>
-              {mp.status === 'connecting' ? 'Criando…' : 'Criar sala'}
+              {mp.status === 'connecting' ? t('lobby.creating') : t('lobby.createRoom')}
             </button>
-            <button className={btnGhost} style={dispFont} onClick={() => setView('choose')}>Voltar</button>
+            <button className={btnGhost} style={dispFont} onClick={() => setView('choose')}>{t('common.back')}</button>
           </div>
         )}
 
         {/* Entrar por código */}
         {view === 'join' && (
           <div className="flex flex-col gap-4">
-            <input className={inputCls} placeholder="Seu nome" value={name} maxLength={20}
+            <input className={inputCls} placeholder={t('lobby.yourName')} value={name} maxLength={20}
               onChange={e => setName(e.target.value)} />
-            <input className={`${inputCls} tracking-[0.3em] text-center uppercase font-bold`} placeholder="CÓDIGO" value={code} maxLength={5}
+            <input className={`${inputCls} tracking-[0.3em] text-center uppercase font-bold`} placeholder={t('lobby.codePlaceholder')} value={code} maxLength={5}
               onChange={e => setCode(e.target.value.toUpperCase())} />
             <button className={btnPrimary} style={dispFont} disabled={!name.trim() || !code.trim() || mp.status === 'connecting'} onClick={handleJoin}>
-              {mp.status === 'connecting' ? 'Entrando…' : 'Entrar'}
+              {mp.status === 'connecting' ? t('lobby.joining') : t('lobby.enter')}
             </button>
-            <button className={btnGhost} style={dispFont} onClick={() => setView('choose')}>Voltar</button>
+            <button className={btnGhost} style={dispFont} onClick={() => setView('choose')}>{t('common.back')}</button>
           </div>
         )}
 
@@ -178,11 +177,11 @@ export default function Lobby() {
           <div className="flex flex-col gap-4">
             {/* Convite */}
             <div className="bg-secondary/50 rounded-lg p-4">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1" style={dispFont}>Código da sala</div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1" style={dispFont}>{t('lobby.roomCode')}</div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-2xl font-bold tracking-[0.3em]" style={dispFont}>{mp.room.code}</span>
                 <button onClick={handleCopy} className="flex items-center gap-1 px-3 py-2 rounded-md bg-primary/10 text-primary text-xs uppercase tracking-wider hover:bg-primary/20" style={dispFont}>
-                  {copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copiado' : 'Convite'}
+                  {copied ? <Check size={14} /> : <Copy size={14} />}{copied ? t('lobby.copied') : t('lobby.invite')}
                 </button>
               </div>
             </div>
@@ -196,13 +195,13 @@ export default function Lobby() {
                   <div key={seat.id} className="flex items-center gap-3 p-3 rounded-md border border-border" style={{ borderLeftColor: seat.color, borderLeftWidth: 3 }}>
                     {seat.type === 'ai' ? <Bot size={16} className="text-muted-foreground" /> : <User size={16} className="text-muted-foreground" />}
                     <span className="flex-1 text-sm font-medium">
-                      {seat.name}{isMe && <span className="text-muted-foreground"> (você)</span>}
+                      {seat.name}{isMe && <span className="text-muted-foreground"> {t('lobby.you')}</span>}
                       {mp.room!.hostUserId === seat.userId && <Crown size={12} className="inline ml-1 text-amber-400" />}
                     </span>
                     {seat.superpowerId && <span className="text-[10px] text-muted-foreground uppercase">{SUPERPOWERS[seat.superpowerId].shortName}</span>}
                     {online ? <Wifi size={14} className="text-green-500" /> : <WifiOff size={14} className="text-muted-foreground/50" />}
                     <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded ${seat.isReady ? 'bg-green-500/20 text-green-500' : 'bg-muted text-muted-foreground'}`} style={dispFont}>
-                      {seat.isReady ? 'Pronto' : '…'}
+                      {seat.isReady ? t('lobby.ready') : '…'}
                     </span>
                   </div>
                 );
@@ -212,16 +211,16 @@ export default function Lobby() {
             {/* Ações */}
             {mp.mySeat?.type === 'human' && (
               <button className={btnPrimary} style={dispFont} onClick={() => mp.setReady(!mp.mySeat?.isReady)}>
-                {mp.mySeat?.isReady ? 'Cancelar pronto' : 'Estou pronto'}
+                {mp.mySeat?.isReady ? t('lobby.cancelReady') : t('lobby.imReady')}
               </button>
             )}
             {mp.isHost && (
               <button className="w-full py-4 px-6 bg-green-600 text-white font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 active:scale-[0.97] disabled:opacity-40" style={dispFont}
                 disabled={!canStart} onClick={() => mp.startMatch(marketMode)}>
-                {canStart ? 'Iniciar partida' : 'Aguardando todos prontos…'}
+                {canStart ? t('lobby.startMatch') : t('lobby.waitingReady')}
               </button>
             )}
-            <button className={btnGhost} style={dispFont} onClick={handleLeave}>Sair da sala</button>
+            <button className={btnGhost} style={dispFont} onClick={handleLeave}>{t('lobby.leaveRoom')}</button>
           </div>
         )}
       </div>

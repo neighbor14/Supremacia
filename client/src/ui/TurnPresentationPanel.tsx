@@ -1,18 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { usePresentationStore } from '../stores/presentationStore';
-import { ActionEventType, TurnStage } from '../game/types';
+import { ActionEventType } from '../game/types';
 import { SkipForward, Zap, Clock, Pause, Play } from 'lucide-react';
-
-const STAGE_NAMES: Record<TurnStage, string> = {
-  1: 'Salários',
-  2: 'Produção',
-  3: 'Vender',
-  4: 'Combate',
-  5: 'Movimento',
-  6: 'Construção',
-  7: 'Mercado',
-};
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
 const ACTION_ICONS: Record<ActionEventType, string> = {
   pay_salaries:          '💸',
@@ -27,13 +19,6 @@ const ACTION_ICONS: Record<ActionEventType, string> = {
   research:              '☢️',
   card_reveal:           '🃏',
   end_turn:              '🔁',
-};
-
-const RESOURCE_LABELS: Record<string, string> = {
-  money:   'M$',
-  grain:   'cereal',
-  oil:     'petróleo',
-  mineral: 'minério',
 };
 
 function ResourceBadge({ label, value }: { label: string; value: number }) {
@@ -81,10 +66,14 @@ function CountdownBar({ durationMs, color }: { durationMs: number; color: string
 }
 
 export default function TurnPresentationPanel() {
+  const t = useT();
   const {
     steps, currentIndex, isPresenting, isPaused, speed, completedEvents,
     pause, resume, setSpeed, skip,
   } = usePresentationStore();
+
+  const resLabel = (key: string) =>
+    key === 'money' ? 'M$' : t(`resource.${key}` as TranslationKey);
 
   if (!isPresenting) return null;
 
@@ -135,7 +124,7 @@ export default function TurnPresentationPanel() {
                 className="ml-auto text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider"
                 style={{ backgroundColor: `${sp.color}22`, color: sp.color, fontFamily: 'var(--font-display)' }}
               >
-                IA · Fase {ev.phase}: {STAGE_NAMES[ev.phase]}
+                {t('present.aiPhase', { phase: ev.phase, name: t(`phase.${ev.phase}.name` as TranslationKey) })}
               </span>
             </div>
 
@@ -165,14 +154,14 @@ export default function TurnPresentationPanel() {
               <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {Object.entries(ev.resourceChanges).map(([key, val]) =>
                   val !== undefined && val !== 0 ? (
-                    <ResourceBadge key={key} label={RESOURCE_LABELS[key] ?? key} value={val} />
+                    <ResourceBadge key={key} label={resLabel(key)} value={val} />
                   ) : null
                 )}
                 {(ev.armyDelta ?? 0) !== 0 && (
-                  <ResourceBadge label="exércitos" value={ev.armyDelta!} />
+                  <ResourceBadge label={t('present.armies')} value={ev.armyDelta!} />
                 )}
                 {(ev.navyDelta ?? 0) !== 0 && (
-                  <ResourceBadge label="esquadras" value={ev.navyDelta!} />
+                  <ResourceBadge label={t('present.navies')} value={ev.navyDelta!} />
                 )}
               </div>
             )}
@@ -205,13 +194,13 @@ export default function TurnPresentationPanel() {
                 className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-secondary-foreground transition-colors"
               >
                 {isPaused ? <Play size={13} /> : <Pause size={13} />}
-                {isPaused ? 'Retomar' : 'Pausar'}
+                {isPaused ? t('present.resume') : t('present.pause')}
               </button>
 
               <div className="flex items-center gap-1.5 ml-auto">
                 <button
                   onClick={() => setSpeed('normal')}
-                  title="3 segundos por ação"
+                  title={t('present.speedNormal')}
                   className={`flex items-center gap-1 text-xs px-2.5 py-2 rounded-lg transition-colors ${
                     speed === 'normal'
                       ? 'text-primary-foreground'
@@ -223,7 +212,7 @@ export default function TurnPresentationPanel() {
                 </button>
                 <button
                   onClick={() => setSpeed('fast')}
-                  title="1.5 segundos por ação"
+                  title={t('present.speedFast')}
                   className={`flex items-center gap-1 text-xs px-2.5 py-2 rounded-lg transition-colors ${
                     speed === 'fast'
                       ? 'text-primary-foreground'
@@ -235,10 +224,10 @@ export default function TurnPresentationPanel() {
                 </button>
                 <button
                   onClick={skip}
-                  title="Pular o turno inteiro"
+                  title={t('present.skipTurn')}
                   className="flex items-center gap-1 text-xs px-2.5 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                 >
-                  <SkipForward size={11} /> Pular
+                  <SkipForward size={11} /> {t('present.skip')}
                 </button>
               </div>
             </div>
@@ -265,7 +254,7 @@ export default function TurnPresentationPanel() {
               className="text-center text-[10px] text-muted-foreground/40 mt-3"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              {currentIndex + 1} / {steps.length}{isPaused ? ' · PAUSADO' : ''}
+              {currentIndex + 1} / {steps.length}{isPaused ? ` · ${t('present.paused')}` : ''}
             </p>
           </div>
         </div>

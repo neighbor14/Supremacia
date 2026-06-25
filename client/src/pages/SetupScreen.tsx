@@ -4,10 +4,12 @@ import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { Plus, Minus } from 'lucide-react';
+import { useT } from '../i18n/useI18n';
 
 export default function SetupScreen() {
   const [, setLocation] = useLocation();
   const { game, dispatch } = useGameStore();
+  const t = useT();
 
   // Lazy-init placement from the starting armies (avoids setState-during-render)
   const [armyPlacement, setArmyPlacement] = useState<Record<string, number>>(() => {
@@ -80,7 +82,7 @@ export default function SetupScreen() {
           </h1>
         </div>
         <p className="text-sm text-muted-foreground uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          Posicione seus exércitos iniciais
+          {t('placement.title')}
         </p>
       </div>
 
@@ -128,7 +130,7 @@ export default function SetupScreen() {
       <div className="w-full max-w-2xl mb-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground uppercase" style={{ fontFamily: 'var(--font-display)' }}>
-            Exércitos posicionados
+            {t('placement.placed')}
           </span>
           <span className="text-xs font-mono-num text-primary">
             {totalArmies} / {maxArmies}
@@ -155,7 +157,7 @@ export default function SetupScreen() {
         `}
         style={{ fontFamily: 'var(--font-display)' }}
       >
-        Começar Jogo
+        {t('placement.start')}
       </button>
     </div>
   );

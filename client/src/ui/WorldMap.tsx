@@ -5,6 +5,7 @@ import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
 import { getCompanyOpportunities } from '../game/companyMap';
+import { useT } from '../i18n/useI18n';
 
 /**
  * WorldMap uses CSS transform (scale + translate) for zoom/pan.
@@ -61,6 +62,7 @@ function getInitialScale(): number {
 
 export default function WorldMap() {
   const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone, buildAction, dispatch, companyMapVisible } = useGameStore();
+  const tr = useT();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Transform state
@@ -241,13 +243,13 @@ export default function WorldMap() {
         dispatch({ type: 'BUILD_UNITS', units: [{ type: 'army', locationId: id }] });
       } else {
         playSound('error', 0.4);
-        toast.error('Você só pode construir exército em território seu (controlado e não destruído).');
+        toast.error(tr('map.armyOwnOnly'));
       }
       return;
     }
     if (navyMode) {
       playSound('error', 0.4);
-      toast.error('Esquadras são construídas no mar. Toque numa zona marítima destacada (adjacente a um porto seu).');
+      toast.error(tr('map.fleetInSea'));
       return;
     }
 
@@ -266,13 +268,13 @@ export default function WorldMap() {
         dispatch({ type: 'BUILD_UNITS', units: [{ type: 'navy', locationId: id }] });
       } else {
         playSound('error', 0.4);
-        toast.error('Esquadra só pode ser construída em mar adjacente a um porto que você controla.');
+        toast.error(tr('map.fleetNearPort'));
       }
       return;
     }
     if (armyMode) {
       playSound('error', 0.4);
-      toast.error('Exércitos vão em terra. Toque num território destacado.');
+      toast.error(tr('map.armyOnLand'));
       return;
     }
 

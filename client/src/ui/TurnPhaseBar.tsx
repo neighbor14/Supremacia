@@ -6,16 +6,9 @@ import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
-
-const STAGE_NAMES: Record<number, string> = {
-  1: 'Salários',
-  2: 'Produção',
-  3: 'Vender',
-  4: 'Atacar',
-  5: 'Mover',
-  6: 'Construir',
-  7: 'Comprar',
-};
+import { useTutorialStore } from '../stores/tutorialStore';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
 const STAGE_ICONS: Record<number, string> = {
   1: '💰',
@@ -27,10 +20,9 @@ const STAGE_ICONS: Record<number, string> = {
   7: '🛒',
 };
 
-const ORDINALS = ['1ª', '2ª', '3ª', '4ª', '5ª'];
-
 function RoundStatusPanel({ onClose }: { onClose: () => void }) {
   const { game } = useGameStore();
+  const t = useT();
   if (!game) return null;
   const { turn, players } = game;
 
@@ -43,11 +35,11 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
           <div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold" style={{ fontFamily: 'var(--font-display)' }}>Rodada</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold" style={{ fontFamily: 'var(--font-display)' }}>{t('hud.round')}</p>
             <p className="text-2xl font-black font-mono leading-none" style={{ fontFamily: 'var(--font-display)' }}>{turn.turnNumber}</p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-muted-foreground">Vez</p>
+            <p className="text-[10px] text-muted-foreground">{t('hud.turn')}</p>
             <p className="text-lg font-bold font-mono">{turn.currentPlayerIndex + 1}<span className="text-muted-foreground text-sm">/{turn.playerOrder.length}</span></p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none ml-3">✕</button>
@@ -100,9 +92,9 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
                 </div>
 
                 {/* Turn marker */}
-                {isCurrent && <span className="text-[9px] text-primary font-bold shrink-0">▶ jogando</span>}
-                {isPast && !isEliminated && <span className="text-[9px] text-muted-foreground/50 shrink-0">✓ feito</span>}
-                {isEliminated && <span className="text-[9px] text-muted-foreground/40 shrink-0">eliminado</span>}
+                {isCurrent && <span className="text-[9px] text-primary font-bold shrink-0">▶ {t('hud.playing')}</span>}
+                {isPast && !isEliminated && <span className="text-[9px] text-muted-foreground/50 shrink-0">✓ {t('hud.done')}</span>}
+                {isEliminated && <span className="text-[9px] text-muted-foreground/40 shrink-0">{t('hud.eliminated')}</span>}
               </div>
             );
           })}
@@ -110,8 +102,8 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
 
         {/* Legend */}
         <div className="px-4 py-2.5 border-t border-border/40 flex gap-3 flex-wrap">
-          <span className="text-[9px] text-muted-foreground">☢️ = ogivas nucleares pesquisadas/qtd</span>
-          <span className="text-[9px] text-muted-foreground">🛡️ = laser-stars pesquisadas/qtd</span>
+          <span className="text-[9px] text-muted-foreground">{t('hud.legendNuke')}</span>
+          <span className="text-[9px] text-muted-foreground">{t('hud.legendLaser')}</span>
         </div>
       </div>
     </div>
@@ -121,6 +113,9 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
 export default function TurnPhaseBar() {
   const [showRoundPanel, setShowRoundPanel] = useState(false);
   const { game, dispatch, companyMapVisible, setCompanyMapVisible } = useGameStore();
+  const t = useT();
+  const tutorialActiveKey = useTutorialStore(s => s.activeKey);
+  const stageName = (stage: number) => t(`phase.${stage}.name` as TranslationKey);
   if (!game) return null;
 
   const { turn } = game;
@@ -153,8 +148,8 @@ export default function TurnPhaseBar() {
       if (dormant.length > 0) {
         const cards = useGameStore.getState().game!.resourceCards;
         const names = dormant.map(id => cards[id]?.companyName ?? id).join(', ');
-        toast.warning('Salário insuficiente para todas as companhias', {
-          description: `${dormant.length} companhia(s) não vão produzir neste turno: ${names}. Venda recursos ou faça empréstimo para pagar e reativá-las no próximo turno.`,
+        toast.warning(t('hud.salaryShortTitle'), {
+          description: t('hud.salaryShortDesc', { count: dormant.length, names }),
           duration: 7000,
         });
       }
@@ -199,14 +194,15 @@ export default function TurnPhaseBar() {
 
   const getContextMessage = () => {
     if (usedCount === 0) {
-      return `Você tem direito a ${MAX_OPTIONAL} ações opcionais por turno, escolhidas em sequência (não pode voltar a uma fase anterior).`;
+      return t('hud.ctxStart', { max: MAX_OPTIONAL });
     }
     if (isAtLimit) {
-      return `Todas as ${MAX_OPTIONAL} ações usadas — avance para o próximo jogador.`;
+      return t('hud.ctxLimit', { max: MAX_OPTIONAL });
     }
-    const ordinal = ORDINALS[usedCount - 1] ?? `${usedCount}ª`;
-    const remainText = remaining === 1 ? 'mais 1 ação' : `mais ${remaining} ações`;
-    return `${ordinal} ação concluída. Ainda pode fazer ${remainText} — somente fases à frente da última.`;
+    const ordinal = t(`hud.ordinal.${usedCount}` as TranslationKey);
+    const remainText =
+      remaining === 1 ? t('hud.moreActionsOne') : t('hud.moreActionsMany', { n: remaining });
+    return t('hud.ctxProgress', { ordinal, remain: remainText });
   };
 
   return (
@@ -227,7 +223,7 @@ export default function TurnPhaseBar() {
           {isHuman && (
             <button
               onClick={() => setCompanyMapVisible(!companyMapVisible)}
-              title={companyMapVisible ? 'Ocultar mapa de companhias' : 'Ver oportunidades: destaca no mapa os territórios das suas cartas de empresa'}
+              title={companyMapVisible ? t('hud.companiesHide') : t('hud.companiesShow')}
               className={`
                 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-all active:scale-[0.95]
                 ${companyMapVisible
@@ -237,15 +233,15 @@ export default function TurnPhaseBar() {
               style={{ fontFamily: 'var(--font-display)' }}
             >
               <span>🗺</span>
-              <span className="[@media(max-width:360px)]:hidden">Ver</span>
+              <span className="[@media(max-width:360px)]:hidden">{t('hud.view')}</span>
             </button>
           )}
           <button
             onClick={() => setShowRoundPanel(true)}
             className="text-xs font-mono text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-secondary/50 active:scale-[0.97]"
-            title="Ver status de todos os jogadores"
+            title={t('hud.viewAllPlayers')}
           >
-            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>Rod.</span>
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>{t('hud.roundShort')}</span>
             <span className="font-bold">{turn.turnNumber}</span>
             <span className="text-muted-foreground/40">·</span>
             <span className="text-[10px]">{turn.currentPlayerIndex + 1}/{turn.playerOrder.length}</span>
@@ -264,10 +260,12 @@ export default function TurnPhaseBar() {
                 className={`text-[11px] font-bold uppercase tracking-wider ${isAtLimit ? 'text-red-400' : 'text-emerald-400'}`}
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                Ações opcionais: {usedCount}/{MAX_OPTIONAL}
+                {t('hud.optionalActions', { used: usedCount, max: MAX_OPTIONAL })}
               </span>
               <span className={`text-[10px] font-mono ${isAtLimit ? 'text-red-400/70' : 'text-muted-foreground'}`}>
-                {isAtLimit ? 'limite atingido' : `${remaining} restante${remaining !== 1 ? 's' : ''}`}
+                {isAtLimit
+                  ? t('hud.limitReached')
+                  : `${remaining} ${remaining !== 1 ? t('hud.remainingMany') : t('hud.remainingOne')}`}
               </span>
             </div>
 
@@ -292,9 +290,9 @@ export default function TurnPhaseBar() {
               const isAvailable = availability === 'available';
               const isUsed = availability === 'used';
               const disabledTitle =
-                availability === 'used' ? 'Já usada neste turno'
-                : availability === 'past' ? 'Fase anterior — as ações devem ser escolhidas em ordem crescente'
-                : `Limite de ${MAX_OPTIONAL} ações atingido neste turno`;
+                availability === 'used' ? t('hud.usedThisTurn')
+                : availability === 'past' ? t('hud.pastPhase')
+                : t('hud.limitTitle', { max: MAX_OPTIONAL });
 
               return (
                 <button
@@ -303,6 +301,7 @@ export default function TurnPhaseBar() {
                   disabled={!isAvailable}
                   className={`
                     flex-1 py-1.5 [@media(max-height:600px)]:py-1 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 min-w-0
+                    ${tutorialActiveKey === `phase.${stage}` ? 'ring-2 ring-primary/70 animate-pulse' : ''}
                     ${isAvailable
                       ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 active:scale-[0.95] animate-pulse-subtle'
                       : isUsed
@@ -313,22 +312,22 @@ export default function TurnPhaseBar() {
                     }
                   `}
                   style={{ fontFamily: 'var(--font-display)' }}
-                  title={isAvailable ? `${STAGE_NAMES[stage]} — usa 1 ação` : disabledTitle}
+                  title={isAvailable ? t('hud.stageUsesAction', { stage: stageName(stage) }) : disabledTitle}
                 >
                   <span className={`text-sm leading-none ${!isAvailable && !isUsed ? 'opacity-30' : ''}`}>
                     {STAGE_ICONS[stage]}
                   </span>
                   <span className={`text-[9px] font-bold leading-tight truncate w-full text-center ${isUsed ? 'line-through' : ''}`}>
-                    {STAGE_NAMES[stage]}
+                    {stageName(stage)}
                   </span>
                   {isAvailable && (
-                    <span className="text-emerald-400/60 text-[8px] leading-none [@media(max-height:600px)]:hidden">1 ação</span>
+                    <span className="text-emerald-400/60 text-[8px] leading-none [@media(max-height:600px)]:hidden">{t('hud.oneAction')}</span>
                   )}
                   {isUsed && (
                     <span className="text-accent-foreground/40 text-[8px] leading-none [@media(max-height:600px)]:hidden">✓</span>
                   )}
                   {availability === 'past' && (
-                    <span className="text-orange-400/40 text-[8px] leading-none [@media(max-height:600px)]:hidden">← anterior</span>
+                    <span className="text-orange-400/40 text-[8px] leading-none [@media(max-height:600px)]:hidden">← {t('hud.previousShort')}</span>
                   )}
                   {availability === 'locked' && (
                     <span className="text-muted-foreground/25 text-[8px] leading-none [@media(max-height:600px)]:hidden">⛔</span>
@@ -348,7 +347,7 @@ export default function TurnPhaseBar() {
               }`}
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              {isAtLimit ? '→ Próximo Jogador' : 'Encerrar Turno'}
+              {isAtLimit ? `→ ${t('hud.nextPlayer')}` : t('hud.endTurn')}
             </button>
           </div>
         </div>
@@ -371,9 +370,10 @@ export default function TurnPhaseBar() {
                     }
                   }}
                   disabled={!isHuman || !isCurrent}
-                  title={STAGE_NAMES[stage]}
+                  title={stageName(stage)}
                   className={`
                     flex-1 min-w-0 py-2.5 [@media(max-height:600px)]:py-1 px-0.5 rounded text-center transition-all uppercase tracking-wider flex flex-col items-center gap-0.5 overflow-hidden
+                    ${tutorialActiveKey === `phase.${stage}` ? 'ring-2 ring-primary/70 animate-pulse' : ''}
                     ${isCurrent ? 'bg-primary text-primary-foreground ring-1 ring-primary/50 cursor-pointer' : ''}
                     ${isPast && !isCurrent ? 'bg-secondary/50 text-muted-foreground' : ''}
                     ${isUsed && !isCurrent ? 'bg-accent/50 text-accent-foreground/70' : ''}
@@ -382,7 +382,7 @@ export default function TurnPhaseBar() {
                   style={{ fontFamily: 'var(--font-display)' }}
                 >
                   <span className="text-sm leading-none">{STAGE_ICONS[stage]}</span>
-                  <span className="block w-full text-[10px] truncate text-center [@media(max-height:600px)]:hidden">{STAGE_NAMES[stage]}</span>
+                  <span className="block w-full text-[10px] truncate text-center [@media(max-height:600px)]:hidden">{stageName(stage)}</span>
                 </button>
               );
             })}
@@ -394,7 +394,7 @@ export default function TurnPhaseBar() {
               {/* Compact pip counter */}
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-muted-foreground truncate">
-                  {STAGE_NAMES[turn.stage]}
+                  {stageName(turn.stage)}
                 </span>
                 <div className="flex items-center gap-0.5 ml-1">
                   {Array.from({ length: MAX_OPTIONAL }).map((_, i) => (
@@ -418,14 +418,14 @@ export default function TurnPhaseBar() {
                 className="text-[10px] px-2 py-1 bg-secondary text-secondary-foreground rounded uppercase tracking-wider hover:bg-secondary/80 active:scale-[0.97]"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                Concluir Fase
+                {t('hud.completePhase')}
               </button>
               <button
                 onClick={handleEndTurn}
                 className="text-[10px] px-2 py-1 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.97]"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                Encerrar Turno
+                {t('hud.endTurn')}
               </button>
             </div>
           )}

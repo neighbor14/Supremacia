@@ -2,9 +2,11 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
+import { useT } from '../i18n/useI18n';
 
 export default function NuclearModal() {
   const { game, dispatch } = useGameStore();
+  const t = useT();
   const prevPhaseRef = useRef<string>('');
 
   useEffect(() => {
@@ -38,25 +40,25 @@ export default function NuclearModal() {
         <div className="text-center mb-4">
           <span className="text-4xl">☢</span>
           <h2 className="text-lg font-bold uppercase tracking-wider text-destructive mt-2" style={{ fontFamily: 'var(--font-display)' }}>
-            Ataque Nuclear
+            {t('nuke.title')}
           </h2>
         </div>
 
         <p className="text-xs text-center text-muted-foreground mb-4">
-          <span style={{ color: attacker?.color }}>{attacker?.shortName}</span> lançou bomba nuclear em{' '}
+          <span style={{ color: attacker?.color }}>{attacker?.shortName}</span> {t('nuke.launchedOn')}{' '}
           <span className="text-foreground font-semibold">{targetName}</span>
         </p>
 
         {/* Defense phase */}
         {nuclearAttack.phase === 'defense' && (
           <div className="text-center mb-4">
-            <p className="text-xs text-primary mb-2">Defensor possui Laser-Star! Tentando interceptar...</p>
+            <p className="text-xs text-primary mb-2">{t('nuke.defenderHasLaser')}</p>
             <button
               onClick={() => dispatch({ type: 'DEFEND_NUKE' })}
               className="px-4 py-2 bg-primary text-primary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Rolar Defesa
+              {t('nuke.rollDefense')}
             </button>
           </div>
         )}
@@ -69,7 +71,7 @@ export default function NuclearModal() {
               className="px-4 py-2 bg-destructive text-destructive-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Confirmar Lançamento
+              {t('nuke.confirmLaunch')}
             </button>
           </div>
         )}
@@ -78,9 +80,9 @@ export default function NuclearModal() {
         {nuclearAttack.phase === 'result' && (
           <div className="text-center">
             {nuclearAttack.intercepted ? (
-              <p className="text-sm text-primary font-semibold mb-3">Interceptado pelo Laser-Star!</p>
+              <p className="text-sm text-primary font-semibold mb-3">{t('nuke.intercepted')}</p>
             ) : (
-              <p className="text-sm text-destructive font-semibold mb-3">Impacto confirmado. Território destruído.</p>
+              <p className="text-sm text-destructive font-semibold mb-3">{t('nuke.impact')}</p>
             )}
             {nuclearAttack.defenseRolls.length > 0 && (
               <div className="flex gap-1 justify-center mb-3">
@@ -94,7 +96,7 @@ export default function NuclearModal() {
               className="px-4 py-2 bg-secondary text-secondary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Continuar
+              {t('common.continue')}
             </button>
           </div>
         )}

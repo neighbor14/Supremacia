@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { EventLogEntry } from '../game/types';
+import { useT } from '../i18n/useI18n';
 
 const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
   info: '📋',
@@ -15,6 +16,7 @@ const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
 
 export default function NewsTicker() {
   const { game } = useGameStore();
+  const t = useT();
   const trackRef = useRef<HTMLDivElement>(null);
 
   const events = game?.eventLog ?? [];
@@ -52,7 +54,7 @@ export default function NewsTicker() {
           className="text-[13px] font-bold tracking-[0.12em] uppercase text-white leading-none"
           style={{ fontFamily: 'var(--font-display)' }}
         >
-          EVENTOS
+          {t('news.label')}
         </span>
       </div>
 

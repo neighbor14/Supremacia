@@ -3,15 +3,18 @@ import { useGameStore } from '../game/store';
 import { ChevronDown, ChevronUp, GripHorizontal } from 'lucide-react';
 import { useDraggable } from '../hooks/useDraggable';
 import type { ResourceType } from '../game/types';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
-const RESOURCE_CONFIG: { key: ResourceType; label: string; icon: string; color: string }[] = [
-  { key: 'grain',   label: 'Cereal',   icon: '🌾', color: '#eab308' },
-  { key: 'oil',     label: 'Petróleo', icon: '🛢',  color: '#ef4444' },
-  { key: 'mineral', label: 'Minério',  icon: '⛏',  color: '#a855f7' },
+const RESOURCE_CONFIG: { key: ResourceType; icon: string; color: string }[] = [
+  { key: 'grain',   icon: '🌾', color: '#eab308' },
+  { key: 'oil',     icon: '🛢',  color: '#ef4444' },
+  { key: 'mineral', icon: '⛏',  color: '#a855f7' },
 ];
 
 export default function ResourceCardsPanel() {
   const { game } = useGameStore();
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const { containerRef, dragHandleProps, containerStyle } = useDraggable(() => ({
     x: window.innerWidth - 212,
@@ -68,7 +71,7 @@ export default function ResourceCardsPanel() {
         <div
           {...dragHandleProps}
           className="flex items-center justify-center px-1.5 py-2 rounded-tl-lg hover:bg-secondary/40 transition-colors"
-          title="Arrastar painel"
+          title={t('status.dragPanel')}
         >
           <GripHorizontal size={12} className="text-muted-foreground/60" />
         </div>
@@ -79,7 +82,7 @@ export default function ResourceCardsPanel() {
           <div className="flex items-center gap-1.5">
             <span className="text-[11px]">📋</span>
             <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-              Minhas Cartas
+              {t('cards.myCards')}
             </span>
             <span className="text-[10px] font-mono bg-secondary text-muted-foreground px-1 py-0.5 rounded-full leading-none">
               {totalCards}
@@ -94,17 +97,17 @@ export default function ResourceCardsPanel() {
           {/* Summary: companies vs controlled territories are different things */}
           <div className="border-t border-border/50 px-3 py-1.5 bg-secondary/20 grid grid-cols-2 gap-1 text-[9px]">
             <div className="flex items-center gap-1">
-              <span className="text-muted-foreground uppercase">Companhias</span>
+              <span className="text-muted-foreground uppercase">{t('cards.companies')}</span>
               <span className="text-[11px] font-bold font-mono text-emerald-300">{totalCards}</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-muted-foreground uppercase">Territórios</span>
+              <span className="text-muted-foreground uppercase">{t('cards.territories')}</span>
               <span className="text-[11px] font-bold font-mono text-primary">{controlledTerritories.length}</span>
             </div>
           </div>
 
           <div className="border-t border-border/50 px-3 py-1.5 bg-secondary/20 flex items-center gap-3">
-            <span className="text-[9px] text-muted-foreground uppercase">Prod/turno</span>
+            <span className="text-[9px] text-muted-foreground uppercase">{t('cards.prodPerTurn')}</span>
             {RESOURCE_CONFIG.map(({ key, icon, color }) => (
               <div key={key} className="flex items-center gap-0.5">
                 <span className="text-[9px]">{icon}</span>
@@ -116,7 +119,7 @@ export default function ResourceCardsPanel() {
           </div>
 
           <div className="border-t border-border/50 divide-y divide-border/30">
-            {RESOURCE_CONFIG.map(({ key, label, icon, color }) => {
+            {RESOURCE_CONFIG.map(({ key, icon, color }) => {
               const cards = cardsByType[key];
               if (cards.length === 0) return null;
               return (
@@ -124,7 +127,7 @@ export default function ResourceCardsPanel() {
                   <div className="flex items-center gap-1 mb-1">
                     <span className="text-[9px]">{icon}</span>
                     <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color }}>
-                      {label} ({cards.length})
+                      {t(`resource.${key}` as TranslationKey)} ({cards.length})
                     </span>
                   </div>
                   <div className="space-y-0.5 pl-2">
@@ -151,7 +154,7 @@ export default function ResourceCardsPanel() {
 
             {totalCards === 0 && (
               <div className="px-3 py-3 text-center text-[10px] text-muted-foreground">
-                Nenhuma companhia ainda. Faça prospecção ou conquiste territórios com companhias.
+                {t('cards.noCompanies')}
               </div>
             )}
           </div>
@@ -161,18 +164,18 @@ export default function ResourceCardsPanel() {
             <div className="flex items-center gap-1 mb-1">
               <span className="text-[9px]">🗺️</span>
               <span className="text-[9px] font-semibold uppercase tracking-wider text-primary">
-                Territórios controlados ({controlledTerritories.length})
+                {t('cards.controlledTerritories')} ({controlledTerritories.length})
               </span>
             </div>
             {controlledTerritories.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground pl-2">Nenhum território controlado.</p>
+              <p className="text-[10px] text-muted-foreground pl-2">{t('cards.noControlled')}</p>
             ) : (
               <div className="space-y-0.5 pl-2">
-                {controlledTerritories.map(t => (
-                  <div key={t.id} className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-muted-foreground truncate">{t.name}</span>
-                    <span className={`text-[9px] shrink-0 ${t.producing ? 'text-emerald-300' : 'text-amber-400/80'}`}>
-                      {t.producing ? 'companhia ativa' : 'sem companhia'}
+                {controlledTerritories.map(terr => (
+                  <div key={terr.id} className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground truncate">{terr.name}</span>
+                    <span className={`text-[9px] shrink-0 ${terr.producing ? 'text-emerald-300' : 'text-amber-400/80'}`}>
+                      {terr.producing ? t('cards.companyActive') : t('cards.noCompany')}
                     </span>
                   </div>
                 ))}
@@ -180,7 +183,7 @@ export default function ResourceCardsPanel() {
             )}
             {producingCount < controlledTerritories.length && (
               <p className="text-[9px] text-muted-foreground/70 mt-1 pl-2 leading-snug">
-                {producingCount} de {controlledTerritories.length} produzem. Territórios sem companhia não geram recurso — prospecte para descobrir uma.
+                {t('cards.producingNote', { producing: producingCount, total: controlledTerritories.length })}
               </p>
             )}
           </div>

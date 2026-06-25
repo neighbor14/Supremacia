@@ -4,17 +4,20 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { RULES } from '../game/rulesConfig';
 import { ChevronLeft, ChevronRight, GripVertical, AlertTriangle } from 'lucide-react';
 import { useDraggable } from '../hooks/useDraggable';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
 const RESOURCE_CONFIG = [
-  { key: 'grain' as const,   label: 'Cereal',   icon: '🌾', color: '#eab308', bg: '#eab30840' },
-  { key: 'oil' as const,     label: 'Petróleo', icon: '🛢',  color: '#ef4444', bg: '#ef444440' },
-  { key: 'mineral' as const, label: 'Minério',  icon: '⛏',  color: '#a855f7', bg: '#a855f740' },
+  { key: 'grain' as const,   icon: '🌾', color: '#eab308', bg: '#eab30840' },
+  { key: 'oil' as const,     icon: '🛢',  color: '#ef4444', bg: '#ef444440' },
+  { key: 'mineral' as const, icon: '⛏',  color: '#a855f7', bg: '#a855f740' },
 ];
 
 const MAX = RULES.MAX_SUPPLY; // 12
 
 export default function PlayerStatusBar() {
   const { game } = useGameStore();
+  const t = useT();
   const [expanded, setExpanded] = useState(true);
   const { containerRef, dragHandleProps, containerStyle } = useDraggable(() => ({
     x: 8,
@@ -48,7 +51,7 @@ export default function PlayerStatusBar() {
             <div
               {...dragHandleProps}
               className="flex items-center justify-center -mt-1 mb-1.5 opacity-40 hover:opacity-70 transition-opacity"
-              title="Arrastar painel"
+              title={t('status.dragPanel')}
             >
               <GripVertical size={10} className="text-muted-foreground rotate-90" />
             </div>
@@ -61,19 +64,19 @@ export default function PlayerStatusBar() {
                   : humanPlayer.money.toLocaleString()}
               </span>
               {humanPlayer.loans > 0 && (
-                <span className="text-[10px] text-destructive font-mono ml-auto">-{(humanPlayer.loans / 1000).toFixed(0)}k dív</span>
+                <span className="text-[10px] text-destructive font-mono ml-auto">-{(humanPlayer.loans / 1000).toFixed(0)}k {t('status.debtShort')}</span>
               )}
             </div>
 
             {/* Supply tracks */}
             <div className="space-y-1.5">
-              {RESOURCE_CONFIG.map(({ key, label, icon, color, bg }) => {
+              {RESOURCE_CONFIG.map(({ key, icon, color, bg }) => {
                 const val = humanPlayer.supplies[key];
                 return (
                   <div key={key}>
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-0.5">
-                        {icon} {label}
+                        {icon} {t(`resource.${key}` as TranslationKey)}
                       </span>
                       <span className="text-[10px] font-bold font-mono" style={{ color }}>
                         {val}/{MAX}
@@ -106,35 +109,35 @@ export default function PlayerStatusBar() {
                 <div className="mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[9px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      💰 Provisão de salários
+                      💰 {t('status.salaryProvision')}
                     </span>
                     {short && <AlertTriangle size={10} className="text-destructive" />}
                   </div>
                   <div className="space-y-0.5 font-mono text-[10px]">
                     <div className="flex justify-between" title={`${due.unitCount} unidades × $${RULES.SALARY_PER_UNIT} + ${due.companyCount} companhias × $${RULES.SALARY_PER_COMPANY}${due.loanInterest ? ` + juros` : ''}`}>
-                      <span className="text-muted-foreground">Estimado</span>
+                      <span className="text-muted-foreground">{t('status.estimated')}</span>
                       <span className="text-foreground font-bold">-${due.total.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Você tem</span>
+                      <span className="text-muted-foreground">{t('status.youHave')}</span>
                       <span className="text-foreground">${humanPlayer.money.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Após pagar</span>
+                      <span className="text-muted-foreground">{t('status.afterPaying')}</span>
                       <span className={short ? 'text-destructive font-bold' : 'text-emerald-400'}>
                         ${after.toLocaleString()}
                       </span>
                     </div>
                     {short && (
                       <div className="flex justify-between pt-0.5">
-                        <span className="text-destructive">Faltam</span>
+                        <span className="text-destructive">{t('status.missing')}</span>
                         <span className="text-destructive font-bold">${Math.abs(after).toLocaleString()}</span>
                       </div>
                     )}
                   </div>
                   {short && (
                     <p className="text-[8px] text-destructive/80 mt-1 leading-tight">
-                      Sem fundos, unidades serão removidas no próximo pagamento.
+                      {t('status.noFundsWarn')}
                     </p>
                   )}
                 </div>
@@ -164,7 +167,7 @@ export default function PlayerStatusBar() {
             <div
               {...dragHandleProps}
               className="opacity-40 hover:opacity-70 transition-opacity"
-              title="Arrastar painel"
+              title={t('status.dragPanel')}
             >
               <GripVertical size={10} className="text-muted-foreground rotate-90" />
             </div>

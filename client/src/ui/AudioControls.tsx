@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Volume2, VolumeX, Music, Zap, ZapOff } from 'lucide-react';
 import { useAudioControls } from '../hooks/useAudio';
+import { useT } from '../i18n/useI18n';
 
 export default function AudioControls() {
+  const t = useT();
   const {
     masterMuted,
     musicEnabled,
@@ -51,7 +53,7 @@ export default function AudioControls() {
             ? 'bg-black/90 border-white/40 text-white'
             : 'bg-black/60 border-white/20 text-white/80 hover:text-white hover:bg-black/80'
         }`}
-        title="Controles de áudio"
+        title={t('audio.title')}
       >
         {masterMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
       </button>
@@ -65,7 +67,7 @@ export default function AudioControls() {
           {/* Master mute */}
           <div className="flex items-center justify-between">
             <span className="text-[11px] uppercase tracking-widest text-white/50 font-semibold">
-              Som
+              {t('audio.sound')}
             </span>
             <button
               onClick={toggleMasterMute}
@@ -76,7 +78,7 @@ export default function AudioControls() {
               }`}
             >
               {masterMuted ? <VolumeX size={11} /> : <Volume2 size={11} />}
-              {masterMuted ? 'MUDO' : 'ATIVO'}
+              {masterMuted ? t('audio.muted') : t('audio.on')}
             </button>
           </div>
 
@@ -87,7 +89,7 @@ export default function AudioControls() {
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-[11px] text-white/60">
                 <Music size={11} />
-                Música
+                {t('audio.music')}
               </span>
               <button
                 onClick={toggleMusic}
@@ -124,7 +126,7 @@ export default function AudioControls() {
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-[11px] text-white/60">
                 {sfxEnabled ? <Zap size={11} /> : <ZapOff size={11} />}
-                Efeitos
+                {t('audio.effects')}
               </span>
               <button
                 onClick={toggleSfx}

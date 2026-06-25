@@ -7,17 +7,19 @@ import { AI_DIFFICULTY_LABELS, DEFAULT_AI_DIFFICULTY } from '../game/ai';
 import { RULES } from '../game/rulesConfig';
 import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { GameState } from '../game/types';
-
-const MARKET_MODES: { id: MarketMode; label: string; hint: string }[] = [
-  { id: 'balanced', label: 'Digital Balanceado', hint: 'Venda simultânea no início da rodada — reduz a vantagem econômica do 1º jogador.' },
-  { id: 'classic', label: 'Clássico Grow', hint: 'Fiel ao modo básico da Grow. Mercado em $5.000 e venda na ordem do turno.' },
-];
 import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
+import LanguageSelector from '../ui/LanguageSelector';
+import TutorialSelector from '../ui/TutorialSelector';
+
+const MARKET_MODE_IDS: MarketMode[] = ['balanced', 'classic'];
 
 type Step = 'menu' | 'superpower' | 'ai_count';
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const t = useT();
   const { startGame, loadGame } = useGameStore();
   const [step, setStep] = useState<Step>('menu');
   const [selectedSuperpower, setSelectedSuperpower] = useState<SuperpowerId | null>(null);
@@ -61,7 +63,7 @@ export default function Home() {
         const state = JSON.parse(save) as GameState;
         loadGame(state);
         setLocation('/game');
-      } catch { alert('Arquivo de save corrompido.'); }
+      } catch { alert(t('error.badSave')); }
     }
   };
 
@@ -78,7 +80,7 @@ export default function Home() {
           const state = JSON.parse(ev.target?.result as string) as GameState;
           loadGame(state);
           setLocation('/game');
-        } catch { alert('Arquivo inválido.'); }
+        } catch { alert(t('error.invalidFile')); }
       };
       reader.readAsText(file);
     };
@@ -98,7 +100,7 @@ export default function Home() {
           draggable={false}
         />
         <p className="text-sm text-muted-foreground mt-2 tracking-widest uppercase" style={{ fontFamily: 'var(--font-display)' }}>
-          Simulador Geopolítico Digital
+          {t('menu.subtitle')}
         </p>
       </div>
 
@@ -110,7 +112,7 @@ export default function Home() {
           style={{ fontFamily: 'var(--font-display)' }}
         >
           <Volume2 size={14} />
-          Ativar som
+          {t('menu.activateSound')}
         </button>
       )}
 
@@ -122,14 +124,14 @@ export default function Home() {
             className="w-full py-4 px-6 bg-primary text-primary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 transition-opacity active:scale-[0.97]"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Nova Partida
+            {t('menu.newGame')}
           </button>
           <button
             onClick={() => setLocation('/lobby')}
             className="w-full py-4 px-6 bg-secondary text-secondary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 transition-opacity active:scale-[0.97]"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Jogar Online
+            {t('menu.playOnline')}
           </button>
           {hasSave && (
             <button
@@ -137,7 +139,7 @@ export default function Home() {
               className="w-full py-4 px-6 bg-secondary text-secondary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 transition-opacity active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Continuar
+              {t('menu.continue')}
             </button>
           )}
           <button
@@ -145,8 +147,24 @@ export default function Home() {
             className="w-full py-3 px-6 border border-border text-muted-foreground font-medium uppercase tracking-wider text-xs rounded-md hover:bg-secondary transition-colors active:scale-[0.97]"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Importar Jogo
+            {t('menu.import')}
           </button>
+
+          {/* Idioma + Tutorial — preferências persistidas localmente */}
+          <div className="mt-4 pt-4 border-t border-border space-y-3">
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+                {t('menu.language')}
+              </p>
+              <LanguageSelector />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+                {t('menu.tutorial')}
+              </p>
+              <TutorialSelector />
+            </div>
+          </div>
         </div>
       )}
 
@@ -154,7 +172,7 @@ export default function Home() {
       {step === 'superpower' && (
         <div className="w-full max-w-sm">
           <h2 className="text-lg font-semibold text-center mb-4 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-            Escolha sua Superpotência
+            {t('menu.chooseSuperpower')}
           </h2>
           <div className="grid grid-cols-2 gap-3">
             {Object.values(SUPERPOWERS).map((s) => (
@@ -178,7 +196,7 @@ export default function Home() {
             className="mt-4 w-full py-2 text-xs text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Voltar
+            {t('common.back')}
           </button>
         </div>
       )}
@@ -194,10 +212,10 @@ export default function Home() {
           </div>
 
           <h2 className="text-lg font-semibold text-center mb-2 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-            Quantos oponentes IA?
+            {t('setup.opponentsTitle')}
           </h2>
           <p className="text-xs text-muted-foreground text-center mb-6">
-            Mínimo 1 — Máximo {maxAi}
+            {t('setup.opponentsRange', { max: maxAi })}
           </p>
 
           <div className="flex justify-center gap-2 mb-6">
@@ -219,32 +237,31 @@ export default function Home() {
 
           <div className="bg-secondary/50 rounded-lg p-4 mb-6 space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Jogadores ativos</span>
+              <span className="text-muted-foreground">{t('setup.activePlayers')}</span>
               <span className="font-semibold text-foreground">
-                {1 + aiCount} de {SUPERPOWER_IDS.length}
+                {t('setup.activePlayersValue', { active: 1 + aiCount, total: SUPERPOWER_IDS.length })}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Superpotências neutras</span>
+              <span className="text-muted-foreground">{t('setup.neutralPowers')}</span>
               <span className="font-semibold text-foreground">
                 {SUPERPOWER_IDS.length - 1 - aiCount}
               </span>
             </div>
             <div className="border-t border-border pt-2 text-xs text-muted-foreground">
-              Territórios de superpotências inativas ficam virgens — conquistáveis durante a partida.
+              {t('setup.neutralNote')}
             </div>
           </div>
 
           {/* Dificuldade da IA — aplicada a todas as IAs da partida */}
           <h2 className="text-lg font-semibold text-center mb-1 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-            Dificuldade da IA
+            {t('setup.aiDifficulty')}
           </h2>
           <p className="text-xs text-muted-foreground text-center mb-3">
-            A IA joga com as mesmas regras — muda só a qualidade das decisões.
+            {t('setup.aiDifficultyNote')}
           </p>
           <div className="grid grid-cols-2 gap-2 mb-6">
             {(Object.keys(AI_DIFFICULTY_LABELS) as AIDifficulty[]).map(level => {
-              const info = AI_DIFFICULTY_LABELS[level];
               const active = aiDifficulty === level;
               return (
                 <button
@@ -255,10 +272,10 @@ export default function Home() {
                   }`}
                 >
                   <span className={`text-xs font-bold uppercase tracking-wider block ${active ? 'text-primary' : 'text-foreground'}`} style={{ fontFamily: 'var(--font-display)' }}>
-                    {info.label}
+                    {t(`ai.diff.${level}.label` as TranslationKey)}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-1 block leading-tight">
-                    {info.hint}
+                    {t(`ai.diff.${level}.hint` as TranslationKey)}
                   </span>
                 </button>
               );
@@ -267,30 +284,30 @@ export default function Home() {
 
           {/* Modo de mercado */}
           <h2 className="text-lg font-semibold text-center mb-1 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-            Modo de Mercado
+            {t('setup.marketMode')}
           </h2>
           <p className="text-xs text-muted-foreground text-center mb-3">
-            Como funcionam preços e vendas na partida.
+            {t('setup.marketModeNote')}
           </p>
           <div className="grid grid-cols-1 gap-2 mb-6">
-            {MARKET_MODES.map(mode => {
-              const active = marketMode === mode.id;
+            {MARKET_MODE_IDS.map(mode => {
+              const active = marketMode === mode;
               return (
                 <button
-                  key={mode.id}
-                  onClick={() => setMarketMode(mode.id)}
+                  key={mode}
+                  onClick={() => setMarketMode(mode)}
                   className={`p-3 rounded-md border text-left transition-all active:scale-[0.98] ${
                     active ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'
                   }`}
                 >
                   <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${active ? 'text-primary' : 'text-foreground'}`} style={{ fontFamily: 'var(--font-display)' }}>
-                    {mode.label}
-                    {mode.id === RULES.DEFAULT_MARKET_MODE && (
-                      <span className="text-[9px] bg-primary/20 text-primary px-1.5 py-0.5 rounded normal-case tracking-normal">Padrão</span>
+                    {t(`market.${mode}.label` as TranslationKey)}
+                    {mode === RULES.DEFAULT_MARKET_MODE && (
+                      <span className="text-[9px] bg-primary/20 text-primary px-1.5 py-0.5 rounded normal-case tracking-normal">{t('setup.default')}</span>
                     )}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-1 block leading-tight">
-                    {mode.hint}
+                    {t(`market.${mode}.hint` as TranslationKey)}
                   </span>
                 </button>
               );
@@ -302,21 +319,21 @@ export default function Home() {
             className="w-full py-4 px-6 bg-primary text-primary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 transition-opacity active:scale-[0.97] mb-3"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Iniciar Partida
+            {t('setup.start')}
           </button>
           <button
             onClick={() => setStep('superpower')}
             className="w-full py-2 text-xs text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Voltar
+            {t('common.back')}
           </button>
         </div>
       )}
 
       {/* Footer */}
       <p className="mt-12 text-xs text-muted-foreground/50 text-center">
-        Protótipo interno — 1 humano vs 1–{maxAi} CPUs
+        {t('menu.footer', { max: maxAi })}
       </p>
     </div>
   );

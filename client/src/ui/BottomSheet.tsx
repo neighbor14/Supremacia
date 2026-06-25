@@ -9,12 +9,14 @@ import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Se
 import ProspectPanel from './ProspectPanel';
 import { getTechCounts, formatOdds } from '../game/researchDeck';
 import { getCompanyOpportunities } from '../game/companyMap';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
-const RESOURCE_PT: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
 const RESOURCE_ICON_PT: Record<ResourceType, string> = { grain: '🌾', oil: '🛢️', mineral: '⛏️' };
 
 export default function BottomSheet() {
   const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory, selectSeaZone, companyMapVisible } = useGameStore();
+  const t = useT();
   if (!game) return null;
 
   const { turn } = game;
@@ -55,12 +57,12 @@ export default function BottomSheet() {
     // Build eligibility (mirrors BuildPanel rule): own, non-nuked land territory.
     const canBuildHere = isMine && !territory.nuked;
     const buildReason = territory.nuked
-      ? 'território destruído por bomba nuclear'
+      ? t('bs.reason.nuked')
       : !territory.owner
-        ? 'território neutro — conquiste-o primeiro movendo um exército para cá'
+        ? t('bs.reason.neutral')
         : !isMine
-          ? `controlado por ${ownerSp?.shortName ?? 'outro jogador'}`
-          : 'território seu';
+          ? t('bs.reason.controlledBy', { who: ownerSp?.shortName ?? t('bs.otherPlayer') })
+          : t('bs.reason.yours');
 
     return (
       <div
@@ -71,12 +73,12 @@ export default function BottomSheet() {
           <div className="flex items-center gap-2">
             {ownerSp
               ? <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ownerSp.color }} />
-              : <div className="w-3 h-3 rounded-full border border-border bg-secondary" title="Neutro" />}
+              : <div className="w-3 h-3 rounded-full border border-border bg-secondary" title={t('bs.neutral')} />}
             <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
               {territory.name}
             </h3>
             <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-              Território terrestre
+              {t('bs.landTerritory')}
             </span>
           </div>
           <button onClick={() => selectTerritory(null)} className="w-6 h-6 flex items-center justify-center rounded bg-secondary hover:bg-secondary/80">
@@ -85,7 +87,7 @@ export default function BottomSheet() {
         </div>
 
         {territory.nuked && (
-          <p className="text-xs text-destructive mb-2">☢ Território destruído por bomba nuclear</p>
+          <p className="text-xs text-destructive mb-2">☢ {t('bs.nuked')}</p>
         )}
 
         {/* Company-map opportunity badge — only visible when overlay is active */}
@@ -100,20 +102,20 @@ export default function BottomSheet() {
             <span>{companyOpportunity === 'own' ? '🟡' : companyOpportunity === 'neutral' ? '🔵' : '🔴'}</span>
             <span>
               {companyOpportunity === 'own'
-                ? 'Você possui companhia aqui e controla o território.'
+                ? t('bs.opp.own')
                 : companyOpportunity === 'neutral'
-                  ? 'Você possui companhia aqui. Conquiste o território para maximizar produção.'
-                  : 'Você possui companhia aqui, mas o território pertence a outro jogador.'}
+                  ? t('bs.opp.neutral')
+                  : t('bs.opp.enemy')}
             </span>
           </div>
         )}
 
         {/* Controller / owner line */}
         <div className="flex items-center gap-1.5 mb-1.5 text-[11px]">
-          <span className="text-muted-foreground">Controlador:</span>
+          <span className="text-muted-foreground">{t('bs.controller')}</span>
           {ownerSp
-            ? <span className="font-semibold" style={{ color: ownerSp.color }}>{ownerSp.name}{isMine ? ' (você)' : ''}</span>
-            : <span className="font-semibold text-muted-foreground">Neutro (sem controlador)</span>}
+            ? <span className="font-semibold" style={{ color: ownerSp.color }}>{ownerSp.name}{isMine ? ` ${t('bs.youParens')}` : ''}</span>
+            : <span className="font-semibold text-muted-foreground">{t('bs.neutralNoController')}</span>}
         </div>
 
         {/* Armies */}
@@ -122,52 +124,50 @@ export default function BottomSheet() {
             {Object.entries(armiesHere).map(([pid, count]) => (
               <div key={pid} className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: SUPERPOWERS[pid as keyof typeof SUPERPOWERS].color }} />
-                <span className="text-xs font-mono">{count} exército(s)</span>
+                <span className="text-xs font-mono">{t('bs.armiesCount', { n: count })}</span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-[11px] text-muted-foreground mb-2">Nenhum exército presente.</p>
+          <p className="text-[11px] text-muted-foreground mb-2">{t('bs.noArmies')}</p>
         )}
 
         {/* Company / resource status — território controlado ≠ companhia */}
         <div className="rounded-md bg-secondary/40 border border-border/50 p-2 mb-2">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Companhia / Carta de recurso</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{t('bs.companyCard')}</p>
           {myCompanies.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {myCompanies.map(card => (
                 <span key={card!.id} className="text-[11px] px-1.5 py-0.5 bg-emerald-600/15 text-emerald-300 border border-emerald-600/30 rounded">
-                  {RESOURCE_ICON_PT[card!.type]} {card!.companyName} · {RESOURCE_PT[card!.type]} +{card!.production}/turno
+                  {RESOURCE_ICON_PT[card!.type]} {card!.companyName} · {t(`resource.${card!.type}` as TranslationKey)} +{card!.production}{t('bs.perTurnSlash')}
                 </span>
               ))}
             </div>
           ) : hasForeignCompany ? (
             <p className="text-[11px] text-muted-foreground">
-              Há uma companhia aqui que pertence a outro jogador. Conquiste o território para capturá-la.
+              {t('bs.foreignCompany')}
             </p>
           ) : (
             <p className="text-[11px] text-amber-300/90">
-              {isMine
-                ? 'Você controla este território, mas ainda não possui uma companhia de recurso aqui.'
-                : 'Nenhuma companhia ativa conhecida neste território.'}
+              {isMine ? t('bs.noCompanyMine') : t('bs.noCompanyKnown')}
             </p>
           )}
           {myCompanies.length === 0 && (
             <button
-              onClick={() => toast.info('Companhias são obtidas por prospecção (fase Comprar 🛒 → Prospectar), negociação ou conquista de territórios que já possuíam cartas de recurso. Controlar um território não garante produção automática.', { duration: 8000 })}
+              onClick={() => toast.info(t('bs.howToCompanyToast'), { duration: 8000 })}
               className="mt-1.5 text-[10px] px-2 py-1 rounded bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 active:scale-[0.97]"
             >
-              ❓ Como obter uma companhia?
+              ❓ {t('bs.howToCompanyBtn')}
             </button>
           )}
         </div>
 
         {/* Build eligibility */}
         <div className="flex items-start gap-1.5 text-[11px]">
-          <span className="text-muted-foreground shrink-0">Construir exército:</span>
+          <span className="text-muted-foreground shrink-0">{t('bs.buildArmyLabel')}</span>
           {canBuildHere
-            ? <span className="text-emerald-300 font-semibold">Sim ✓ <span className="text-muted-foreground font-normal">({buildReason})</span></span>
-            : <span className="text-muted-foreground">Não — {buildReason}</span>}
+            ? <span className="text-emerald-300 font-semibold">{t('bs.yes')} ✓ <span className="text-muted-foreground font-normal">({buildReason})</span></span>
+            : <span className="text-muted-foreground">{t('bs.no')} — {buildReason}</span>}
         </div>
       </div>
     );
@@ -198,7 +198,7 @@ export default function BottomSheet() {
               {sea.name}
             </h3>
             <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-              {sea.type === 'coastal' ? 'Costeiro' : 'Oceânico'}
+              {sea.type === 'coastal' ? t('bs.coastal') : t('bs.oceanic')}
             </span>
           </div>
           <button onClick={() => selectSeaZone(null)} className="w-7 h-7 flex items-center justify-center rounded bg-secondary hover:bg-secondary/80">
@@ -207,7 +207,7 @@ export default function BottomSheet() {
         </div>
 
         {forces.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">Nenhuma frota nesta zona marítima.</p>
+          <p className="text-[11px] text-muted-foreground">{t('bs.noFleet')}</p>
         ) : (
           /* pr-16 keeps the capacity value clear of the bottom-right zoom controls */
           <div className="space-y-1.5 mb-2 pr-16">
@@ -218,14 +218,14 @@ export default function BottomSheet() {
                 <div key={f.id} className="flex items-center gap-2 bg-secondary/40 rounded-md px-2 py-1.5">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
                   <span className="text-[11px] font-semibold w-24 truncate" style={{ color: sp.color }}>{sp.shortName}</span>
-                  <span className="text-[11px] font-mono flex items-center gap-1" title="Esquadras (navios)">
-                    ⚓ <strong>{f.navies}</strong> <span className="text-muted-foreground">navio(s)</span>
+                  <span className="text-[11px] font-mono flex items-center gap-1" title={t('bs.shipsTitle')}>
+                    ⚓ <strong>{f.navies}</strong> <span className="text-muted-foreground">{t('bs.shipsWord')}</span>
                   </span>
-                  <span className="text-[11px] font-mono flex items-center gap-1" title="Exércitos embarcados">
+                  <span className="text-[11px] font-mono flex items-center gap-1" title={t('bs.embarkedTitle')}>
                     🪖 <strong>{f.embarked}</strong>
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-mono ml-auto" title="Capacidade usada / total">
-                    {f.embarked}/{capacity} cap
+                  <span className="text-[10px] text-muted-foreground font-mono ml-auto" title={t('bs.capUsedTitle')}>
+                    {f.embarked}/{capacity} {t('bs.capShort')}
                   </span>
                 </div>
               );
@@ -235,10 +235,10 @@ export default function BottomSheet() {
 
         <div className="pr-16">
           <p className="text-[10px] text-muted-foreground">
-            <span className="text-foreground font-medium">Legenda:</span> ⚓ = esquadras (navios) · 🪖 = exércitos embarcados · cap = ocupação/capacidade ({cap} por navio).
+            <span className="text-foreground font-medium">{t('bs.legend')}</span> {t('bs.legendText', { cap })}
           </p>
           <p className="text-[10px] text-muted-foreground mt-1">
-            Para embarcar/desembarcar tropas, entre na fase <strong>Mover</strong> 🚀.
+            {t('bs.embarkHint')}
           </p>
         </div>
       </div>
@@ -254,6 +254,7 @@ export default function BottomSheet() {
 
 function PhaseBadge() {
   const { game } = useGameStore();
+  const t = useT();
   if (!game) return null;
   const slot = game.turn.optionalStagesUsed.length + 1;
   const max = RULES.MAX_OPTIONAL_STAGES;
@@ -265,7 +266,7 @@ function PhaseBadge() {
       }`}
       style={{ fontFamily: 'var(--font-display)' }}
     >
-      Ação {slot}/{max}
+      {t('bs.actionSlot', { slot, max })}
     </span>
   );
 }
@@ -275,19 +276,20 @@ function PhaseBadge() {
 // ============================================================
 
 function SellPanel() {
+  const t = useT();
   const [collapsed, setCollapsed] = useState(false);
   return (
     <div className={BUILD_PANEL_CLASS} style={BUILD_PANEL_STYLE}>
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>📈 Vender</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>📈 {t('phase.3.name')}</h3>
             <PhaseBadge />
           </div>
           <button
             onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
             className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
-            title={collapsed ? 'Expandir' : 'Recolher'}
+            title={collapsed ? t('bs.expand') : t('bs.collapse')}
           >
             {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
@@ -303,6 +305,7 @@ function SellPanel() {
 // ============================================================
 
 function BuyAndProspectPanel() {
+  const t = useT();
   const [mode, setMode] = useState<'buy' | 'prospect'>('buy');
   const [collapsed, setCollapsed] = useState(false);
 
@@ -312,13 +315,13 @@ function BuyAndProspectPanel() {
         {/* Header with collapse toggle */}
         <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>🛒 Comprar</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>🛒 {t('phase.7.name')}</h3>
             <PhaseBadge />
           </div>
           <button
             onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
             className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
-            title={collapsed ? 'Expandir' : 'Recolher'}
+            title={collapsed ? t('bs.expand') : t('bs.collapse')}
           >
             {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
@@ -335,7 +338,7 @@ function BuyAndProspectPanel() {
                 }`}
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                <ShoppingCart size={12} /> Comprar Suprimentos
+                <ShoppingCart size={12} /> {t('bs.buySupplies')}
               </button>
               <button
                 onClick={() => { setMode('prospect'); playSound('button-click', 0.4); }}
@@ -344,7 +347,7 @@ function BuyAndProspectPanel() {
                 }`}
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                <Search size={12} /> Prospectar Cartas
+                <Search size={12} /> {t('prospect.title')}
               </button>
             </div>
             {mode === 'buy' ? <MarketPanel mode="buy" /> : <ProspectPanel />}
@@ -361,13 +364,13 @@ function BuyAndProspectPanel() {
 
 function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
   const { game, dispatch } = useGameStore();
+  const t = useT();
   const [quantities, setQuantities] = useState<Record<ResourceType, number>>({ grain: 1, oil: 1, mineral: 1 });
 
   if (!game) return null;
 
   const player = game.players[game.turn.currentPlayer];
   const resources: ResourceType[] = ['grain', 'oil', 'mineral'];
-  const labels: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
   const colors: Record<ResourceType, string> = { grain: '#eab308', oil: '#3b82f6', mineral: '#a855f7' };
 
   const history = game.market.priceHistory;
@@ -431,10 +434,10 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          {mode === 'sell' ? '📈 Vender Suprimentos' : '🛒 Comprar Suprimentos'}
+          {mode === 'sell' ? `📈 ${t('bs.sellSupplies')}` : `🛒 ${t('bs.buySupplies')}`}
         </h3>
         <span className="text-[10px] text-muted-foreground font-mono">
-          Saldo: ${player.money.toLocaleString()}
+          {t('bs.balance')}: ${player.money.toLocaleString()}
         </span>
       </div>
 
@@ -455,7 +458,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
               {/* Resource info */}
               <div className="flex items-center gap-1.5 w-16 shrink-0">
                 <div className="w-3 h-3 rounded-full border border-border" style={{ backgroundColor: colors[r] }} />
-                <span className="text-[11px] font-medium">{labels[r]}</span>
+                <span className="text-[11px] font-medium">{t(`resource.${r}` as TranslationKey)}</span>
               </div>
 
               {/* Price + trend + impact preview */}
@@ -514,7 +517,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
                 `}
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                <span>{mode === 'sell' ? 'Vender' : 'Comprar'}</span>
+                <span>{mode === 'sell' ? t('phase.3.name') : t('phase.7.name')}</span>
                 <span className="text-[8px] font-mono normal-case tracking-normal opacity-80">
                   {mode === 'sell' ? '+' : '-'}${total.toLocaleString()}
                 </span>
@@ -587,6 +590,7 @@ const BUILD_PANEL_STYLE: React.CSSProperties = {
 
 function BuildPanel() {
   const { game, dispatch, buildAction, setBuildAction } = useGameStore();
+  const t = useT();
   const [collapsed, setCollapsed] = useState(false);
   if (!game) return null;
 
@@ -643,10 +647,10 @@ function BuildPanel() {
   if (buildAction === 'army' || buildAction === 'navy') {
     const isArmy = buildAction === 'army';
     const targets = isArmy ? armyTargets : navyTargets;
-    const title = isArmy ? '🎖️ Construir Exército' : '⚓ Construir Esquadra (Navio)';
+    const title = isArmy ? `🎖️ ${t('bs.buildArmyTitle')}` : `⚓ ${t('bs.buildNavyTitleLong')}`;
     const costLabel = isArmy
-      ? `$${RULES.UNIT_COST.toLocaleString()} · 1 conjunto (🌾🛢️⛏️) a cada ${setSize} peças`
-      : `$${RULES.UNIT_COST.toLocaleString()} · requer porto · 1 conjunto a cada ${setSize} peças`;
+      ? t('bs.costArmy', { cost: `$${RULES.UNIT_COST.toLocaleString()}`, n: setSize })
+      : t('bs.costNavy', { cost: `$${RULES.UNIT_COST.toLocaleString()}`, n: setSize });
     const blocked = !canBuildUnit;
 
     return (
@@ -659,7 +663,7 @@ function BuildPanel() {
               className="text-[10px] px-2.5 py-1.5 rounded-md bg-secondary text-foreground hover:bg-secondary/70 active:scale-[0.95] uppercase tracking-wider font-semibold shrink-0"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Cancelar
+              {t('common.cancel')}
             </button>
           </div>
 
@@ -667,27 +671,25 @@ function BuildPanel() {
 
           {blocked ? (
             <p className="text-[11px] text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1.5">
-              ⚠ Falta: {unitMissing.join(' · ')}. Venda recursos ou tome empréstimo antes de construir.
+              ⚠ {t('bs.buildMissing', { list: unitMissing.join(' · ') })}
             </p>
           ) : targets.length === 0 ? (
             <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
-              {isArmy
-                ? 'Nenhum território seu disponível para construção.'
-                : 'Nenhum porto sob seu controle — conquiste um território com porto para construir esquadras.'}
+              {isArmy ? t('bs.noArmyArea') : t('bs.noPort')}
             </p>
           ) : (
             <p className={`text-[11px] rounded px-2 py-1.5 border ${isArmy ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-blue-300 bg-blue-500/10 border-blue-500/30'}`}>
-              👆 Toque {isArmy ? 'num território destacado' : 'numa zona marítima destacada'} no mapa para construir.
-              <span className="opacity-70"> ({targets.length} {isArmy ? 'território(s)' : 'mar(es)'} válido(s))</span>
+              👆 {isArmy ? t('bs.tapBuildArmy') : t('bs.tapBuildNavy')}
+              <span className="opacity-70"> {isArmy ? t('bs.validCountTerr', { n: targets.length }) : t('bs.validCountSea', { n: targets.length })}</span>
             </p>
           )}
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0">Você tem:</span>
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0">{t('bs.youHave')}</span>
             {resourceStrip}
           </div>
           {freeUnitsInSet > 0 && !blocked && (
-            <p className="text-[9px] text-emerald-400/80">Conjunto pago: {freeUnitsInSet} peça(s) sem custo de suprimento.</p>
+            <p className="text-[9px] text-emerald-400/80">{t('bs.paidSet', { n: freeUnitsInSet })}</p>
           )}
         </div>
       </div>
@@ -701,13 +703,13 @@ function BuildPanel() {
       {/* Header strip: title + resources + collapse toggle */}
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
         <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ fontFamily: 'var(--font-display)' }}>🏗️ Construir</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ fontFamily: 'var(--font-display)' }}>🏗️ {t('phase.6.name')}</h3>
           <div className="min-w-0 overflow-hidden">{resourceStrip}</div>
         </div>
         <button
           onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
           className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
-          title={collapsed ? 'Expandir' : 'Recolher'}
+          title={collapsed ? t('bs.expand') : t('bs.collapse')}
         >
           {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
@@ -719,20 +721,20 @@ function BuildPanel() {
             {/* Army */}
             <BuildTile
               icon="🎖️"
-              title="Construir Exército"
-              cost={`$${RULES.UNIT_COST.toLocaleString()} + suprimentos`}
+              title={t('bs.buildArmyTitle')}
+              cost={`$${RULES.UNIT_COST.toLocaleString()} ${t('bs.plusSupplies')}`}
               ready={canBuildUnit && armyTargets.length > 0}
-              badge={armyTargets.length === 0 ? 'SEM ÁREA' : canBuildUnit ? 'DISPONÍVEL' : 'BLOQUEADO'}
+              badge={armyTargets.length === 0 ? t('bs.badgeNoArea') : canBuildUnit ? t('bs.badgeAvailable') : t('bs.badgeBlocked')}
               onClick={() => { playSound('turn-start', 0.4); setBuildAction('army'); }}
             />
 
             {/* Navy */}
             <BuildTile
               icon="⚓"
-              title="Construir Esquadra"
-              cost={`$${RULES.UNIT_COST.toLocaleString()} · requer porto`}
+              title={t('bs.buildNavyTitle')}
+              cost={`$${RULES.UNIT_COST.toLocaleString()} · ${t('bs.requiresPort')}`}
               ready={canBuildUnit && navyTargets.length > 0}
-              badge={navyTargets.length === 0 ? 'SEM PORTO' : canBuildUnit ? 'DISPONÍVEL' : 'BLOQUEADO'}
+              badge={navyTargets.length === 0 ? t('bs.badgeNoPort') : canBuildUnit ? t('bs.badgeAvailable') : t('bs.badgeBlocked')}
               onClick={() => { playSound('turn-start', 0.4); setBuildAction('navy'); }}
             />
 
@@ -740,21 +742,21 @@ function BuildPanel() {
             {!player.hasResearchedNuke ? (
               <BuildTile
                 icon="🔬"
-                title="Pesquisar Bomba"
-                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}/carta · ${nukeOdds}`}
+                title={t('bs.researchNuke')}
+                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}${t('bs.perCard')} · ${nukeOdds}`}
                 ready={canResearchNuke}
-                badge={canResearchNuke ? 'PESQUISAR' : 'BLOQUEADO'}
+                badge={canResearchNuke ? t('bs.badgeResearch') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_NUKE', cardId: '' }); }}
               />
             ) : nukeMaxed ? (
-              <BuildTile icon="☢️" title="Bomba Nuclear" cost={`Arsenal máximo (${RULES.MAX_NUKES})`} ready={false} badge="MÁX" />
+              <BuildTile icon="☢️" title={t('bs.nukeName')} cost={t('bs.arsenalMax', { n: RULES.MAX_NUKES })} ready={false} badge={t('bs.badgeMax')} />
             ) : (
               <BuildTile
                 icon="☢️"
-                title="Construir Bomba"
+                title={t('bs.buildNuke')}
                 cost={`$${RULES.NUKE_COST.toLocaleString()} + ${RULES.NUKE_MINERAL_COST}⛏️ · ${player.nukes}/${RULES.MAX_NUKES}`}
                 ready={canBuildNuke}
-                badge={canBuildNuke ? 'CONSTRUIR' : 'BLOQUEADO'}
+                badge={canBuildNuke ? t('bs.badgeBuild') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('missile-launch', 0.5); dispatch({ type: 'BUILD_NUKE' }); }}
               />
             )}
@@ -763,27 +765,27 @@ function BuildPanel() {
             {!player.hasResearchedLaserStar ? (
               <BuildTile
                 icon="🔬"
-                title="Pesquisar Laser-Star"
-                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}/carta · ${laserOdds}`}
+                title={t('bs.researchLaser')}
+                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}${t('bs.perCard')} · ${laserOdds}`}
                 ready={canResearchLaser}
-                badge={canResearchLaser ? 'PESQUISAR' : 'BLOQUEADO'}
+                badge={canResearchLaser ? t('bs.badgeResearch') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_LASER_STAR', cardId: '' }); }}
               />
             ) : laserMaxed ? (
-              <BuildTile icon="🛡️" title="Laser-Star" cost={`Arsenal máximo (${RULES.MAX_LASER_STARS})`} ready={false} badge="MÁX" />
+              <BuildTile icon="🛡️" title="Laser-Star" cost={t('bs.arsenalMax', { n: RULES.MAX_LASER_STARS })} ready={false} badge={t('bs.badgeMax')} />
             ) : (
               <BuildTile
                 icon="🛡️"
-                title="Construir Laser-Star"
+                title={t('bs.buildLaser')}
                 cost={`$${RULES.LASER_STAR_COST.toLocaleString()} + ${RULES.LASER_STAR_MINERAL_COST}⛏️ · ${player.laserStars}/${RULES.MAX_LASER_STARS}`}
                 ready={canBuildLaser}
-                badge={canBuildLaser ? 'CONSTRUIR' : 'BLOQUEADO'}
+                badge={canBuildLaser ? t('bs.badgeBuild') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('diplomacy-alert', 0.8); dispatch({ type: 'BUILD_LASER_STAR' }); }}
               />
             )}
           </div>
           <p className="px-3 pb-1.5 -mt-0.5 text-[9px] text-muted-foreground font-mono">
-            Baralho: {deckTotal} {deckTotal === 1 ? 'carta' : 'cartas'} · ☢️ {nukeCount} · 🛡️ {laserCount}
+            {t('bs.deckLine', { n: deckTotal, cards: deckTotal === 1 ? t('bs.cardWord') : t('bs.cardsWord'), nuke: nukeCount, laser: laserCount })}
           </p>
         </>
       )}
@@ -798,6 +800,7 @@ function BuildPanel() {
 
 function MovePanel() {
   const { game, selectedTerritory, selectedSeaZone } = useGameStore();
+  const t = useT();
   const [collapsed, setCollapsed] = useState(false);
 
   // Auto-expand when the player taps a territory/sea on the map
@@ -817,18 +820,18 @@ function MovePanel() {
         {/* Compact header */}
         <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <h3 className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ fontFamily: 'var(--font-display)' }}>🚀 Mover</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ fontFamily: 'var(--font-display)' }}>🚀 {t('phase.5.name')}</h3>
             <PhaseBadge />
             {!grainOk && (
               <span className="text-[10px] bg-destructive/20 text-destructive border border-destructive/30 px-1.5 py-0.5 rounded font-mono shrink-0">
-                ⚠ sem cereal
+                ⚠ {t('bs.noGrain')}
               </span>
             )}
           </div>
           <button
             onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
             className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
-            title={collapsed ? 'Expandir' : 'Recolher'}
+            title={collapsed ? t('bs.expand') : t('bs.collapse')}
           >
             {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
@@ -843,12 +846,12 @@ function MovePanel() {
               </>
             ) : (
               <p className="text-[11px] rounded px-2 py-1.5 border text-emerald-300 bg-emerald-500/10 border-emerald-500/30">
-                👆 Toque num território (exército) ou zona marítima (esquadra) destacada no mapa.
+                👆 {t('bs.tapMove')}
               </p>
             )}
             <div className="flex flex-wrap gap-3 text-[9px] text-muted-foreground">
-              <span>🌾 {RULES.LAND_MOVE_GRAIN_COST} cereal/território terrestre</span>
-              <span>🛢️ {RULES.AIRLIFT_OIL_COST} petróleo/aerotransporte · {RULES.SEA_MOVE_OIL_COST}/mar</span>
+              <span>🌾 {t('bs.moveCostLand', { n: RULES.LAND_MOVE_GRAIN_COST })}</span>
+              <span>🛢️ {t('bs.moveCostOil', { air: RULES.AIRLIFT_OIL_COST, sea: RULES.SEA_MOVE_OIL_COST })}</span>
             </div>
           </div>
         )}
@@ -859,6 +862,7 @@ function MovePanel() {
 
 function SelectedTerritoryMoveActions() {
   const { game, selectedTerritory, dispatch } = useGameStore();
+  const t = useT();
   if (!game || !selectedTerritory) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -891,7 +895,7 @@ function SelectedTerritoryMoveActions() {
     const after = useGameStore.getState().game;
     if (wasNeutral && after?.territories[adjId]?.owner === player.id) {
       playSound('territory-conquered', 0.7);
-      toast.success(`Conquistou ${game.territories[adjId]?.name} — agora é seu território.`);
+      toast.success(t('bs.conqueredToast', { name: game.territories[adjId]?.name ?? adjId }));
     }
   };
 
@@ -907,7 +911,7 @@ function SelectedTerritoryMoveActions() {
   return (
     <div className="bg-secondary/50 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        Mover de <strong>{territory.name}</strong> ({myArmies} exércitos) — custo {RULES.LAND_MOVE_GRAIN_COST} 🌾:
+        {t('bs.moveFromPre')} <strong>{territory.name}</strong> {t('bs.moveFromPost', { n: myArmies, g: RULES.LAND_MOVE_GRAIN_COST })}
       </p>
       <div className="flex flex-wrap gap-1">
         {targets.map(({ id, name, neutral, block }) => {
@@ -917,7 +921,7 @@ function SelectedTerritoryMoveActions() {
             <button
               key={id}
               onClick={() => handleMove(id, neutral)}
-              title={block ? moveBlockMessage(block) : (neutral ? 'Território neutro — mover para cá conquista-o' : '')}
+              title={block ? moveBlockMessage(block) : (neutral ? t('bs.moveNeutralTitle') : '')}
               className={`text-[10px] px-2 py-2 rounded active:scale-[0.95] border transition-all ${
                 enemy
                   ? 'bg-destructive/10 text-destructive/70 border-destructive/20 cursor-not-allowed'
@@ -928,7 +932,7 @@ function SelectedTerritoryMoveActions() {
                       : 'bg-primary/20 text-primary hover:bg-primary/30 border-primary/20'
               }`}
             >
-              {enemy ? '⚔ ' : neutral ? '🏴 ' : '→ '}{name}{neutral ? ' (neutro)' : ''}
+              {enemy ? '⚔ ' : neutral ? '🏴 ' : '→ '}{name}{neutral ? ` ${t('bs.neutralSuffix')}` : ''}
             </button>
           );
         })}
@@ -938,15 +942,15 @@ function SelectedTerritoryMoveActions() {
       {territory.adjacentSeas.length > 0 && (
         <div className="mt-2 pt-2 border-t border-border/40">
           <p className="text-[10px] text-blue-300 font-medium mb-1 flex items-center gap-1">
-            ⚓ Embarcar exército:
+            ⚓ {t('bs.embarkArmy')}
           </p>
           {coastalSeas.length === 0 ? (
-            <p className="text-[9px] text-muted-foreground">Sem zona marítima adjacente.</p>
+            <p className="text-[9px] text-muted-foreground">{t('bs.noAdjacentSea')}</p>
           ) : (
             <div className="flex flex-wrap gap-1">
               {coastalSeas.map(({ sid, sea, navies, free }) => {
                 const canEmbark = navies > 0 && free > 0;
-                const reason = navies === 0 ? 'sem navio adjacente' : free <= 0 ? 'sem capacidade' : '';
+                const reason = navies === 0 ? t('bs.noShipAdj') : free <= 0 ? t('bs.noCapacity') : '';
                 return (
                   <button
                     key={sid}
@@ -963,7 +967,7 @@ function SelectedTerritoryMoveActions() {
                         : 'bg-secondary/30 text-muted-foreground/40 border-border/30 cursor-not-allowed'
                     }`}
                   >
-                    ⚓ {sea!.name} {canEmbark ? `(livre ${free})` : `(${reason})`}
+                    ⚓ {sea!.name} {canEmbark ? `(${t('bs.freeCap', { free })})` : `(${reason})`}
                   </button>
                 );
               })}
@@ -977,6 +981,7 @@ function SelectedTerritoryMoveActions() {
 
 function SelectedSeaZoneMoveActions() {
   const { game, selectedSeaZone, dispatch } = useGameStore();
+  const t = useT();
   if (!game || !selectedSeaZone) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -1000,7 +1005,7 @@ function SelectedSeaZoneMoveActions() {
   return (
     <div className="bg-secondary/50 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        <strong>{sea.name}</strong> — ⚓ {myNavies} esquadra(s){myEmbarked > 0 ? `, 🪖 ${myEmbarked} embarcado(s)` : ''}:
+        <strong>{sea.name}</strong> — ⚓ {t('bs.seaNavies', { n: myNavies })}{myEmbarked > 0 ? t('bs.embarkedSuffix', { n: myEmbarked }) : ''}:
       </p>
       {myNavies > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -1022,9 +1027,9 @@ function SelectedSeaZoneMoveActions() {
       {/* Disembark onto a coastal territory */}
       {myEmbarked > 0 && (
         <div className="mt-2 pt-2 border-t border-border/40">
-          <p className="text-[10px] text-emerald-300 font-medium mb-1">🪖 Desembarcar exército:</p>
+          <p className="text-[10px] text-emerald-300 font-medium mb-1">🪖 {t('bs.disembarkArmy')}</p>
           {disembarkTargets.length === 0 ? (
-            <p className="text-[9px] text-muted-foreground">Nenhum território costeiro válido (ocupado por inimigo ou destruído).</p>
+            <p className="text-[9px] text-muted-foreground">{t('bs.noCoastalValid')}</p>
           ) : (
             <div className="flex flex-wrap gap-1">
               {disembarkTargets.map(t => (
@@ -1053,6 +1058,7 @@ function SelectedSeaZoneMoveActions() {
 
 function AttackPanel() {
   const { game, selectedTerritory, selectedSeaZone } = useGameStore();
+  const t = useT();
   const [collapsed, setCollapsed] = useState(false);
 
   // Auto-expand when the player taps a territory/sea on the map
@@ -1071,7 +1077,7 @@ function AttackPanel() {
         {/* Compact header */}
         <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-border/40 sticky top-0 bg-card/95 backdrop-blur-md z-10">
           <div className="flex items-center gap-2 min-w-0">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-destructive shrink-0" style={{ fontFamily: 'var(--font-display)' }}>⚔️ Atacar</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-destructive shrink-0" style={{ fontFamily: 'var(--font-display)' }}>⚔️ {t('phase.4.name')}</h3>
             <PhaseBadge />
             {player.nukes > 0 && (
               <span className="text-[9px] bg-destructive/20 text-destructive border border-destructive/30 px-1.5 py-0.5 rounded font-bold shrink-0">
@@ -1082,7 +1088,7 @@ function AttackPanel() {
           <button
             onClick={() => { playSound('button-click', 0.3); setCollapsed(c => !c); }}
             className="w-7 h-7 shrink-0 flex items-center justify-center rounded bg-secondary hover:bg-secondary/70 active:scale-[0.95]"
-            title={collapsed ? 'Expandir' : 'Recolher'}
+            title={collapsed ? t('bs.expand') : t('bs.collapse')}
           >
             {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
@@ -1097,11 +1103,11 @@ function AttackPanel() {
               </>
             ) : (
               <p className="text-[11px] rounded px-2 py-1.5 border text-destructive/80 bg-destructive/10 border-destructive/30">
-                👆 Toque num território destacado (2+ exércitos) ou zona marítima (esquadras) no mapa.
+                👆 {t('bs.tapAttack')}
               </p>
             )}
             <div className="text-[9px] text-muted-foreground">
-              Custo: 1🌾 1🛢️ 1⛏️ por batalha · Atacante precisa de 2+ exércitos
+              {t('bs.attackCost')}
             </div>
           </div>
         )}
@@ -1112,6 +1118,7 @@ function AttackPanel() {
 
 function SelectedTerritoryAttackActions() {
   const { game, selectedTerritory, dispatch } = useGameStore();
+  const t = useT();
   if (!game || !selectedTerritory) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -1130,7 +1137,7 @@ function SelectedTerritoryAttackActions() {
       return (
         <div className="bg-destructive/10 rounded-md p-2 mb-2">
           <p className="text-[10px] text-foreground font-medium mb-1">
-            Atacar de <strong>{territory.name}</strong> ({myArmies} exércitos):
+            {t('bs.attackFromPre')} <strong>{territory.name}</strong> {t('bs.attackFromPost', { n: myArmies })}
           </p>
           <div className="flex flex-wrap gap-1">
             {targets.map(targetId => (
@@ -1163,7 +1170,7 @@ function SelectedTerritoryAttackActions() {
           className="text-[10px] px-3 py-1.5 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.95]"
           style={{ fontFamily: 'var(--font-display)' }}
         >
-          ☢ Lançar Bomba Nuclear em {territory.name}
+          ☢ {t('bs.launchNukeAt', { name: territory.name })}
         </button>
       </div>
     );
@@ -1174,6 +1181,7 @@ function SelectedTerritoryAttackActions() {
 
 function SelectedSeaZoneAttackActions() {
   const { game, selectedSeaZone, dispatch } = useGameStore();
+  const t = useT();
   if (!game || !selectedSeaZone) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -1206,7 +1214,7 @@ function SelectedSeaZoneAttackActions() {
   return (
     <div className="bg-destructive/10 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        Atacar de <strong>{sea.name}</strong> ({myNavies} esquadra(s)):
+        {t('bs.attackFromPre')} <strong>{sea.name}</strong> {t('bs.attackFromSeaPost', { n: myNavies })}
       </p>
       <div className="flex flex-wrap gap-1">
         {seaTargets.map(targetId => (
@@ -1229,7 +1237,7 @@ function SelectedSeaZoneAttackActions() {
               dispatch({ type: 'ATTACK_LAND_FROM_SEA', from: selectedSeaZone, target: targetId });
             }}
             className="text-[10px] px-2 py-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded hover:bg-amber-500/30 active:scale-[0.95] border border-amber-500/30"
-            title="Bombardeio naval: causa baixas, mas não conquista o território"
+            title={t('bs.bombardTitle')}
           >
             💥 {game.territories[targetId]?.name}
           </button>
@@ -1237,7 +1245,7 @@ function SelectedSeaZoneAttackActions() {
       </div>
       {landTargets.length > 0 && (
         <p className="text-[9px] text-muted-foreground mt-1">
-          💥 Bombardeio: causa baixas em terra, mas não conquista (desembarque um exército para ocupar).
+          💥 {t('bs.bombardNote')}
         </p>
       )}
     </div>

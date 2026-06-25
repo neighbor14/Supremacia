@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
+import { useT } from '../i18n/useI18n';
 
 function Dice({ values }: { values: number[] }) {
   return (
@@ -15,6 +16,7 @@ function Dice({ values }: { values: number[] }) {
 
 export default function CombatModal() {
   const { game, dispatch } = useGameStore();
+  const t = useT();
   const prevPhaseRef = useRef<string>('');
 
   useEffect(() => {
@@ -57,12 +59,12 @@ export default function CombatModal() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-card border border-border rounded-lg p-5 w-full max-w-sm animate-in zoom-in-95 duration-200">
         <h2 className="text-lg font-bold uppercase tracking-wider text-center mb-4 text-destructive" style={{ fontFamily: 'var(--font-display)' }}>
-          {isDefenderResponse ? 'Resposta do Defensor' : 'Combate'}
+          {isDefenderResponse ? t('combat.defenderResponse') : t('combat.title')}
         </h2>
 
         {/* Target */}
         <p className="text-xs text-center text-muted-foreground mb-4">
-          Batalha por <span className="text-foreground font-semibold">{targetName}</span>
+          {t('combat.battleFor')} <span className="text-foreground font-semibold">{targetName}</span>
         </p>
 
         {/* Forces */}
@@ -92,8 +94,8 @@ export default function CombatModal() {
               <Dice values={combat.defenderDice} />
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>Baixas: {combat.attackerLosses}</span>
-              <span>Baixas: {combat.defenderLosses}</span>
+              <span>{t('combat.casualties')}: {combat.attackerLosses}</span>
+              <span>{t('combat.casualties')}: {combat.defenderLosses}</span>
             </div>
           </div>
         ) : null}
@@ -102,18 +104,18 @@ export default function CombatModal() {
         {cr ? (
           <div className="mb-4 p-2 rounded border border-destructive/40 bg-destructive/5">
             <p className="text-[10px] uppercase tracking-wider text-destructive mb-1 text-center" style={{ fontFamily: 'var(--font-display)' }}>
-              Contra-ataque
+              {t('combat.counterAttack')}
             </p>
             <div className="flex justify-between mb-1">
               <Dice values={cr.attackerDice} />
               <Dice values={cr.defenderDice} />
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>Defensor perdeu: {cr.counterAttackerLosses}</span>
-              <span>Atacante perdeu: {cr.counterDefenderLosses}</span>
+              <span>{t('combat.crDefenderLost')}: {cr.counterAttackerLosses}</span>
+              <span>{t('combat.crAttackerLost')}: {cr.counterDefenderLosses}</span>
             </div>
             {cr.clearedTarget && (
-              <p className="text-[10px] text-center text-amber-500 mt-1">Origem do ataque ficou sem unidades.</p>
+              <p className="text-[10px] text-center text-amber-500 mt-1">{t('combat.originCleared')}</p>
             )}
           </div>
         ) : null}
@@ -122,14 +124,14 @@ export default function CombatModal() {
         {isDefenderResponse && (
           <div className="mb-3 space-y-3">
             <p className="text-xs text-center text-foreground">
-              Você resistiu! Reforce o território e/ou contra-ataque a origem antes de encerrar.
+              {t('combat.resisted')}
             </p>
 
             {/* D6: Reforço */}
             {combat.reinforceAvailable && reinforcementSources.length > 0 && (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-                  Reforçar (toque para mover 1)
+                  {t('combat.reinforceTap')}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {reinforcementSources.map(src => (
@@ -152,7 +154,7 @@ export default function CombatModal() {
                 className="w-full px-4 py-2 bg-destructive text-destructive-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                Contra-atacar (−1 de cada suprimento)
+                {t('combat.counterAttackBtn')}
               </button>
             )}
           </div>
@@ -166,7 +168,7 @@ export default function CombatModal() {
               className="px-4 py-2 bg-destructive text-destructive-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Rolar Dados
+              {t('combat.rollDice')}
             </button>
           )}
           {combat.phase === 'occupy' && (
@@ -175,7 +177,7 @@ export default function CombatModal() {
               className="px-4 py-2 bg-primary text-primary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Ocupar Território
+              {t('combat.occupy')}
             </button>
           )}
           {combat.phase === 'result' && (
@@ -184,7 +186,7 @@ export default function CombatModal() {
               className="px-4 py-2 bg-secondary text-secondary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Encerrar Combate
+              {t('combat.endCombat')}
             </button>
           )}
           {isDefenderResponse && (
@@ -193,7 +195,7 @@ export default function CombatModal() {
               className="px-4 py-2 bg-primary text-primary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Concluir
+              {t('combat.finish')}
             </button>
           )}
         </div>

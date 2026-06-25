@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Smartphone } from 'lucide-react';
+import { useT } from '../i18n/useI18n';
 
 /**
  * LandscapePrompt: On mobile portrait, shows a brief dismissible prompt
@@ -14,6 +15,7 @@ import { Smartphone } from 'lucide-react';
  * The game works in both orientations - landscape just gives more map space.
  */
 export default function LandscapePrompt() {
+  const t = useT();
   const [showPrompt, setShowPrompt] = useState(false);
   const [dismissed, setDismissed] = useState(() => {
     return sessionStorage.getItem('landscape-dismissed') === '1';
@@ -72,11 +74,10 @@ export default function LandscapePrompt() {
         className="text-lg font-bold text-white mb-2 text-center uppercase tracking-wider"
         style={{ fontFamily: 'var(--font-display)' }}
       >
-        Gire o celular
+        {t('landscape.title')}
       </h2>
       <p className="text-sm text-slate-400 text-center max-w-xs leading-relaxed mb-6">
-        O mapa fica muito melhor na <strong className="text-blue-300">horizontal</strong>.
-        Mas você pode jogar em retrato também.
+        {t('landscape.body')}
       </p>
 
       <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -85,10 +86,10 @@ export default function LandscapePrompt() {
           className="w-full px-6 py-3.5 bg-blue-600 text-white text-sm uppercase tracking-wider rounded-lg hover:bg-blue-500 active:scale-[0.97] transition-all font-semibold shadow-lg shadow-blue-600/30"
           style={{ fontFamily: 'var(--font-display)' }}
         >
-          Jogar em Retrato
+          {t('landscape.playPortrait')}
         </button>
         <p className="text-[11px] text-slate-500 text-center">
-          Desative o bloqueio de rotação no iOS (Centro de Controle)
+          {t('landscape.iosHint')}
         </p>
       </div>
     </div>

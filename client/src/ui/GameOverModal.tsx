@@ -1,18 +1,20 @@
 import { useLocation } from 'wouter';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
+import { useT } from '../i18n/useI18n';
 
 export default function GameOverModal() {
   const [, setLocation] = useLocation();
   const { game } = useGameStore();
+  const t = useT();
   if (!game || !game.gameOver) return null;
 
   const winner = game.winner ? SUPERPOWERS[game.winner] : null;
 
   const endMessages: Record<string, string> = {
-    supremacy: 'Vitória por Supremacia Militar',
-    detente: 'Vitória por Détente (maior riqueza)',
-    holocaust: 'Holocausto Nuclear — Todos Perdem',
+    supremacy: t('gameOver.supremacy'),
+    detente: t('gameOver.detente'),
+    holocaust: t('gameOver.holocaust'),
   };
 
   const handleNewGame = () => {
@@ -38,10 +40,10 @@ export default function GameOverModal() {
           <>
             <span className="text-5xl mb-3 block">☢</span>
             <h2 className="text-xl font-bold uppercase tracking-wider text-destructive mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-              Holocausto Nuclear
+              {t('gameOver.holocaustTitle')}
             </h2>
             <p className="text-xs text-muted-foreground mb-6">
-              {game.nukedTerritoryCount} territórios destruídos. A civilização colapsou.
+              {t('gameOver.holocaustBody', { count: game.nukedTerritoryCount })}
             </p>
           </>
         ) : (
@@ -50,7 +52,7 @@ export default function GameOverModal() {
               <div className="w-12 h-12 rounded-full mx-auto mb-3" style={{ backgroundColor: winner.color }} />
             )}
             <h2 className="text-xl font-bold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: winner?.color }}>
-              {winner?.name || 'Empate'}
+              {winner?.name || t('gameOver.draw')}
             </h2>
             <p className="text-xs text-muted-foreground mb-6">
               {endMessages[game.endCondition || 'supremacy']}
@@ -64,14 +66,14 @@ export default function GameOverModal() {
             className="px-4 py-2 bg-primary text-primary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Nova Partida
+            {t('menu.newGame')}
           </button>
           <button
             onClick={handleExport}
             className="px-4 py-2 bg-secondary text-secondary-foreground rounded text-xs uppercase tracking-wider font-semibold hover:opacity-90 active:scale-[0.97]"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Exportar
+            {t('common.export')}
           </button>
         </div>
       </div>

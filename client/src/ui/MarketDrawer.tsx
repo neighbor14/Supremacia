@@ -4,11 +4,13 @@ import { playSound } from '../game/audio';
 import type { ResourceType } from '../game/types';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, X, LineChart } from 'lucide-react';
 import { SUPERPOWERS } from '../data/initialPlayers';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
-const RESOURCES: { key: ResourceType; label: string; icon: string; color: string }[] = [
-  { key: 'grain', label: 'Cereal', icon: '🌾', color: '#eab308' },
-  { key: 'oil', label: 'Petróleo', icon: '🛢', color: '#ef4444' },
-  { key: 'mineral', label: 'Minério', icon: '⛏', color: '#a855f7' },
+const RESOURCES: { key: ResourceType; icon: string; color: string }[] = [
+  { key: 'grain', icon: '🌾', color: '#eab308' },
+  { key: 'oil', icon: '🛢', color: '#ef4444' },
+  { key: 'mineral', icon: '⛏', color: '#a855f7' },
 ];
 
 /**
@@ -45,6 +47,7 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
 
 export default function MarketDrawer() {
   const { game } = useGameStore();
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   if (!game) return null;
@@ -73,11 +76,11 @@ export default function MarketDrawer() {
           onClick={() => { setOpen(true); playSound('button-click', 0.4); }}
           className="absolute right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1 bg-card/95 border border-border border-r-0 rounded-l-lg px-1.5 py-2.5 shadow-lg hover:bg-secondary/60 transition-colors"
           style={{ writingMode: 'vertical-rl' }}
-          aria-label="Abrir mercado"
+          aria-label={t('market.open')}
         >
           <LineChart size={14} className="text-primary rotate-90" />
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-            Mercado
+            {t('market.short')}
           </span>
         </button>
       )}
@@ -89,23 +92,23 @@ export default function MarketDrawer() {
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border sticky top-0 bg-card/97 backdrop-blur-md">
             <h3 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-              <LineChart size={13} className="text-primary" /> Mercado / Commodities
+              <LineChart size={13} className="text-primary" /> {t('market.title')}
             </h3>
             <button
               onClick={() => { setOpen(false); playSound('button-click', 0.4); }}
               className="w-8 h-8 flex items-center justify-center rounded bg-secondary hover:bg-secondary/80"
-              aria-label="Fechar mercado"
+              aria-label={t('market.close')}
             >
               <X size={13} />
             </button>
           </div>
 
           <div className="px-3 py-1.5 text-[9px] text-muted-foreground border-b border-border/40">
-            Preço por unidade. Variação desde a rodada anterior. Atualiza a cada compra/venda e nova rodada.
+            {t('market.subtitle')}
           </div>
 
           <div className="divide-y divide-border/30">
-            {RESOURCES.map(({ key, label, icon, color }) => {
+            {RESOURCES.map(({ key, icon, color }) => {
               const price = market.prices[key];
               const variation = variationFor(key);
               const series = seriesFor(key);
@@ -114,7 +117,7 @@ export default function MarketDrawer() {
                   <div className="flex items-center gap-2 w-24 shrink-0">
                     <span className="text-base">{icon}</span>
                     <div className="flex flex-col">
-                      <span className="text-[11px] font-semibold" style={{ color }}>{label}</span>
+                      <span className="text-[11px] font-semibold" style={{ color }}>{t(`resource.${key}` as TranslationKey)}</span>
                       <span className="text-[9px] text-muted-foreground font-mono">
                         ${market.minPrice / 1000}k–${market.maxPrice / 1000}k
                       </span>
@@ -145,7 +148,7 @@ export default function MarketDrawer() {
 
           {history.length === 0 && (
             <p className="px-3 py-2 text-[10px] text-muted-foreground text-center">
-              Histórico começa ao fim da 1ª rodada.
+              {t('market.historyStart')}
             </p>
           )}
 
@@ -159,7 +162,7 @@ export default function MarketDrawer() {
             return (
               <div className="border-t border-border/40 px-3 py-2">
                 <p className="text-[9px] uppercase tracking-wider text-muted-foreground mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-                  Últimas transações
+                  {t('market.recentTx')}
                 </p>
                 <div className="space-y-1">
                   {txEvents.map(e => {

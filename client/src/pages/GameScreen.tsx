@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
+import { useT } from '../i18n/useI18n';
 import { useGameStore, planAiTurn, applyGameAction } from '../game/store';
 import { isSimultaneousSellRound } from '../game/simultaneousSell';
 import { playSound, SoundEffect } from '../game/audio';
@@ -13,7 +14,7 @@ import BottomSheet from '../ui/BottomSheet';
 import CombatModal from '../ui/CombatModal';
 import NuclearModal from '../ui/NuclearModal';
 import GameOverModal from '../ui/GameOverModal';
-import TurnTutorial from '../ui/TurnTutorial';
+import TutorialCoach from '../ui/TutorialCoach';
 import LandscapePrompt from '../ui/LandscapePrompt';
 import EventLogDrawer from '../ui/EventLogDrawer';
 import AudioControls from '../ui/AudioControls';
@@ -26,6 +27,7 @@ import SimultaneousSellModal from '../ui/SimultaneousSellModal';
 
 export default function GameScreen() {
   const [, setLocation] = useLocation();
+  const t = useT();
   const { game, dispatch } = useGameStore();
   const presentation = usePresentationStore();
   const mp = useMultiplayerStore();
@@ -275,7 +277,7 @@ export default function GameScreen() {
             }`}
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            {isMyTurn ? 'Sua vez' : `Vez de ${currentName} — aguarde`}
+            {isMyTurn ? t('online.yourTurn') : t('online.waitingFor', { name: currentName })}
           </div>
         )}
 
@@ -289,7 +291,7 @@ export default function GameScreen() {
           {/* Overlays on top of map */}
           <AudioControls />
           <ResourceCardsPanel />
-          <TurnTutorial />
+          <TutorialCoach />
           <EventLogDrawer />
           <PlayerStatusBar />
           <MarketDrawer />

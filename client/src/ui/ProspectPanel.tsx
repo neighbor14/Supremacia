@@ -3,15 +3,17 @@ import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import { RULES } from '../game/rulesConfig';
 import type { ResourceCard, ResourceType } from '../game/types';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
 type RevealedCard = ResourceCard;
 
-const CARD_LABELS: Record<string, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
 const CARD_ICONS: Record<string, string> = { grain: '🌾', oil: '🛢', mineral: '⛏' };
 const CARD_COLORS: Record<string, string> = { grain: '#eab308', oil: '#ef4444', mineral: '#a855f7' };
 
 export default function ProspectPanel() {
   const { game, dispatch } = useGameStore();
+  const t = useT();
   const [revealed, setRevealed] = useState<RevealedCard[]>([]);
   const [flipping, setFlipping] = useState(false);
   const prevCardIds = useRef<Set<string>>(new Set());
@@ -54,10 +56,10 @@ export default function ProspectPanel() {
     dispatch({ type: 'PROSPECT', cardId: '', resourceType });
   };
 
-  const TYPE_OPTIONS: { type: ResourceType; label: string; icon: string; color: string }[] = [
-    { type: 'grain', label: 'Cereal', icon: '🌾', color: '#eab308' },
-    { type: 'oil', label: 'Petróleo', icon: '🛢', color: '#ef4444' },
-    { type: 'mineral', label: 'Minério', icon: '⛏', color: '#a855f7' },
+  const TYPE_OPTIONS: { type: ResourceType; icon: string; color: string }[] = [
+    { type: 'grain', icon: '🌾', color: '#eab308' },
+    { type: 'oil', icon: '🛢', color: '#ef4444' },
+    { type: 'mineral', icon: '⛏', color: '#a855f7' },
   ];
 
   return (
@@ -65,10 +67,10 @@ export default function ProspectPanel() {
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          🔍 Prospectar Cartas
+          🔍 {t('prospect.title')}
         </h3>
         <span className="text-[10px] text-muted-foreground font-mono">
-          ${player.money.toLocaleString()} • {deckLeft} cartas
+          ${player.money.toLocaleString()} • {t('prospect.deckCards', { n: deckLeft })}
         </span>
       </div>
 
@@ -98,7 +100,7 @@ export default function ProspectPanel() {
           ) : (
             <div className="absolute rounded-lg border border-dashed border-border/40 flex items-center justify-center"
               style={{ width: 52, height: 72, top: 0, left: 0 }}>
-              <span className="text-[10px] text-muted-foreground text-center leading-tight">Baralho<br/>vazio</span>
+              <span className="text-[10px] text-muted-foreground text-center leading-tight">{t('prospect.deckEmptyShort')}</span>
             </div>
           )}
         </div>
@@ -115,10 +117,10 @@ export default function ProspectPanel() {
             }`}
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            {flipping ? '⏳ Virando...' : `Virar Carta  $${cost.toLocaleString()}`}
+            {flipping ? `⏳ ${t('prospect.flipping')}` : `${t('prospect.flipCard')}  $${cost.toLocaleString()}`}
           </button>
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Pague ${cost.toLocaleString()} por carta. <strong className="text-foreground">Companhias</strong> são descobertas aqui — controlar território não dá produção.
+            {t('prospect.payPerCard', { cost: `$${cost.toLocaleString()}` })}
           </p>
         </div>
       </div>
@@ -126,10 +128,10 @@ export default function ProspectPanel() {
       {/* Targeted prospecting: search until a company of the chosen resource appears */}
       <div className="mb-4">
         <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">
-          🔎 Prospectar companhia por recurso
+          🔎 {t('prospect.byResource')}
         </p>
         <div className="grid grid-cols-3 gap-1.5">
-          {TYPE_OPTIONS.map(({ type, label, icon, color }) => (
+          {TYPE_OPTIONS.map(({ type, icon, color }) => (
             <button
               key={type}
               onClick={() => handleFlip(type)}
@@ -140,12 +142,12 @@ export default function ProspectPanel() {
               style={{ borderColor: color + '55', backgroundColor: color + '12', color }}
             >
               <span className="text-base leading-none">{icon}</span>
-              {label}
+              {t(`resource.${type}` as TranslationKey)}
             </button>
           ))}
         </div>
         <p className="text-[9px] text-muted-foreground leading-snug mt-1.5">
-          Vira cartas (cobrando ${cost.toLocaleString()} cada) até sair uma companhia do recurso escolhido. As demais voltam ao baralho.
+          {t('prospect.byResourceNote', { cost: `$${cost.toLocaleString()}` })}
         </p>
       </div>
 
@@ -154,20 +156,20 @@ export default function ProspectPanel() {
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
-              Reveladas esta sessão ({revealed.length})
+              {t('prospect.revealedSession')} ({revealed.length})
             </span>
             <button
               onClick={() => setRevealed([])}
               className="text-[9px] text-muted-foreground hover:text-foreground underline"
             >
-              limpar
+              {t('prospect.clear')}
             </button>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             {revealed.map((card, i) => {
               const color = CARD_COLORS[card.type] ?? '#94a3b8';
               const icon = CARD_ICONS[card.type] ?? '🃏';
-              const typeLabel = CARD_LABELS[card.type] ?? card.type;
+              const typeLabel = t(`resource.${card.type}` as TranslationKey);
 
               return (
                 <div
@@ -197,7 +199,7 @@ export default function ProspectPanel() {
 
       {deckLeft === 0 && revealed.length === 0 && (
         <div className="p-3 bg-destructive/10 border border-destructive/30 rounded text-center text-[11px] text-destructive">
-          Baralho vazio — nenhuma carta disponível.
+          {t('prospect.deckEmptyMsg')}
         </div>
       )}
     </div>

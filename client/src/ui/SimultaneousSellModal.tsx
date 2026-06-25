@@ -3,6 +3,8 @@ import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { ResourceType } from '../game/types';
+import { useT } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
 
 // ============================================================
 // MODO DIGITAL BALANCEADO — UI da Venda Simultânea de Recursos
@@ -12,16 +14,17 @@ import { ResourceType } from '../game/types';
 // Mobile-first: controles +/- grandes, nada depende de tooltip.
 // ============================================================
 
-const RESOURCES: { key: ResourceType; label: string; icon: string; color: string }[] = [
-  { key: 'grain', label: 'Cereal', icon: '🌾', color: '#eab308' },
-  { key: 'oil', label: 'Petróleo', icon: '🛢', color: '#ef4444' },
-  { key: 'mineral', label: 'Minério', icon: '⛏', color: '#a855f7' },
+const RESOURCES: { key: ResourceType; icon: string; color: string }[] = [
+  { key: 'grain', icon: '🌾', color: '#eab308' },
+  { key: 'oil', icon: '🛢', color: '#ef4444' },
+  { key: 'mineral', icon: '⛏', color: '#a855f7' },
 ];
 
 const money = (n: number) => `$${n.toLocaleString('pt-BR')}`;
 
 export default function SimultaneousSellModal() {
   const { game, dispatch } = useGameStore();
+  const t = useT();
   const ss = game?.simultaneousSell;
 
   // O humano da partida (MVP: 1 humano).
@@ -44,23 +47,23 @@ export default function SimultaneousSellModal() {
       <Overlay>
         <div className="text-center mb-4">
           <h2 className="text-lg font-bold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-            Venda Simultânea resolvida
+            {t('sells.resolvedTitle')}
           </h2>
-          <p className="text-xs text-muted-foreground mt-1">Rodada {res.round}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t('sells.round', { n: res.round })}</p>
         </div>
 
         {/* Por recurso */}
         <div className="space-y-2 mb-4">
-          {RESOURCES.map(({ key, label, icon, color }) => {
+          {RESOURCES.map(({ key, icon, color }) => {
             const r = res.perResource[key];
             const dropped = r.priceAfter !== r.priceBefore;
             return (
               <div key={key} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm font-semibold" style={{ color }}>
-                  <span>{icon}</span> {label}
+                  <span>{icon}</span> {t(`resource.${key}` as TranslationKey)}
                 </span>
                 <span className="text-xs text-right">
-                  <span className="font-mono-num">{r.totalSold}</span> un. vendidas
+                  <span className="font-mono-num">{r.totalSold}</span> {t('sells.unitsSold')}
                   {dropped && (
                     <span className="block text-muted-foreground">
                       {money(r.priceBefore)} → <span className="text-foreground font-semibold">{money(r.priceAfter)}</span>
@@ -84,12 +87,12 @@ export default function SimultaneousSellModal() {
                 </span>
                 <span className="text-muted-foreground">
                   {pp.soldAny ? (
-                    <>recebeu <span className="text-emerald-400 font-semibold">{money(pp.revenue)}</span></>
+                    <>{t('sells.received')} <span className="text-emerald-400 font-semibold">{money(pp.revenue)}</span></>
                   ) : (
-                    <span>não vendeu</span>
+                    <span>{t('sells.didNotSell')}</span>
                   )}
                   {' · '}
-                  <span className="font-mono-num">{pp.optionalActionsRemaining}</span> ações
+                  <span className="font-mono-num">{pp.optionalActionsRemaining}</span> {t('sells.actionsWord')}
                 </span>
               </div>
             );
@@ -101,7 +104,7 @@ export default function SimultaneousSellModal() {
           className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold uppercase tracking-wider active:scale-[0.97]"
           style={{ fontFamily: 'var(--font-display)' }}
         >
-          Continuar
+          {t('common.continue')}
         </button>
       </Overlay>
     );
@@ -135,9 +138,9 @@ export default function SimultaneousSellModal() {
         <div className="text-center py-6">
           <div className="text-3xl mb-3">⏳</div>
           <h2 className="text-base font-bold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-            Venda confirmada
+            {t('sells.confirmedTitle')}
           </h2>
-          <p className="text-xs text-muted-foreground">Aguardando os demais jogadores…</p>
+          <p className="text-xs text-muted-foreground">{t('sells.waiting')}</p>
         </div>
       </Overlay>
     );
@@ -147,18 +150,17 @@ export default function SimultaneousSellModal() {
     <Overlay>
       <div className="text-center mb-3">
         <h2 className="text-lg font-bold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          Venda Simultânea
+          {t('sells.title')}
         </h2>
-        <p className="text-xs text-muted-foreground mt-1">Rodada {game.turn.turnNumber}</p>
+        <p className="text-xs text-muted-foreground mt-1">{t('sells.round', { n: game.turn.turnNumber })}</p>
       </div>
 
       <p className="text-[11px] leading-snug text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
-        Todos os jogadores venderão simultaneamente. Todos recebem o preço atual. Depois, o
-        mercado cairá conforme o total vendido por todos.
+        {t('sells.intro')}
       </p>
 
       <div className="space-y-2.5 mb-4">
-        {RESOURCES.map(({ key, label, icon, color }) => {
+        {RESOURCES.map(({ key, icon, color }) => {
           const stock = human.supplies[key];
           const price = ss.priceSnapshot[key];
           const qty = draft[key];
@@ -166,10 +168,10 @@ export default function SimultaneousSellModal() {
             <div key={key} className="bg-card border border-border rounded-lg p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="flex items-center gap-2 text-sm font-semibold" style={{ color }}>
-                  <span>{icon}</span> {label}
+                  <span>{icon}</span> {t(`resource.${key}` as TranslationKey)}
                 </span>
                 <span className="text-[11px] text-muted-foreground">
-                  Estoque <span className="font-mono-num text-foreground">{stock}</span> · Preço{' '}
+                  {t('sells.stock')} <span className="font-mono-num text-foreground">{stock}</span> · {t('sells.price')}{' '}
                   <span className="font-mono-num text-foreground">{money(price)}</span>
                 </span>
               </div>
@@ -183,7 +185,7 @@ export default function SimultaneousSellModal() {
                     disabled={stock === 0 || qty === stock}
                     className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-secondary/60 text-muted-foreground disabled:opacity-30 active:scale-[0.95]"
                   >
-                    Máx
+                    {t('sells.max')}
                   </button>
                 </div>
                 <span className="text-xs text-emerald-400/90 font-mono-num">{money(qty * price)}</span>
@@ -195,7 +197,7 @@ export default function SimultaneousSellModal() {
 
       <div className="flex items-center justify-between mb-3 px-1">
         <span className="text-xs text-muted-foreground uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          Receita estimada
+          {t('sells.estRevenue')}
         </span>
         <span className="text-base font-bold text-emerald-400 font-mono-num">{money(estRevenue)}</span>
       </div>
@@ -205,10 +207,10 @@ export default function SimultaneousSellModal() {
         className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold uppercase tracking-wider active:scale-[0.97]"
         style={{ fontFamily: 'var(--font-display)' }}
       >
-        {totalUnits > 0 ? `Confirmar venda de ${totalUnits} un.` : 'Confirmar sem vender'}
+        {totalUnits > 0 ? t('sells.confirmSell', { n: totalUnits }) : t('sells.confirmNoSell')}
       </button>
       <p className="text-[10px] text-muted-foreground text-center mt-2">
-        Vender ≥ 1 usa 1 das suas 3 ações opcionais nesta rodada.
+        {t('sells.usesAction')}
       </p>
     </Overlay>
   );
