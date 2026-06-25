@@ -7,7 +7,7 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
 import { useTutorialStore } from '../stores/tutorialStore';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
@@ -56,56 +56,93 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
             const isPast = idx < turn.currentPlayerIndex;
             const isEliminated = p.isEliminated;
 
+            // Informação pública (fiel ao tabuleiro): dinheiro, estoque de recursos,
+            // nº de cartas de empresa e armas ficam à vista de todos os jogadores.
+            const cardCount = p.resourceCards.length;
+
             return (
               <div
                 key={pid}
-                className={`rounded-lg px-3 py-2 border flex items-center gap-2 transition-all ${
+                className={`rounded-lg px-3 py-2 border transition-all ${
                   isCurrent ? 'border-primary/60 bg-primary/10' :
                   isEliminated ? 'border-border/20 bg-secondary/10 opacity-40' :
                   isPast ? 'border-border/30 bg-secondary/20' :
                   'border-border/30 bg-secondary/5'
                 }`}
               >
-                {/* Position number */}
-                <span className={`text-[10px] font-mono w-4 text-center shrink-0 ${isCurrent ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
-                  {idx + 1}
-                </span>
+                {/* Top line: position, color, name, weapons, turn marker */}
+                <div className="flex items-center gap-2">
+                  {/* Position number */}
+                  <span className={`text-[10px] font-mono w-4 text-center shrink-0 ${isCurrent ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                    {idx + 1}
+                  </span>
 
-                {/* Color dot */}
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
+                  {/* Color dot */}
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
 
-                {/* Name */}
-                <span className={`text-[11px] font-semibold flex-1 truncate uppercase tracking-wider ${isEliminated ? 'line-through' : ''}`} style={{ fontFamily: 'var(--font-display)', color: isCurrent ? sp.color : undefined }}>
-                  {names.factionShort(pid)}
-                  {!p.isHuman && <span className="text-[9px] text-muted-foreground ml-1 normal-case">CPU</span>}
-                </span>
+                  {/* Name */}
+                  <span className={`text-[11px] font-semibold flex-1 truncate uppercase tracking-wider ${isEliminated ? 'line-through' : ''}`} style={{ fontFamily: 'var(--font-display)', color: isCurrent ? sp.color : undefined }}>
+                    {names.factionShort(pid)}
+                    {!p.isHuman && <span className="text-[9px] text-muted-foreground ml-1 normal-case">CPU</span>}
+                  </span>
 
-                {/* Status badges */}
-                <div className="flex items-center gap-1 shrink-0">
-                  {/* Research status */}
-                  {p.hasResearchedNuke
-                    ? <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/20 text-destructive font-bold">☢️{p.nukes}</span>
-                    : <span className="text-[9px] px-1 py-0.5 rounded bg-secondary/30 text-muted-foreground/40">☢️–</span>
-                  }
-                  {p.hasResearchedLaserStar
-                    ? <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400 font-bold">🛡️{p.laserStars}</span>
-                    : <span className="text-[9px] px-1 py-0.5 rounded bg-secondary/30 text-muted-foreground/40">🛡️–</span>
-                  }
+                  {/* Weapon badges */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {p.hasResearchedNuke
+                      ? <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/20 text-destructive font-bold">☢️{p.nukes}</span>
+                      : <span className="text-[9px] px-1 py-0.5 rounded bg-secondary/30 text-muted-foreground/40">☢️–</span>
+                    }
+                    {p.hasResearchedLaserStar
+                      ? <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400 font-bold">🛡️{p.laserStars}</span>
+                      : <span className="text-[9px] px-1 py-0.5 rounded bg-secondary/30 text-muted-foreground/40">🛡️–</span>
+                    }
+                  </div>
+
+                  {/* Turn marker */}
+                  {isCurrent && <span className="text-[9px] text-primary font-bold shrink-0">▶ {t('hud.playing')}</span>}
+                  {isPast && !isEliminated && <span className="text-[9px] text-muted-foreground/50 shrink-0">✓ {t('hud.done')}</span>}
+                  {isEliminated && <span className="text-[9px] text-muted-foreground/40 shrink-0">{t('hud.eliminated')}</span>}
                 </div>
 
-                {/* Turn marker */}
-                {isCurrent && <span className="text-[9px] text-primary font-bold shrink-0">▶ {t('hud.playing')}</span>}
-                {isPast && !isEliminated && <span className="text-[9px] text-muted-foreground/50 shrink-0">✓ {t('hud.done')}</span>}
-                {isEliminated && <span className="text-[9px] text-muted-foreground/40 shrink-0">{t('hud.eliminated')}</span>}
+                {/* Bottom line: public economy — money, resources, company cards */}
+                {!isEliminated && (
+                  <div className="flex items-center gap-2 mt-1.5 pl-6 flex-wrap">
+                    {/* Money */}
+                    <span
+                      className="text-[10px] font-mono font-bold text-emerald-400 flex items-center gap-0.5"
+                      title={t('hud.statMoney')}
+                    >
+                      💵 ${p.money >= 1000 ? `${Math.floor(p.money / 1000)}k` : fmtNum(p.money)}
+                    </span>
+                    {p.loans > 0 && (
+                      <span className="text-[9px] font-mono text-destructive" title={t('hud.statLoans')}>
+                        -{Math.floor(p.loans / 1000)}k
+                      </span>
+                    )}
+
+                    {/* Resource supplies */}
+                    <span className="text-[10px] font-mono text-yellow-500 flex items-center gap-0.5" title={t('resource.grain')}>🌾{p.supplies.grain}</span>
+                    <span className="text-[10px] font-mono text-red-400 flex items-center gap-0.5" title={t('resource.oil')}>🛢{p.supplies.oil}</span>
+                    <span className="text-[10px] font-mono text-purple-400 flex items-center gap-0.5" title={t('resource.mineral')}>⛏{p.supplies.mineral}</span>
+
+                    {/* Company cards (count only — which companies stay private) */}
+                    <span className="text-[10px] font-mono text-muted-foreground flex items-center gap-0.5" title={t('hud.statCards')}>
+                      🃏{cardCount}
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
         {/* Legend */}
-        <div className="px-4 py-2.5 border-t border-border/40 flex gap-3 flex-wrap">
-          <span className="text-[9px] text-muted-foreground">{t('hud.legendNuke')}</span>
-          <span className="text-[9px] text-muted-foreground">{t('hud.legendLaser')}</span>
+        <div className="px-4 py-2.5 border-t border-border/40 flex flex-col gap-1">
+          <span className="text-[9px] text-muted-foreground/80 italic">{t('hud.publicInfoNote')}</span>
+          <div className="flex gap-3 flex-wrap">
+            <span className="text-[9px] text-muted-foreground">{t('hud.legendNuke')}</span>
+            <span className="text-[9px] text-muted-foreground">{t('hud.legendLaser')}</span>
+          </div>
         </div>
       </div>
     </div>
