@@ -90,6 +90,15 @@ export default function TutorialCoach() {
 
   const tk = (suffix: string) => t(`${base}.${suffix}` as TranslationKey);
 
+  // Fechar/Entendi: o card de introdução é uma boas-vindas única — marcá-lo como
+  // visto evita que ele reapareça e bloqueie os cards de fase. Cards de fase só
+  // são dispensados (podem reaparecer ao revisitar a fase dentro das 1ªs rodadas);
+  // "Não mostrar novamente" é que os marca como vistos de vez.
+  const closeCard = () => {
+    if (activeKey === 'intro') markSeen('intro');
+    else dismiss();
+  };
+
   return (
     <>
       {/* Botão de ajuda flutuante — referência manual sempre disponível */}
@@ -121,7 +130,7 @@ export default function TutorialCoach() {
                 </h3>
               </div>
               <button
-                onClick={dismiss}
+                onClick={closeCard}
                 className="text-muted-foreground hover:text-foreground"
                 aria-label={t('common.close')}
               >
@@ -164,7 +173,7 @@ export default function TutorialCoach() {
 
             {/* Ações do card */}
             <div className="flex items-center gap-2 px-3 py-2 border-t border-border">
-              {activeKey && (
+              {activeKey && activeKey !== 'intro' && (
                 <button
                   onClick={() => markSeen(activeKey)}
                   className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
@@ -173,7 +182,7 @@ export default function TutorialCoach() {
                 </button>
               )}
               <button
-                onClick={dismiss}
+                onClick={closeCard}
                 className="ml-auto px-3 py-1 rounded bg-primary text-primary-foreground text-[11px] font-bold uppercase tracking-wider active:scale-[0.96]"
                 style={{ fontFamily: 'var(--font-display)' }}
               >
