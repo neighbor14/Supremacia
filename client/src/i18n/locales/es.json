@@ -14,6 +14,9 @@
   "menu.import": "Importar Partida",
   "menu.language": "Idioma",
   "menu.tutorial": "Tutorial",
+  "menu.langWarnTitle": "¿Cambiar idioma?",
+  "menu.langWarnBody": "Los mensajes ya registrados en el historial de la partida no se volverán a traducir — solo los eventos nuevos aparecerán en el nuevo idioma.",
+  "menu.langWarnConfirm": "Cambiar igual",
   "menu.chooseSuperpower": "Elige tu Superpotencia",
   "menu.footer": "Prototipo interno — 1 humano vs 1–{max} CPUs",
 
@@ -32,6 +35,7 @@
   "setup.marketModeNote": "Cómo funcionan los precios y las ventas en la partida.",
   "setup.default": "Predeterminado",
   "setup.start": "Iniciar Partida",
+  "setup.languageNote": "Elige tu idioma ahora. Cambiarlo durante la partida requiere confirmación (el historial del registro no se vuelve a traducir).",
 
   "ai.diff.beginner.label": "Principiante",
   "ai.diff.beginner.hint": "Juega simple, comete errores, poca estrategia.",

@@ -14,6 +14,9 @@
   "menu.import": "Import Game",
   "menu.language": "Language",
   "menu.tutorial": "Tutorial",
+  "menu.langWarnTitle": "Change language?",
+  "menu.langWarnBody": "Messages already recorded in the game log won't be re-translated — only new events will appear in the new language.",
+  "menu.langWarnConfirm": "Change anyway",
   "menu.chooseSuperpower": "Choose your Superpower",
   "menu.footer": "Internal prototype — 1 human vs 1–{max} CPUs",
 
@@ -32,6 +35,7 @@
   "setup.marketModeNote": "How prices and selling work in the match.",
   "setup.default": "Default",
   "setup.start": "Start Match",
+  "setup.languageNote": "Pick your language now. Changing it during the match requires confirmation (the log history is not re-translated).",
 
   "ai.diff.beginner.label": "Beginner",
   "ai.diff.beginner.hint": "Plays simply, makes mistakes, little strategy.",

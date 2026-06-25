@@ -158,7 +158,7 @@ export default function Home() {
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
                 {t('menu.language')}
               </p>
-              <LanguageSelector />
+              <LanguageSelector warnIfSaved />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
@@ -193,6 +193,18 @@ export default function Home() {
               </button>
             ))}
           </div>
+
+          {/* Idioma — escolha consciente antes de começar. Em jogo, a troca avisa. */}
+          <div className="mt-5 pt-4 border-t border-border">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+              {t('menu.language')}
+            </p>
+            <LanguageSelector />
+            <p className="text-[10px] text-muted-foreground/80 mt-1.5 leading-snug">
+              {t('setup.languageNote')}
+            </p>
+          </div>
+
           <button
             onClick={() => setStep('menu')}
             className="mt-4 w-full py-2 text-xs text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"

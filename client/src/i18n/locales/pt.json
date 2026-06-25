@@ -14,6 +14,9 @@
   "menu.import": "Importar Jogo",
   "menu.language": "Idioma",
   "menu.tutorial": "Tutorial",
+  "menu.langWarnTitle": "Trocar idioma?",
+  "menu.langWarnBody": "As mensagens já registradas no histórico do jogo não serão re-traduzidas — só os eventos novos aparecerão no novo idioma.",
+  "menu.langWarnConfirm": "Trocar mesmo assim",
   "menu.chooseSuperpower": "Escolha sua Superpotência",
   "menu.footer": "Protótipo interno — 1 humano vs 1–{max} CPUs",
 
@@ -32,6 +35,7 @@
   "setup.marketModeNote": "Como funcionam preços e vendas na partida.",
   "setup.default": "Padrão",
   "setup.start": "Iniciar Partida",
+  "setup.languageNote": "Escolha o idioma agora. Durante a partida, trocar exige confirmação (o histórico do log não é re-traduzido).",
 
   "ai.diff.beginner.label": "Iniciante",
   "ai.diff.beginner.hint": "Joga simples, comete erros, pouca estratégia.",
