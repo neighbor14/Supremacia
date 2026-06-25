@@ -502,6 +502,24 @@ export default function WorldMap() {
           );
         })}
 
+        {/* Sea zone name labels — subtle text above badges/anchors */}
+        {Object.entries(game.seaZones).map(([seaId, sea]) => {
+          const selected = selectedSeaZone === seaId;
+          return (
+            <text
+              key={`sealabel-${seaId}`}
+              x={sea.labelPos.x} y={sea.labelPos.y - 12}
+              fill={selected ? '#fde68a' : '#a8d8f0'}
+              fillOpacity={selected ? 0.95 : 0.65}
+              fontSize="5.5" fontWeight="600"
+              textAnchor="middle" dominantBaseline="central" pointerEvents="none"
+              style={{ paintOrder: 'stroke', stroke: 'rgba(2,8,20,0.7)', strokeWidth: 1.4, strokeLinejoin: 'round' }}
+            >
+              {sea.name}
+            </text>
+          );
+        })}
+
         {/* Naval presence badges — one per owner: ⚓ fleet + 🪖 embarked armies */}
         {Object.entries(game.seaZones).map(([seaId, sea]) => {
           const forces = getSeaForces(seaId);
