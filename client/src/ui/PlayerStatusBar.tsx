@@ -4,7 +4,7 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { RULES } from '../game/rulesConfig';
 import { ChevronLeft, ChevronRight, GripVertical, AlertTriangle } from 'lucide-react';
 import { useDraggable } from '../hooks/useDraggable';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
 
 const RESOURCE_CONFIG = [
@@ -61,7 +61,7 @@ export default function PlayerStatusBar() {
               <span className="text-sm font-bold font-mono leading-none" style={{ color: sp.color }}>
                 {humanPlayer.money >= 1000
                   ? `${Math.floor(humanPlayer.money / 1000)}k`
-                  : humanPlayer.money.toLocaleString()}
+                  : fmtNum(humanPlayer.money)}
               </span>
               {humanPlayer.loans > 0 && (
                 <span className="text-[10px] text-destructive font-mono ml-auto">-{(humanPlayer.loans / 1000).toFixed(0)}k {t('status.debtShort')}</span>
@@ -116,22 +116,22 @@ export default function PlayerStatusBar() {
                   <div className="space-y-0.5 font-mono text-[10px]">
                     <div className="flex justify-between" title={`${due.unitCount} unidades × $${RULES.SALARY_PER_UNIT} + ${due.companyCount} companhias × $${RULES.SALARY_PER_COMPANY}${due.loanInterest ? ` + juros` : ''}`}>
                       <span className="text-muted-foreground">{t('status.estimated')}</span>
-                      <span className="text-foreground font-bold">-${due.total.toLocaleString()}</span>
+                      <span className="text-foreground font-bold">-${fmtNum(due.total)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('status.youHave')}</span>
-                      <span className="text-foreground">${humanPlayer.money.toLocaleString()}</span>
+                      <span className="text-foreground">${fmtNum(humanPlayer.money)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('status.afterPaying')}</span>
                       <span className={short ? 'text-destructive font-bold' : 'text-emerald-400'}>
-                        ${after.toLocaleString()}
+                        ${fmtNum(after)}
                       </span>
                     </div>
                     {short && (
                       <div className="flex justify-between pt-0.5">
                         <span className="text-destructive">{t('status.missing')}</span>
-                        <span className="text-destructive font-bold">${Math.abs(after).toLocaleString()}</span>
+                        <span className="text-destructive font-bold">${fmtNum(Math.abs(after))}</span>
                       </div>
                     )}
                   </div>

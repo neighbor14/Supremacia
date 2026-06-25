@@ -3,7 +3,7 @@ import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import { formatOdds } from '../game/researchDeck';
 import { RULES } from '../game/rulesConfig';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
 
 const RESOURCE_CONFIG = {
@@ -229,7 +229,7 @@ export default function DrawnCardModal() {
             <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 mb-3 space-y-1">
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>{t('draw.searching')} <strong className="text-foreground">{targetName}</strong></span>
-                <span className="font-mono">${drawnCard.researchCostSoFar?.toLocaleString() ?? 0}</span>
+                <span className="font-mono">${fmtNum(drawnCard.researchCostSoFar ?? 0)}</span>
               </div>
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>{t('draw.cardsFlipped')} <strong className="text-foreground">{drawnCard.researchCardsDrawn}</strong></span>
@@ -252,7 +252,7 @@ export default function DrawnCardModal() {
                 <span>
                   {t('draw.searching')} <strong className="text-foreground">{prospectTargetIcon} {prospectTargetLabel}</strong>
                 </span>
-                <span className="font-mono">${drawnCard.prospectCostSoFar?.toLocaleString() ?? 0}</span>
+                <span className="font-mono">${fmtNum(drawnCard.prospectCostSoFar ?? 0)}</span>
               </div>
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>{t('draw.cardsFlipped')} <strong className="text-foreground">{drawnCard.prospectCardsFlipped}</strong></span>
@@ -290,7 +290,7 @@ export default function DrawnCardModal() {
                   className="flex-1 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-all active:scale-[0.97]"
                   style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
                 >
-                  {t('draw.flipNext', { cost: `$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}` })}
+                  {t('draw.flipNext', { cost: `$${fmtNum(RULES.RESEARCH_COST_PER_CARD)}` })}
                 </button>
               ) : (
                 <div className="flex-1 py-3 rounded-xl text-sm text-center text-muted-foreground bg-secondary border border-border">
@@ -315,7 +315,7 @@ export default function DrawnCardModal() {
                   className="flex-1 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-all active:scale-[0.97]"
                   style={{ fontFamily: 'var(--font-display)', minHeight: '44px' }}
                 >
-                  {t('draw.flipNext', { cost: `$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}` })}
+                  {t('draw.flipNext', { cost: `$${fmtNum(RULES.RESEARCH_COST_PER_CARD)}` })}
                 </button>
               ) : (
                 <div className="flex-1 py-3 rounded-xl text-sm text-center text-muted-foreground bg-secondary border border-border">

@@ -77,3 +77,19 @@ export function detectInitialLang(): Lang {
 export function htmlLangAttr(lang: Lang): string {
   return lang === 'pt' ? 'pt-BR' : lang;
 }
+
+/** Locale numérico por idioma (separador de milhar consistente). */
+const NUMERIC_LOCALE: Record<Lang, string> = {
+  pt: 'pt-BR', // 85.000
+  es: 'es-ES', // 85.000
+  en: 'en-US', // 85,000
+};
+
+/**
+ * Formata um número no separador do idioma escolhido — fonte única para que
+ * UI e mensagens do motor NUNCA divirjam (ex.: 85.000 vs 85,000). Não usar
+ * `toLocaleString()` cru (segue o locale do navegador, não o do jogo).
+ */
+export function formatNumber(lang: Lang, n: number): string {
+  return n.toLocaleString(NUMERIC_LOCALE[lang]);
+}

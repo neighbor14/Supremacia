@@ -3,7 +3,7 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { usePresentationStore } from '../stores/presentationStore';
 import { ActionEventType } from '../game/types';
 import { SkipForward, Zap, Clock, Pause, Play } from 'lucide-react';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
 
 const ACTION_ICONS: Record<ActionEventType, string> = {
@@ -33,7 +33,7 @@ function ResourceBadge({ label, value }: { label: string; value: number }) {
       }`}
     >
       {positive ? '+' : ''}
-      {label === 'M$' ? value.toLocaleString() : value} {label}
+      {label === 'M$' ? fmtNum(value) : value} {label}
     </span>
   );
 }

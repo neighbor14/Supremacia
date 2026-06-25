@@ -10,6 +10,7 @@ import {
   TranslationKey,
   Vars,
   translate,
+  formatNumber,
   detectInitialLang,
   htmlLangAttr,
   LANG_STORAGE_KEY,
@@ -54,4 +55,15 @@ export function useSetLang(): (lang: Lang) => void {
 /** Tradução pontual fora do ciclo de render (toasts, alerts, callbacks). */
 export function t(key: TranslationKey, vars?: Vars): string {
   return translate(useI18nStore.getState().lang, key, vars);
+}
+
+/** Hook reativo: formata número no separador do idioma atual. */
+export function useNum(): (n: number) => string {
+  const lang = useI18nStore(s => s.lang);
+  return n => formatNumber(lang, n);
+}
+
+/** Formatação de número fora do render (mensagens do motor, callbacks). */
+export function fmtNum(n: number): string {
+  return formatNumber(useI18nStore.getState().lang, n);
 }

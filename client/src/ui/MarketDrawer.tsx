@@ -4,7 +4,7 @@ import { playSound } from '../game/audio';
 import type { ResourceType } from '../game/types';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, X, LineChart } from 'lucide-react';
 import { SUPERPOWERS } from '../data/initialPlayers';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
 
 const RESOURCES: { key: ResourceType; icon: string; color: string }[] = [
@@ -126,7 +126,7 @@ export default function MarketDrawer() {
 
                   <div className="flex flex-col shrink-0 w-20">
                     <span className="text-sm font-bold font-mono" style={{ color }}>
-                      ${price.toLocaleString()}
+                      ${fmtNum(price)}
                     </span>
                     <span className={`text-[10px] font-mono flex items-center gap-0.5 ${
                       variation > 0 ? 'text-emerald-400' : variation < 0 ? 'text-red-400' : 'text-muted-foreground'
@@ -134,7 +134,7 @@ export default function MarketDrawer() {
                       {variation > 0 && <TrendingUp size={10} />}
                       {variation < 0 && <TrendingDown size={10} />}
                       {variation === 0 && <MinusIcon size={10} />}
-                      {variation === 0 ? '—' : `${variation > 0 ? '+' : ''}${variation.toLocaleString()}`}
+                      {variation === 0 ? '—' : `${variation > 0 ? '+' : ''}${fmtNum(variation)}`}
                     </span>
                   </div>
 

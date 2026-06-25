@@ -9,7 +9,7 @@ import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, X, ShoppingCart, Se
 import ProspectPanel from './ProspectPanel';
 import { getTechCounts, formatOdds } from '../game/researchDeck';
 import { getCompanyOpportunities } from '../game/companyMap';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
 
 const RESOURCE_ICON_PT: Record<ResourceType, string> = { grain: '🌾', oil: '🛢️', mineral: '⛏️' };
@@ -437,7 +437,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
           {mode === 'sell' ? `📈 ${t('bs.sellSupplies')}` : `🛒 ${t('bs.buySupplies')}`}
         </h3>
         <span className="text-[10px] text-muted-foreground font-mono">
-          {t('bs.balance')}: ${player.money.toLocaleString()}
+          {t('bs.balance')}: ${fmtNum(player.money)}
         </span>
       </div>
 
@@ -465,7 +465,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
               <div className="flex flex-col gap-0.5 w-20 shrink-0">
                 <div className="flex items-center gap-1">
                   <span className="text-xs font-bold font-mono" style={{ color: colors[r] }}>
-                    ${price.toLocaleString()}
+                    ${fmtNum(price)}
                   </span>
                   {trend === 'up' && <TrendingUp size={10} className="text-emerald-400" />}
                   {trend === 'down' && <TrendingDown size={10} className="text-red-400" />}
@@ -476,7 +476,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
                     mode === 'sell' ? 'text-red-400' : 'text-emerald-400'
                   }`}>
                     {mode === 'sell' ? <TrendingDown size={8} /> : <TrendingUp size={8} />}
-                    ${priceAfter.toLocaleString()}
+                    ${fmtNum(priceAfter)}
                   </span>
                 )}
               </div>
@@ -519,7 +519,7 @@ function MarketPanel({ mode }: { mode: 'sell' | 'buy' }) {
               >
                 <span>{mode === 'sell' ? t('phase.3.name') : t('phase.7.name')}</span>
                 <span className="text-[8px] font-mono normal-case tracking-normal opacity-80">
-                  {mode === 'sell' ? '+' : '-'}${total.toLocaleString()}
+                  {mode === 'sell' ? '+' : '-'}${fmtNum(total)}
                 </span>
               </button>
             </div>
@@ -614,7 +614,7 @@ function BuildPanel() {
   const hasMoney = money >= RULES.UNIT_COST;
   const canBuildUnit = hasSupplies && hasMoney;
   const unitMissing: string[] = [];
-  if (!hasMoney) unitMissing.push(`💵 $${money.toLocaleString()}/$${RULES.UNIT_COST.toLocaleString()}`);
+  if (!hasMoney) unitMissing.push(`💵 $${fmtNum(money)}/$${fmtNum(RULES.UNIT_COST)}`);
   if (nextUnitNeedsNewSet) {
     if (grain < 1) unitMissing.push('🌾 0/1');
     if (oil < 1) unitMissing.push('🛢️ 0/1');
@@ -636,7 +636,7 @@ function BuildPanel() {
 
   const resourceStrip = (
     <div className="flex flex-wrap items-center gap-1">
-      <ResChip icon="💵" value={`$${money.toLocaleString()}`} />
+      <ResChip icon="💵" value={`$${fmtNum(money)}`} />
       <ResChip icon="🌾" value={grain} dim={grain === 0} />
       <ResChip icon="🛢️" value={oil} dim={oil === 0} />
       <ResChip icon="⛏️" value={mineral} dim={mineral === 0} />
@@ -649,8 +649,8 @@ function BuildPanel() {
     const targets = isArmy ? armyTargets : navyTargets;
     const title = isArmy ? `🎖️ ${t('bs.buildArmyTitle')}` : `⚓ ${t('bs.buildNavyTitleLong')}`;
     const costLabel = isArmy
-      ? t('bs.costArmy', { cost: `$${RULES.UNIT_COST.toLocaleString()}`, n: setSize })
-      : t('bs.costNavy', { cost: `$${RULES.UNIT_COST.toLocaleString()}`, n: setSize });
+      ? t('bs.costArmy', { cost: `$${fmtNum(RULES.UNIT_COST)}`, n: setSize })
+      : t('bs.costNavy', { cost: `$${fmtNum(RULES.UNIT_COST)}`, n: setSize });
     const blocked = !canBuildUnit;
 
     return (
@@ -722,7 +722,7 @@ function BuildPanel() {
             <BuildTile
               icon="🎖️"
               title={t('bs.buildArmyTitle')}
-              cost={`$${RULES.UNIT_COST.toLocaleString()} ${t('bs.plusSupplies')}`}
+              cost={`$${fmtNum(RULES.UNIT_COST)} ${t('bs.plusSupplies')}`}
               ready={canBuildUnit && armyTargets.length > 0}
               badge={armyTargets.length === 0 ? t('bs.badgeNoArea') : canBuildUnit ? t('bs.badgeAvailable') : t('bs.badgeBlocked')}
               onClick={() => { playSound('turn-start', 0.4); setBuildAction('army'); }}
@@ -732,7 +732,7 @@ function BuildPanel() {
             <BuildTile
               icon="⚓"
               title={t('bs.buildNavyTitle')}
-              cost={`$${RULES.UNIT_COST.toLocaleString()} · ${t('bs.requiresPort')}`}
+              cost={`$${fmtNum(RULES.UNIT_COST)} · ${t('bs.requiresPort')}`}
               ready={canBuildUnit && navyTargets.length > 0}
               badge={navyTargets.length === 0 ? t('bs.badgeNoPort') : canBuildUnit ? t('bs.badgeAvailable') : t('bs.badgeBlocked')}
               onClick={() => { playSound('turn-start', 0.4); setBuildAction('navy'); }}
@@ -743,7 +743,7 @@ function BuildPanel() {
               <BuildTile
                 icon="🔬"
                 title={t('bs.researchNuke')}
-                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}${t('bs.perCard')} · ${nukeOdds}`}
+                cost={`$${fmtNum(RULES.RESEARCH_COST_PER_CARD)}${t('bs.perCard')} · ${nukeOdds}`}
                 ready={canResearchNuke}
                 badge={canResearchNuke ? t('bs.badgeResearch') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_NUKE', cardId: '' }); }}
@@ -754,7 +754,7 @@ function BuildPanel() {
               <BuildTile
                 icon="☢️"
                 title={t('bs.buildNuke')}
-                cost={`$${RULES.NUKE_COST.toLocaleString()} + ${RULES.NUKE_MINERAL_COST}⛏️ · ${player.nukes}/${RULES.MAX_NUKES}`}
+                cost={`$${fmtNum(RULES.NUKE_COST)} + ${RULES.NUKE_MINERAL_COST}⛏️ · ${player.nukes}/${RULES.MAX_NUKES}`}
                 ready={canBuildNuke}
                 badge={canBuildNuke ? t('bs.badgeBuild') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('missile-launch', 0.5); dispatch({ type: 'BUILD_NUKE' }); }}
@@ -766,7 +766,7 @@ function BuildPanel() {
               <BuildTile
                 icon="🔬"
                 title={t('bs.researchLaser')}
-                cost={`$${RULES.RESEARCH_COST_PER_CARD.toLocaleString()}${t('bs.perCard')} · ${laserOdds}`}
+                cost={`$${fmtNum(RULES.RESEARCH_COST_PER_CARD)}${t('bs.perCard')} · ${laserOdds}`}
                 ready={canResearchLaser}
                 badge={canResearchLaser ? t('bs.badgeResearch') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('button-click', 0.5); dispatch({ type: 'RESEARCH_LASER_STAR', cardId: '' }); }}
@@ -777,7 +777,7 @@ function BuildPanel() {
               <BuildTile
                 icon="🛡️"
                 title={t('bs.buildLaser')}
-                cost={`$${RULES.LASER_STAR_COST.toLocaleString()} + ${RULES.LASER_STAR_MINERAL_COST}⛏️ · ${player.laserStars}/${RULES.MAX_LASER_STARS}`}
+                cost={`$${fmtNum(RULES.LASER_STAR_COST)} + ${RULES.LASER_STAR_MINERAL_COST}⛏️ · ${player.laserStars}/${RULES.MAX_LASER_STARS}`}
                 ready={canBuildLaser}
                 badge={canBuildLaser ? t('bs.badgeBuild') : t('bs.badgeBlocked')}
                 onClick={() => { playSound('diplomacy-alert', 0.8); dispatch({ type: 'BUILD_LASER_STAR' }); }}

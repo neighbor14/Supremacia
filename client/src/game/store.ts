@@ -8,6 +8,7 @@ import { nanoid } from 'nanoid';
 import { isNukeCard, isLaserCard, isTechCard, getTechCounts } from './researchDeck';
 import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, planAmphibiousInvasion, OptionalStage, AIConfig } from './ai';
 import { isSimultaneousSellRound } from './simultaneousSell';
+import { fmtNum } from '../i18n/useI18n';
 
 /**
  * Build-selection mode (fase Construir). When the player picks "Construir
@@ -172,7 +173,7 @@ function paySalariesFor(state: GameState, playerId: SuperpowerId): string[] {
 
   if (player.money >= totalCost) {
     player.money -= totalCost;
-    addEvent(state, player.id, `Pagou salários: ${unitCost.toLocaleString()} (unidades) + ${companyCost.toLocaleString()} (companhias) + ${loanInterest.toLocaleString()} (juros)`, 'economy');
+    addEvent(state, player.id, `Pagou salários: ${fmtNum(unitCost)} (unidades) + ${fmtNum(companyCost)} (companhias) + ${fmtNum(loanInterest)} (juros)`, 'economy');
     return [];
   }
 
@@ -412,7 +413,7 @@ function resolveSimultaneousSell(state: GameState): void {
         .filter(r => decl[r] > 0)
         .map(r => `${decl[r]} ${RESOURCE_NAME[r]}`)
         .join(' e ');
-      addEvent(state, id, `${pl.name} vendeu ${pieces} e recebeu $${revenue.toLocaleString()}.`, 'economy');
+      addEvent(state, id, `${pl.name} vendeu ${pieces} e recebeu $${fmtNum(revenue)}.`, 'economy');
     }
     perPlayer.push({
       playerId: id, playerName: pl.name,
@@ -435,7 +436,7 @@ function resolveSimultaneousSell(state: GameState): void {
     if (perResource[r].totalSold > 0) {
       addEvent(
         state, state.turn.currentPlayer,
-        `Total vendido de ${RESOURCE_NAME[r]}: ${perResource[r].totalSold}. O preço caiu de $${before.toLocaleString()} para $${after.toLocaleString()}.`,
+        `Total vendido de ${RESOURCE_NAME[r]}: ${perResource[r].totalSold}. O preço caiu de $${fmtNum(before)} para $${fmtNum(after)}.`,
         'economy',
       );
     }
@@ -509,7 +510,7 @@ function sellResource(state: GameState, resource: ResourceType, quantity: number
     : '';
   addEvent(
     state, player.id,
-    `Vendeu ${toSell} ${RESOURCE_NAME[resource]} por $${totalRevenue.toLocaleString()}.${priceTag}`,
+    `Vendeu ${toSell} ${RESOURCE_NAME[resource]} por $${fmtNum(totalRevenue)}.${priceTag}`,
     'economy'
   );
 }
@@ -541,7 +542,7 @@ function buyResource(state: GameState, resource: ResourceType, quantity: number)
       : '';
     addEvent(
       state, player.id,
-      `Comprou ${bought} ${RESOURCE_NAME[resource]} por $${totalCost.toLocaleString()}.${priceTag}`,
+      `Comprou ${bought} ${RESOURCE_NAME[resource]} por $${fmtNum(totalCost)}.${priceTag}`,
       'economy'
     );
   }
@@ -745,7 +746,7 @@ function drawProspectCardInternal(state: GameState): void {
   // Deck exhausted — finalize immediately, show failure card
   if (state.resourceDeck.length === 0) {
     addEvent(state, player.id,
-      `Prospecção de ${typeLabel}: baralho esgotado após ${session.cardsFlipped} carta(s). Custo total: $${session.totalCost.toLocaleString()}. Cartas devolvidas.`, 'info');
+      `Prospecção de ${typeLabel}: baralho esgotado após ${session.cardsFlipped} carta(s). Custo total: $${fmtNum(session.totalCost)}. Cartas devolvidas.`, 'info');
     state.drawnCard = {
       active: true,
       type: 'resource',
@@ -764,7 +765,7 @@ function drawProspectCardInternal(state: GameState): void {
   // Insufficient funds — finalize immediately, show failure card
   if (player.money < RULES.RESEARCH_COST_PER_CARD) {
     addEvent(state, player.id,
-      `Prospecção de ${typeLabel}: dinheiro insuficiente após ${session.cardsFlipped} carta(s). Custo total: $${session.totalCost.toLocaleString()}. Cartas devolvidas.`, 'info');
+      `Prospecção de ${typeLabel}: dinheiro insuficiente após ${session.cardsFlipped} carta(s). Custo total: $${fmtNum(session.totalCost)}. Cartas devolvidas.`, 'info');
     state.drawnCard = {
       active: true,
       type: 'resource',
@@ -821,7 +822,7 @@ function drawProspectCardInternal(state: GameState): void {
     if (!player.resourceCards.includes(cardId)) player.resourceCards.push(cardId);
 
     addEvent(state, player.id,
-      `Prospecção de ${typeLabel}: ${card.companyName} (+${card.production} ${icon}, ${where}) adquirida. ${session.cardsFlipped} carta(s) virada(s), custo $${session.totalCost.toLocaleString()}.`, 'economy');
+      `Prospecção de ${typeLabel}: ${card.companyName} (+${card.production} ${icon}, ${where}) adquirida. ${session.cardsFlipped} carta(s) virada(s), custo $${fmtNum(session.totalCost)}.`, 'economy');
 
     state.drawnCard = {
       active: true,
@@ -1042,7 +1043,7 @@ function buildUnits(state: GameState, units: Array<{ type: UnitType; locationId:
     }
   }
 
-  addEvent(state, player.id, `Construiu ${units.length} unidade(s) por ${moneyCost.toLocaleString()}`, 'build');
+  addEvent(state, player.id, `Construiu ${units.length} unidade(s) por ${fmtNum(moneyCost)}`, 'build');
 }
 
 // ── Territory control: single source of truth ────────────────────────────────
@@ -2124,7 +2125,7 @@ function drawResearchCardInternal(state: GameState): void {
     } else {
       player.hasResearchedLaserStar = true;
     }
-    addEvent(state, player.id, `Pesquisa: encontrou ${targetName}! (${session.cardsRevealed.length} carta(s) virada(s), custo $${session.totalCost.toLocaleString()})`, 'build');
+    addEvent(state, player.id, `Pesquisa: encontrou ${targetName}! (${session.cardsRevealed.length} carta(s) virada(s), custo $${fmtNum(session.totalCost)})`, 'build');
     state.drawnCard = {
       active: true,
       type: session.target,
@@ -2238,7 +2239,7 @@ function researchInstant(state: GameState, target: 'nuke' | 'laser'): void {
       if (target === 'nuke') player.hasResearchedNuke = true;
       else player.hasResearchedLaserStar = true;
       addEvent(state, player.id,
-        `Pesquisa IA: ${techName} descoberta em ${drawnCardIds.length} carta(s) — $${totalCost.toLocaleString()}.`, 'build');
+        `Pesquisa IA: ${techName} descoberta em ${drawnCardIds.length} carta(s) — $${fmtNum(totalCost)}.`, 'build');
       found = true;
       break;
     }
@@ -2252,7 +2253,7 @@ function researchInstant(state: GameState, target: 'nuke' | 'laser'): void {
 
   if (!found && drawnCardIds.length > 0) {
     addEvent(state, player.id,
-      `Pesquisa IA: ${techName} não encontrada (${drawnCardIds.length} carta(s), $${totalCost.toLocaleString()} gastos). Cartas devolvidas ao baralho.`, 'build');
+      `Pesquisa IA: ${techName} não encontrada (${drawnCardIds.length} carta(s), $${fmtNum(totalCost)} gastos). Cartas devolvidas ao baralho.`, 'build');
   }
 }
 
@@ -2271,7 +2272,7 @@ function takeLoan(state: GameState, amount: number): void {
 
   player.money += loanAmount;
   player.loans += loanAmount;
-  addEvent(state, player.id, `Empréstimo de ${loanAmount.toLocaleString()} tomado. Dívida total: ${player.loans.toLocaleString()}`, 'economy');
+  addEvent(state, player.id, `Empréstimo de ${fmtNum(loanAmount)} tomado. Dívida total: ${fmtNum(player.loans)}`, 'economy');
 }
 
 function payLoan(state: GameState, amount: number): void {
@@ -2281,7 +2282,7 @@ function payLoan(state: GameState, amount: number): void {
 
   player.money -= payment;
   player.loans -= payment;
-  addEvent(state, player.id, `Pagou ${payment.toLocaleString()} de empréstimo. Dívida restante: ${player.loans.toLocaleString()}`, 'economy');
+  addEvent(state, player.id, `Pagou ${fmtNum(payment)} de empréstimo. Dívida restante: ${fmtNum(player.loans)}`, 'economy');
 }
 
 function calculateWealth(state: GameState, playerId: SuperpowerId): number {
@@ -2777,7 +2778,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
     actionType: 'pay_salaries',
     title: 'Pagou salários',
     description: salaryCost > 0
-      ? `${salaryCost.toLocaleString()} — ${unitCount} unidades e ${player.resourceCards.length} companhias`
+      ? `${fmtNum(salaryCost)} — ${unitCount} unidades e ${player.resourceCards.length} companhias`
       : 'Nenhum custo de upkeep neste turno.',
     resourceChanges: { money: -salaryCost },
     soundKey: salaryCost > 0 ? 'resource-loss' : undefined,
@@ -2835,7 +2836,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
               phase: 3,
               actionType: 'sell_resource',
               title: `Vendeu ${qty} ${RESOURCE_PT[r]}`,
-              description: `Recebeu ${revenue.toLocaleString()} no mercado`,
+              description: `Recebeu ${fmtNum(revenue)} no mercado`,
               resourceChanges: { money: revenue, [r]: -qty },
               soundKey: 'resource-gain',
               durationMs: STEP_MS,
@@ -2984,7 +2985,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
                 phase: 7,
                 actionType: 'buy_resource',
                 title: `Comprou ${bought} ${RESOURCE_PT7[r]}`,
-                description: `Pagou ${spent.toLocaleString()} no mercado`,
+                description: `Pagou ${fmtNum(spent)} no mercado`,
                 resourceChanges: { money: -spent, [r]: bought },
                 soundKey: 'resource-gain',
                 durationMs: STEP_MS,
@@ -3030,7 +3031,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
         actionType: 'card_reveal',
         title: isTargetCard ? `${techName} encontrada!` : `Revelou: ${cardEmoji} ${cardName}`,
         description: isTargetCard
-          ? `${sp.shortName} pesquisou ${drawnForResearch.length} carta(s) — $${researchCost.toLocaleString()}`
+          ? `${sp.shortName} pesquisou ${drawnForResearch.length} carta(s) — $${fmtNum(researchCost)}`
           : `Procurando ${techName}... carta ${drawnForResearch.length}`,
         soundKey: isTargetCard ? 'territory-conquered' : 'resource-gain',
         durationMs: STEP_MS,
@@ -3051,7 +3052,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
 
     if (!foundNuke && drawnForResearch.length > 0) {
       addEvent(state, playerId,
-        `Pesquisa IA: ${techName} não encontrada (${drawnForResearch.length} carta(s), $${researchCost.toLocaleString()} gastos). Cartas devolvidas.`, 'build');
+        `Pesquisa IA: ${techName} não encontrada (${drawnForResearch.length} carta(s), $${fmtNum(researchCost)} gastos). Cartas devolvidas.`, 'build');
     }
 
     state.drawnCard = null;

@@ -3,7 +3,7 @@ import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { ResourceType } from '../game/types';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
 
 // ============================================================
@@ -20,7 +20,7 @@ const RESOURCES: { key: ResourceType; icon: string; color: string }[] = [
   { key: 'mineral', icon: '⛏', color: '#a855f7' },
 ];
 
-const money = (n: number) => `$${n.toLocaleString('pt-BR')}`;
+const money = (n: number) => `$${fmtNum(n)}`;
 
 export default function SimultaneousSellModal() {
   const { game, dispatch } = useGameStore();

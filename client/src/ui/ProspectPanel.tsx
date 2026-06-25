@@ -3,7 +3,7 @@ import { useGameStore } from '../game/store';
 import { playSound } from '../game/audio';
 import { RULES } from '../game/rulesConfig';
 import type { ResourceCard, ResourceType } from '../game/types';
-import { useT } from '../i18n/useI18n';
+import { useT, fmtNum } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
 
 type RevealedCard = ResourceCard;
@@ -70,7 +70,7 @@ export default function ProspectPanel() {
           🔍 {t('prospect.title')}
         </h3>
         <span className="text-[10px] text-muted-foreground font-mono">
-          ${player.money.toLocaleString()} • {t('prospect.deckCards', { n: deckLeft })}
+          ${fmtNum(player.money)} • {t('prospect.deckCards', { n: deckLeft })}
         </span>
       </div>
 
@@ -117,10 +117,10 @@ export default function ProspectPanel() {
             }`}
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            {flipping ? `⏳ ${t('prospect.flipping')}` : `${t('prospect.flipCard')}  $${cost.toLocaleString()}`}
+            {flipping ? `⏳ ${t('prospect.flipping')}` : `${t('prospect.flipCard')}  $${fmtNum(cost)}`}
           </button>
           <p className="text-[10px] text-muted-foreground leading-snug">
-            {t('prospect.payPerCard', { cost: `$${cost.toLocaleString()}` })}
+            {t('prospect.payPerCard', { cost: `$${fmtNum(cost)}` })}
           </p>
         </div>
       </div>
@@ -147,7 +147,7 @@ export default function ProspectPanel() {
           ))}
         </div>
         <p className="text-[9px] text-muted-foreground leading-snug mt-1.5">
-          {t('prospect.byResourceNote', { cost: `$${cost.toLocaleString()}` })}
+          {t('prospect.byResourceNote', { cost: `$${fmtNum(cost)}` })}
         </p>
       </div>
 
