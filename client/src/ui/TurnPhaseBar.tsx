@@ -8,6 +8,7 @@ import { TurnStage } from '../game/types';
 import { RULES } from '../game/rulesConfig';
 import { useTutorialStore } from '../stores/tutorialStore';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
 const STAGE_ICONS: Record<number, string> = {
@@ -23,6 +24,7 @@ const STAGE_ICONS: Record<number, string> = {
 function RoundStatusPanel({ onClose }: { onClose: () => void }) {
   const { game } = useGameStore();
   const t = useT();
+  const names = useNames();
   if (!game) return null;
   const { turn, players } = game;
 
@@ -74,7 +76,7 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
 
                 {/* Name */}
                 <span className={`text-[11px] font-semibold flex-1 truncate uppercase tracking-wider ${isEliminated ? 'line-through' : ''}`} style={{ fontFamily: 'var(--font-display)', color: isCurrent ? sp.color : undefined }}>
-                  {sp.shortName}
+                  {names.factionShort(pid)}
                   {!p.isHuman && <span className="text-[9px] text-muted-foreground ml-1 normal-case">CPU</span>}
                 </span>
 
@@ -114,6 +116,7 @@ export default function TurnPhaseBar() {
   const [showRoundPanel, setShowRoundPanel] = useState(false);
   const { game, dispatch, companyMapVisible, setCompanyMapVisible } = useGameStore();
   const t = useT();
+  const names = useNames();
   const tutorialActiveKey = useTutorialStore(s => s.activeKey);
   const stageName = (stage: number) => t(`phase.${stage}.name` as TranslationKey);
   if (!game) return null;
@@ -147,9 +150,9 @@ export default function TurnPhaseBar() {
       const dormant = useGameStore.getState().game?.turn.unpaidCompanies ?? [];
       if (dormant.length > 0) {
         const cards = useGameStore.getState().game!.resourceCards;
-        const names = dormant.map(id => cards[id]?.companyName ?? id).join(', ');
+        const nameList = dormant.map(id => names.company(id, cards[id]?.companyName ?? id)).join(', ');
         toast.warning(t('hud.salaryShortTitle'), {
-          description: t('hud.salaryShortDesc', { count: dormant.length, names }),
+          description: t('hud.salaryShortDesc', { count: dormant.length, names: nameList }),
           duration: 7000,
         });
       }
@@ -213,7 +216,7 @@ export default function TurnPhaseBar() {
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sp.color }} />
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: sp.color }}>
-            {sp.shortName}
+            {names.factionShort(turn.currentPlayer)}
           </span>
           {!isHuman && (
             <span className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded uppercase">CPU</span>

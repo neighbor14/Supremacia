@@ -5,11 +5,13 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { Plus, Minus } from 'lucide-react';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 export default function SetupScreen() {
   const [, setLocation] = useLocation();
   const { game, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
 
   // Lazy-init placement from the starting armies (avoids setState-during-render)
   const [armyPlacement, setArmyPlacement] = useState<Record<string, number>>(() => {
@@ -78,7 +80,7 @@ export default function SetupScreen() {
         <div className="flex items-center justify-center gap-3 mb-4">
           <div className="w-6 h-6 rounded-full" style={{ backgroundColor: sp.color }} />
           <h1 className="text-3xl font-bold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: sp.color }}>
-            {sp.shortName}
+            {names.factionShort(humanPlayer.id)}
           </h1>
         </div>
         <p className="text-sm text-muted-foreground uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
@@ -89,7 +91,6 @@ export default function SetupScreen() {
       {/* Territory cards */}
       <div className="grid grid-cols-2 gap-4 max-w-2xl mb-8">
         {homelands.map(territoryId => {
-          const territory = game.territories[territoryId];
           const count = armyPlacement[territoryId] || 0;
 
           return (
@@ -97,7 +98,7 @@ export default function SetupScreen() {
               key={territoryId}
               className="bg-card border border-border rounded-lg p-4 flex flex-col items-center gap-3"
             >
-              <h3 className="text-sm font-semibold uppercase text-center">{territory.name}</h3>
+              <h3 className="text-sm font-semibold uppercase text-center">{names.territory(territoryId)}</h3>
 
               {/* Army count display */}
               <div className="text-2xl font-bold font-mono-num" style={{ color: sp.color }}>

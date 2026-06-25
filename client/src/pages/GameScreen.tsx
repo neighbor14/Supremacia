@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { useGameStore, planAiTurn, applyGameAction } from '../game/store';
 import { isSimultaneousSellRound } from '../game/simultaneousSell';
 import { playSound, SoundEffect } from '../game/audio';
@@ -28,6 +29,7 @@ import SimultaneousSellModal from '../ui/SimultaneousSellModal';
 export default function GameScreen() {
   const [, setLocation] = useLocation();
   const t = useT();
+  const names = useNames();
   const { game, dispatch } = useGameStore();
   const presentation = usePresentationStore();
   const mp = useMultiplayerStore();
@@ -260,7 +262,7 @@ export default function GameScreen() {
   if (!game) return null;
 
   const isMyTurn = !mp.online || game.turn.currentPlayer === mp.mySuperpower;
-  const currentName = game.players[game.turn.currentPlayer]?.name ?? '';
+  const currentName = names.faction(game.turn.currentPlayer);
 
   return (
     <>

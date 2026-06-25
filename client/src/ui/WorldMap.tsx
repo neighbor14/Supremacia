@@ -6,6 +6,7 @@ import { playSound } from '../game/audio';
 import { Plus, Minus, Maximize2 } from 'lucide-react';
 import { getCompanyOpportunities } from '../game/companyMap';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 /**
  * WorldMap uses CSS transform (scale + translate) for zoom/pan.
@@ -63,6 +64,7 @@ function getInitialScale(): number {
 export default function WorldMap() {
   const { game, selectedTerritory, selectedSeaZone, selectTerritory, selectSeaZone, buildAction, dispatch, companyMapVisible } = useGameStore();
   const tr = useT();
+  const names = useNames();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Transform state
@@ -483,7 +485,7 @@ export default function WorldMap() {
                 textAnchor="middle" dominantBaseline="central" pointerEvents="none"
                 style={{ paintOrder: 'stroke', stroke: 'rgba(3,9,18,0.7)', strokeWidth: 1.8, strokeLinejoin: 'round' }}
               >
-                {territory.name}
+                {names.territory(territoryId)}
               </text>
               {/* Army count badge */}
               {armies > 0 && (
@@ -517,7 +519,7 @@ export default function WorldMap() {
               textAnchor="middle" dominantBaseline="central" pointerEvents="none"
               style={{ paintOrder: 'stroke', stroke: 'rgba(2,8,20,0.7)', strokeWidth: 1.4, strokeLinejoin: 'round' }}
             >
-              {sea.name}
+              {names.sea(seaId)}
             </text>
           );
         })}

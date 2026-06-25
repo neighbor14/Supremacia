@@ -3,6 +3,7 @@ import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 function Dice({ values }: { values: number[] }) {
   return (
@@ -17,6 +18,7 @@ function Dice({ values }: { values: number[] }) {
 export default function CombatModal() {
   const { game, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   const prevPhaseRef = useRef<string>('');
 
   useEffect(() => {
@@ -35,8 +37,8 @@ export default function CombatModal() {
   const defender = combat.defenderId ? SUPERPOWERS[combat.defenderId] : null;
   const targetName = combat.targetId
     ? (combat.targetType === 'territory'
-        ? game.territories[combat.targetId]?.name
-        : game.seaZones[combat.targetId]?.name) || combat.targetId
+        ? names.territory(combat.targetId)
+        : names.sea(combat.targetId))
     : '';
 
   const showDice = combat.phase === 'result' || combat.phase === 'occupy' || combat.phase === 'defender_response';
@@ -50,7 +52,7 @@ export default function CombatModal() {
     if (!territory) return [];
     return territory.adjacentTerritories
       .filter(tid => (defenderPlayer.armies[tid] || 0) > 0 && game.territories[tid]?.owner === combat.defenderId)
-      .map(tid => ({ id: tid, name: game.territories[tid]?.name ?? tid, count: defenderPlayer.armies[tid] || 0 }));
+      .map(tid => ({ id: tid, name: names.territory(tid), count: defenderPlayer.armies[tid] || 0 }));
   })();
 
   const cr = combat.counterResult;
@@ -72,7 +74,7 @@ export default function CombatModal() {
           <div className="text-center">
             <div className="w-4 h-4 rounded-full mx-auto mb-1" style={{ backgroundColor: attacker?.color }} />
             <p className="text-[10px] uppercase" style={{ fontFamily: 'var(--font-display)', color: attacker?.color }}>
-              {attacker?.shortName}
+              {combat.attackerId ? names.factionShort(combat.attackerId) : ''}
             </p>
             <p className="text-lg font-bold font-mono-num">{combat.attackerUnits}</p>
           </div>
@@ -80,7 +82,7 @@ export default function CombatModal() {
           <div className="text-center">
             <div className="w-4 h-4 rounded-full mx-auto mb-1" style={{ backgroundColor: defender?.color }} />
             <p className="text-[10px] uppercase" style={{ fontFamily: 'var(--font-display)', color: defender?.color }}>
-              {defender?.shortName}
+              {combat.defenderId ? names.factionShort(combat.defenderId) : ''}
             </p>
             <p className="text-lg font-bold font-mono-num">{combat.defenderUnits}</p>
           </div>

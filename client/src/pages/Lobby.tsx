@@ -5,8 +5,9 @@ import { useMultiplayerStore, inviteFromRoom } from '../game/multiplayer/session
 import { isMultiplayerConfigured } from '../game/multiplayer';
 import { AIDifficulty, MarketMode } from '../game/types';
 import { AI_DIFFICULTY_LABELS, DEFAULT_AI_DIFFICULTY } from '../game/ai';
-import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
+import { SUPERPOWER_IDS } from '../data/initialPlayers';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
 // MVP online: apenas Modo Clássico. O Digital Balanceado depende da fase de
@@ -19,6 +20,7 @@ type View = 'choose' | 'create' | 'join' | 'room';
 export default function Lobby() {
   const [, setLocation] = useLocation();
   const t = useT();
+  const names = useNames();
   const mp = useMultiplayerStore();
   const [view, setView] = useState<View>('choose');
   const [name, setName] = useState('');
@@ -198,7 +200,7 @@ export default function Lobby() {
                       {seat.name}{isMe && <span className="text-muted-foreground"> {t('lobby.you')}</span>}
                       {mp.room!.hostUserId === seat.userId && <Crown size={12} className="inline ml-1 text-amber-400" />}
                     </span>
-                    {seat.superpowerId && <span className="text-[10px] text-muted-foreground uppercase">{SUPERPOWERS[seat.superpowerId].shortName}</span>}
+                    {seat.superpowerId && <span className="text-[10px] text-muted-foreground uppercase">{names.factionShort(seat.superpowerId)}</span>}
                     {online ? <Wifi size={14} className="text-green-500" /> : <WifiOff size={14} className="text-muted-foreground/50" />}
                     <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded ${seat.isReady ? 'bg-green-500/20 text-green-500' : 'bg-muted text-muted-foreground'}`} style={dispFont}>
                       {seat.isReady ? t('lobby.ready') : '…'}

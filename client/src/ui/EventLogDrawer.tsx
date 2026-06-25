@@ -5,6 +5,7 @@ import { ScrollText, X, GripHorizontal } from 'lucide-react';
 import { EventLogEntry } from '../game/types';
 import { useDraggable } from '../hooks/useDraggable';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
   info: '📋',
@@ -19,6 +20,7 @@ const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
 export default function EventLogDrawer() {
   const { game } = useGameStore();
   const t = useT();
+  const names = useNames();
   const [isOpen, setIsOpen] = useState(false);
   const { containerRef, dragHandleProps, containerStyle } = useDraggable(() => ({
     x: Math.max(52, window.innerWidth - 310),
@@ -102,7 +104,7 @@ export default function EventLogDrawer() {
                           className="text-[10px] font-semibold uppercase tracking-wider"
                           style={{ color: sp.color, fontFamily: 'var(--font-display)' }}
                         >
-                          {sp.shortName}
+                          {names.factionShort(event.player)}
                         </span>
                         <span className="text-[9px] text-muted-foreground ml-auto font-mono">
                           T{event.turn}

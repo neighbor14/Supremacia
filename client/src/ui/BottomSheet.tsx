@@ -10,6 +10,7 @@ import ProspectPanel from './ProspectPanel';
 import { getTechCounts, formatOdds } from '../game/researchDeck';
 import { getCompanyOpportunities } from '../game/companyMap';
 import { useT, fmtNum } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
 const RESOURCE_ICON_PT: Record<ResourceType, string> = { grain: '🌾', oil: '🛢️', mineral: '⛏️' };
@@ -17,6 +18,7 @@ const RESOURCE_ICON_PT: Record<ResourceType, string> = { grain: '🌾', oil: '�
 export default function BottomSheet() {
   const { game, selectedTerritory, selectedSeaZone, dispatch, selectTerritory, selectSeaZone, companyMapVisible } = useGameStore();
   const t = useT();
+  const names = useNames();
   if (!game) return null;
 
   const { turn } = game;
@@ -61,7 +63,7 @@ export default function BottomSheet() {
       : !territory.owner
         ? t('bs.reason.neutral')
         : !isMine
-          ? t('bs.reason.controlledBy', { who: ownerSp?.shortName ?? t('bs.otherPlayer') })
+          ? t('bs.reason.controlledBy', { who: territory.owner ? names.factionShort(territory.owner) : t('bs.otherPlayer') })
           : t('bs.reason.yours');
 
     return (
@@ -75,7 +77,7 @@ export default function BottomSheet() {
               ? <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ownerSp.color }} />
               : <div className="w-3 h-3 rounded-full border border-border bg-secondary" title={t('bs.neutral')} />}
             <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-              {territory.name}
+              {names.territory(selectedTerritory)}
             </h3>
             <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
               {t('bs.landTerritory')}
@@ -114,7 +116,7 @@ export default function BottomSheet() {
         <div className="flex items-center gap-1.5 mb-1.5 text-[11px]">
           <span className="text-muted-foreground">{t('bs.controller')}</span>
           {ownerSp
-            ? <span className="font-semibold" style={{ color: ownerSp.color }}>{ownerSp.name}{isMine ? ` ${t('bs.youParens')}` : ''}</span>
+            ? <span className="font-semibold" style={{ color: ownerSp.color }}>{names.faction(territory.owner!)}{isMine ? ` ${t('bs.youParens')}` : ''}</span>
             : <span className="font-semibold text-muted-foreground">{t('bs.neutralNoController')}</span>}
         </div>
 
@@ -139,7 +141,7 @@ export default function BottomSheet() {
             <div className="flex flex-wrap gap-1">
               {myCompanies.map(card => (
                 <span key={card!.id} className="text-[11px] px-1.5 py-0.5 bg-emerald-600/15 text-emerald-300 border border-emerald-600/30 rounded">
-                  {RESOURCE_ICON_PT[card!.type]} {card!.companyName} · {t(`resource.${card!.type}` as TranslationKey)} +{card!.production}{t('bs.perTurnSlash')}
+                  {RESOURCE_ICON_PT[card!.type]} {names.company(card!.id, card!.companyName)} · {t(`resource.${card!.type}` as TranslationKey)} +{card!.production}{t('bs.perTurnSlash')}
                 </span>
               ))}
             </div>
@@ -195,7 +197,7 @@ export default function BottomSheet() {
           <div className="flex items-center gap-2">
             <span className="text-base">⚓</span>
             <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-              {sea.name}
+              {names.sea(selectedSeaZone)}
             </h3>
             <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
               {sea.type === 'coastal' ? t('bs.coastal') : t('bs.oceanic')}
@@ -217,7 +219,7 @@ export default function BottomSheet() {
               return (
                 <div key={f.id} className="flex items-center gap-2 bg-secondary/40 rounded-md px-2 py-1.5">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sp.color }} />
-                  <span className="text-[11px] font-semibold w-24 truncate" style={{ color: sp.color }}>{sp.shortName}</span>
+                  <span className="text-[11px] font-semibold w-24 truncate" style={{ color: sp.color }}>{names.factionShort(f.id)}</span>
                   <span className="text-[11px] font-mono flex items-center gap-1" title={t('bs.shipsTitle')}>
                     ⚓ <strong>{f.navies}</strong> <span className="text-muted-foreground">{t('bs.shipsWord')}</span>
                   </span>
@@ -863,6 +865,7 @@ function MovePanel() {
 function SelectedTerritoryMoveActions() {
   const { game, selectedTerritory, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   if (!game || !selectedTerritory) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -877,7 +880,7 @@ function SelectedTerritoryMoveActions() {
   // and the engine never disagree on why a move is allowed/blocked.
   const targets = adjacents.map(adjId => ({
     id: adjId,
-    name: game.territories[adjId]?.name ?? adjId,
+    name: names.territory(adjId),
     neutral: game.territories[adjId]?.owner == null,
     block: getMoveBlockReason(game, selectedTerritory, adjId),
   }));
@@ -895,7 +898,7 @@ function SelectedTerritoryMoveActions() {
     const after = useGameStore.getState().game;
     if (wasNeutral && after?.territories[adjId]?.owner === player.id) {
       playSound('territory-conquered', 0.7);
-      toast.success(t('bs.conqueredToast', { name: game.territories[adjId]?.name ?? adjId }));
+      toast.success(t('bs.conqueredToast', { name: names.territory(adjId) }));
     }
   };
 
@@ -911,7 +914,7 @@ function SelectedTerritoryMoveActions() {
   return (
     <div className="bg-secondary/50 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        {t('bs.moveFromPre')} <strong>{territory.name}</strong> {t('bs.moveFromPost', { n: myArmies, g: RULES.LAND_MOVE_GRAIN_COST })}
+        {t('bs.moveFromPre')} <strong>{names.territory(selectedTerritory)}</strong> {t('bs.moveFromPost', { n: myArmies, g: RULES.LAND_MOVE_GRAIN_COST })}
       </p>
       <div className="flex flex-wrap gap-1">
         {targets.map(({ id, name, neutral, block }) => {
@@ -967,7 +970,7 @@ function SelectedTerritoryMoveActions() {
                         : 'bg-secondary/30 text-muted-foreground/40 border-border/30 cursor-not-allowed'
                     }`}
                   >
-                    ⚓ {sea!.name} {canEmbark ? `(${t('bs.freeCap', { free })})` : `(${reason})`}
+                    ⚓ {names.sea(sid)} {canEmbark ? `(${t('bs.freeCap', { free })})` : `(${reason})`}
                   </button>
                 );
               })}
@@ -982,6 +985,7 @@ function SelectedTerritoryMoveActions() {
 function SelectedSeaZoneMoveActions() {
   const { game, selectedSeaZone, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   if (!game || !selectedSeaZone) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -1005,7 +1009,7 @@ function SelectedSeaZoneMoveActions() {
   return (
     <div className="bg-secondary/50 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        <strong>{sea.name}</strong> — ⚓ {t('bs.seaNavies', { n: myNavies })}{myEmbarked > 0 ? t('bs.embarkedSuffix', { n: myEmbarked }) : ''}:
+        <strong>{names.sea(selectedSeaZone)}</strong> — ⚓ {t('bs.seaNavies', { n: myNavies })}{myEmbarked > 0 ? t('bs.embarkedSuffix', { n: myEmbarked }) : ''}:
       </p>
       {myNavies > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -1018,7 +1022,7 @@ function SelectedSeaZoneMoveActions() {
               }}
               className="text-[10px] px-2 py-2 bg-blue-500/20 text-blue-300 rounded hover:bg-blue-500/30 active:scale-[0.95] border border-blue-500/20"
             >
-              → {game.seaZones[adjId]?.name}
+              → {names.sea(adjId)}
             </button>
           ))}
         </div>
@@ -1041,7 +1045,7 @@ function SelectedSeaZoneMoveActions() {
                   }}
                   className="text-[10px] px-2 py-2 bg-emerald-500/20 text-emerald-300 rounded hover:bg-emerald-500/30 active:scale-[0.95] border border-emerald-500/30"
                 >
-                  ↓ {t!.name}
+                  ↓ {names.territory(t!.id)}
                 </button>
               ))}
             </div>
@@ -1119,6 +1123,7 @@ function AttackPanel() {
 function SelectedTerritoryAttackActions() {
   const { game, selectedTerritory, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   if (!game || !selectedTerritory) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -1137,7 +1142,7 @@ function SelectedTerritoryAttackActions() {
       return (
         <div className="bg-destructive/10 rounded-md p-2 mb-2">
           <p className="text-[10px] text-foreground font-medium mb-1">
-            {t('bs.attackFromPre')} <strong>{territory.name}</strong> {t('bs.attackFromPost', { n: myArmies })}
+            {t('bs.attackFromPre')} <strong>{names.territory(selectedTerritory)}</strong> {t('bs.attackFromPost', { n: myArmies })}
           </p>
           <div className="flex flex-wrap gap-1">
             {targets.map(targetId => (
@@ -1149,7 +1154,7 @@ function SelectedTerritoryAttackActions() {
                 }}
                 className="text-[10px] px-2 py-2 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
               >
-                ⚔ {game.territories[targetId]?.name}
+                ⚔ {names.territory(targetId)}
               </button>
             ))}
           </div>
@@ -1170,7 +1175,7 @@ function SelectedTerritoryAttackActions() {
           className="text-[10px] px-3 py-1.5 bg-destructive text-destructive-foreground rounded uppercase tracking-wider hover:opacity-90 active:scale-[0.95]"
           style={{ fontFamily: 'var(--font-display)' }}
         >
-          ☢ {t('bs.launchNukeAt', { name: territory.name })}
+          ☢ {t('bs.launchNukeAt', { name: names.territory(selectedTerritory) })}
         </button>
       </div>
     );
@@ -1182,6 +1187,7 @@ function SelectedTerritoryAttackActions() {
 function SelectedSeaZoneAttackActions() {
   const { game, selectedSeaZone, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   if (!game || !selectedSeaZone) return null;
 
   const player = game.players[game.turn.currentPlayer];
@@ -1214,7 +1220,7 @@ function SelectedSeaZoneAttackActions() {
   return (
     <div className="bg-destructive/10 rounded-md p-2 mb-2">
       <p className="text-[10px] text-foreground font-medium mb-1">
-        {t('bs.attackFromPre')} <strong>{sea.name}</strong> {t('bs.attackFromSeaPost', { n: myNavies })}
+        {t('bs.attackFromPre')} <strong>{names.sea(selectedSeaZone)}</strong> {t('bs.attackFromSeaPost', { n: myNavies })}
       </p>
       <div className="flex flex-wrap gap-1">
         {seaTargets.map(targetId => (
@@ -1226,7 +1232,7 @@ function SelectedSeaZoneAttackActions() {
             }}
             className="text-[10px] px-2 py-2 bg-destructive/20 text-destructive rounded hover:bg-destructive/30 active:scale-[0.95] border border-destructive/30"
           >
-            ⚔ {game.seaZones[targetId]?.name}
+            ⚔ {names.sea(targetId)}
           </button>
         ))}
         {landTargets.map(targetId => (
@@ -1239,7 +1245,7 @@ function SelectedSeaZoneAttackActions() {
             className="text-[10px] px-2 py-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded hover:bg-amber-500/30 active:scale-[0.95] border border-amber-500/30"
             title={t('bs.bombardTitle')}
           >
-            💥 {game.territories[targetId]?.name}
+            💥 {names.territory(targetId)}
           </button>
         ))}
       </div>

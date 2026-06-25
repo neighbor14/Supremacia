@@ -4,6 +4,7 @@ import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { ResourceType } from '../game/types';
 import { useT, fmtNum } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
 // ============================================================
@@ -25,6 +26,7 @@ const money = (n: number) => `$${fmtNum(n)}`;
 export default function SimultaneousSellModal() {
   const { game, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   const ss = game?.simultaneousSell;
 
   // O humano da partida (MVP: 1 humano).
@@ -83,7 +85,7 @@ export default function SimultaneousSellModal() {
               <div key={pp.playerId} className="flex items-center justify-between text-xs px-1">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: psp.color }} />
-                  <span className="font-semibold">{psp.shortName}</span>
+                  <span className="font-semibold">{names.factionShort(pp.playerId)}</span>
                 </span>
                 <span className="text-muted-foreground">
                   {pp.soldAny ? (

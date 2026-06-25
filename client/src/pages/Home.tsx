@@ -9,6 +9,7 @@ import { SUPERPOWERS, SUPERPOWER_IDS } from '../data/initialPlayers';
 import { GameState } from '../game/types';
 import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 import LanguageSelector from '../ui/LanguageSelector';
 import TutorialSelector from '../ui/TutorialSelector';
@@ -20,6 +21,7 @@ type Step = 'menu' | 'superpower' | 'ai_count';
 export default function Home() {
   const [, setLocation] = useLocation();
   const t = useT();
+  const names = useNames();
   const { startGame, loadGame } = useGameStore();
   const [step, setStep] = useState<Step>('menu');
   const [selectedSuperpower, setSelectedSuperpower] = useState<SuperpowerId | null>(null);
@@ -183,10 +185,10 @@ export default function Home() {
                 style={{ borderLeftColor: s.color, borderLeftWidth: '4px' }}
               >
                 <span className="text-xs font-bold uppercase tracking-wider block" style={{ color: s.color, fontFamily: 'var(--font-display)' }}>
-                  {s.shortName}
+                  {names.factionShort(s.id)}
                 </span>
                 <span className="text-xs text-muted-foreground mt-1 block">
-                  {s.name}
+                  {names.faction(s.id)}
                 </span>
               </button>
             ))}
@@ -207,7 +209,7 @@ export default function Home() {
           <div className="flex items-center justify-center gap-2 mb-6">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sp.color }} />
             <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: sp.color, fontFamily: 'var(--font-display)' }}>
-              {sp.shortName} — {sp.name}
+              {names.factionShort(sp.id)} — {names.faction(sp.id)}
             </span>
           </div>
 

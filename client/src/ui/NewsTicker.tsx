@@ -1,8 +1,8 @@
 import { useRef, useEffect } from 'react';
 import { useGameStore } from '../game/store';
-import { SUPERPOWERS } from '../data/initialPlayers';
 import { EventLogEntry } from '../game/types';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
   info: '📋',
@@ -17,6 +17,7 @@ const TYPE_ICONS: Record<EventLogEntry['type'], string> = {
 export default function NewsTicker() {
   const { game } = useGameStore();
   const t = useT();
+  const names = useNames();
   const trackRef = useRef<HTMLDivElement>(null);
 
   const events = game?.eventLog ?? [];
@@ -35,8 +36,7 @@ export default function NewsTicker() {
   const recent = events.slice(-25);
   const text = recent
     .map(e => {
-      const sp = SUPERPOWERS[e.player];
-      return `${TYPE_ICONS[e.type]} ${sp.shortName}: ${e.message}`;
+      return `${TYPE_ICONS[e.type]} ${names.factionShort(e.player)}: ${e.message}`;
     })
     .join('   ◆   ');
 

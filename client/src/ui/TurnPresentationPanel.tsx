@@ -4,6 +4,7 @@ import { usePresentationStore } from '../stores/presentationStore';
 import { ActionEventType } from '../game/types';
 import { SkipForward, Zap, Clock, Pause, Play } from 'lucide-react';
 import { useT, fmtNum } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
 const ACTION_ICONS: Record<ActionEventType, string> = {
@@ -67,6 +68,7 @@ function CountdownBar({ durationMs, color }: { durationMs: number; color: string
 
 export default function TurnPresentationPanel() {
   const t = useT();
+  const names = useNames();
   const {
     steps, currentIndex, isPresenting, isPaused, speed, completedEvents,
     pause, resume, setSpeed, skip,
@@ -118,7 +120,7 @@ export default function TurnPresentationPanel() {
                 className="text-xs font-bold uppercase tracking-widest"
                 style={{ color: sp.color, fontFamily: 'var(--font-display)' }}
               >
-                {sp.name}
+                {names.faction(ev.playerId)}
               </span>
               <span
                 className="ml-auto text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider"

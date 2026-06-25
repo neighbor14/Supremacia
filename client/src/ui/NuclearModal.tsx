@@ -3,10 +3,12 @@ import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 export default function NuclearModal() {
   const { game, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   const prevPhaseRef = useRef<string>('');
 
   useEffect(() => {
@@ -30,8 +32,8 @@ export default function NuclearModal() {
   const attacker = nuclearAttack.attackerId ? SUPERPOWERS[nuclearAttack.attackerId] : null;
   const targetName = nuclearAttack.targetId
     ? (nuclearAttack.targetType === 'territory'
-      ? game.territories[nuclearAttack.targetId]?.name
-      : game.seaZones[nuclearAttack.targetId]?.name) || nuclearAttack.targetId
+      ? names.territory(nuclearAttack.targetId)
+      : names.sea(nuclearAttack.targetId))
     : '';
 
   return (
@@ -45,7 +47,7 @@ export default function NuclearModal() {
         </div>
 
         <p className="text-xs text-center text-muted-foreground mb-4">
-          <span style={{ color: attacker?.color }}>{attacker?.shortName}</span> {t('nuke.launchedOn')}{' '}
+          <span style={{ color: attacker?.color }}>{nuclearAttack.attackerId ? names.factionShort(nuclearAttack.attackerId) : ''}</span> {t('nuke.launchedOn')}{' '}
           <span className="text-foreground font-semibold">{targetName}</span>
         </p>
 

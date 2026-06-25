@@ -1,9 +1,13 @@
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { Loader2 } from 'lucide-react';
+import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 export default function CpuTurnOverlay() {
   const { game } = useGameStore();
+  const t = useT();
+  const names = useNames();
   if (!game) return null;
 
   const currentPlayer = game.players[game.turn.currentPlayer];
@@ -38,13 +42,13 @@ export default function CpuTurnOverlay() {
             className="text-sm font-bold uppercase tracking-wider"
             style={{ fontFamily: 'var(--font-display)', color: sp.color }}
           >
-            {sp.shortName}
+            {names.factionShort(game.turn.currentPlayer)}
           </span>
         </div>
 
         {/* Status text */}
         <p className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-          Executando turno...
+          {t('present.cpuRunningTurn')}
         </p>
 
         {/* Animated dots */}

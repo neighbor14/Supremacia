@@ -2,11 +2,13 @@ import { useLocation } from 'wouter';
 import { useGameStore } from '../game/store';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 
 export default function GameOverModal() {
   const [, setLocation] = useLocation();
   const { game } = useGameStore();
   const t = useT();
+  const names = useNames();
   if (!game || !game.gameOver) return null;
 
   const winner = game.winner ? SUPERPOWERS[game.winner] : null;
@@ -52,7 +54,7 @@ export default function GameOverModal() {
               <div className="w-12 h-12 rounded-full mx-auto mb-3" style={{ backgroundColor: winner.color }} />
             )}
             <h2 className="text-xl font-bold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: winner?.color }}>
-              {winner?.name || t('gameOver.draw')}
+              {game.winner ? names.faction(game.winner) : t('gameOver.draw')}
             </h2>
             <p className="text-xs text-muted-foreground mb-6">
               {endMessages[game.endCondition || 'supremacy']}

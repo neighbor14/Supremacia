@@ -4,6 +4,7 @@ import { playSound } from '../game/audio';
 import { RULES } from '../game/rulesConfig';
 import type { ResourceCard, ResourceType } from '../game/types';
 import { useT, fmtNum } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
 type RevealedCard = ResourceCard;
@@ -14,6 +15,7 @@ const CARD_COLORS: Record<string, string> = { grain: '#eab308', oil: '#ef4444', 
 export default function ProspectPanel() {
   const { game, dispatch } = useGameStore();
   const t = useT();
+  const names = useNames();
   const [revealed, setRevealed] = useState<RevealedCard[]>([]);
   const [flipping, setFlipping] = useState(false);
   const prevCardIds = useRef<Set<string>>(new Set());
@@ -186,9 +188,9 @@ export default function ProspectPanel() {
                       +{card.production}
                     </span>
                   </div>
-                  <span className="text-[9px] text-muted-foreground truncate leading-tight">{card.companyName}</span>
+                  <span className="text-[9px] text-muted-foreground truncate leading-tight">{names.company(card.id, card.companyName)}</span>
                   <span className="text-[9px] text-muted-foreground leading-tight">
-                    {game.territories[card.territoryId]?.name ?? card.territoryId}
+                    {names.territory(card.territoryId)}
                   </span>
                 </div>
               );

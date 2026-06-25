@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, GripHorizontal } from 'lucide-react';
 import { useDraggable } from '../hooks/useDraggable';
 import type { ResourceType } from '../game/types';
 import { useT } from '../i18n/useI18n';
+import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
 const RESOURCE_CONFIG: { key: ResourceType; icon: string; color: string }[] = [
@@ -15,6 +16,7 @@ const RESOURCE_CONFIG: { key: ResourceType; icon: string; color: string }[] = [
 export default function ResourceCardsPanel() {
   const { game } = useGameStore();
   const t = useT();
+  const names = useNames();
   const [expanded, setExpanded] = useState(false);
   const { containerRef, dragHandleProps, containerStyle } = useDraggable(() => ({
     x: window.innerWidth - 212,
@@ -33,7 +35,7 @@ export default function ResourceCardsPanel() {
   );
   const controlledTerritories = Object.values(game.territories)
     .filter(t => t.owner === player.id && !t.nuked)
-    .map(t => ({ id: t.id, name: t.name, producing: territoryIdsWithMyCompany.has(t.id) }));
+    .map(t => ({ id: t.id, name: names.territory(t.id), producing: territoryIdsWithMyCompany.has(t.id) }));
   const producingCount = controlledTerritories.filter(t => t.producing).length;
 
   const totalProduction: Record<ResourceType, number> = { grain: 0, oil: 0, mineral: 0 };
@@ -49,12 +51,12 @@ export default function ResourceCardsPanel() {
       totalProduction[card.type] += card.production;
       cardsByType[card.type].push({
         id: cardId,
-        name: card.companyName,
+        name: names.company(cardId, card.companyName),
         production: card.production,
-        territory: game.territories[card.territoryId]?.name ?? card.territoryId,
+        territory: names.territory(card.territoryId),
       });
     } else {
-      specials.push({ id: cardId, label: card.companyName });
+      specials.push({ id: cardId, label: names.company(cardId, card.companyName) });
     }
   }
 
