@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
-import { useGameStore, planAiTurn } from '../game/store';
+import { useGameStore, planAiTurn, applyGameAction } from '../game/store';
 import { playSound, SoundEffect } from '../game/audio';
 import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
 import { usePresentationStore } from '../stores/presentationStore';
+import { useMultiplayerStore } from '../game/multiplayer/session';
 import WorldMap from '../ui/WorldMap';
 import TurnPhaseBar from '../ui/TurnPhaseBar';
 import PlayerStatusBar from '../ui/PlayerStatusBar';
@@ -26,6 +27,7 @@ export default function GameScreen() {
   const [, setLocation] = useLocation();
   const { game, dispatch } = useGameStore();
   const presentation = usePresentationStore();
+  const mp = useMultiplayerStore();
   const { initialized } = useAudioInit();
   const { play: playMusicTrack, stop: stopMusicTrack } = useMusicPlayer();
 
@@ -41,7 +43,11 @@ export default function GameScreen() {
 
   useEffect(() => {
     if (!game) {
-      setLocation('/');
+      // Reconexão: se havia uma partida online, volta ao lobby para reentrar
+      // (o assento é reaproveitado pelo userId). Senão, vai para o início.
+      const activeCode = localStorage.getItem('supremacia_mp_active');
+      if (activeCode) setLocation(`/lobby?code=${activeCode}`);
+      else setLocation('/');
     }
   }, [game, setLocation]);
 
@@ -146,6 +152,7 @@ export default function GameScreen() {
   // ── AI Turn: start presentation when it's an AI player's turn ──────────────
   useEffect(() => {
     if (!game || game.gameOver) return;
+    if (mp.online) return; // online: a IA é dirigida pelo host (efeito abaixo)
     const currentPlayer = game.players[game.turn.currentPlayer];
     if (currentPlayer.isHuman || currentPlayer.isEliminated) return;
     if (presentation.isPresenting) return; // already presenting (or skip in progress)
@@ -185,6 +192,7 @@ export default function GameScreen() {
 
   // ── Presentation: apply each step after its delay ───────────────────────────
   useEffect(() => {
+    if (mp.online) return; // online: snapshots vêm do servidor, não da apresentação local
     if (!presentation.isPresenting || presentation.isPaused) return;
     // Wait for any modal (e.g. drawn card from research) to be dismissed first
     if (game?.drawnCard?.active) return;
@@ -215,7 +223,40 @@ export default function GameScreen() {
     game?.drawnCard?.active,
   ]);
 
+  // ── Online: o host dirige a IA, submetendo cada passo como ação ─────────────
+  // Os demais clientes apenas recebem os snapshots via Realtime.
+  useEffect(() => {
+    if (!mp.online || !mp.isHost || !game || game.gameOver) return;
+    const cur = game.players[game.turn.currentPlayer];
+    if (cur.isHuman || cur.isEliminated) return;
+    if (game.combat.active && game.combat.phase === 'defender_response') return;
+
+    let cancelled = false;
+    const aiId = game.turn.currentPlayer;
+    const run = async () => {
+      await new Promise(r => setTimeout(r, 600));
+      if (cancelled) return;
+      const steps = planAiTurn(game);
+      if (steps.length === 0) {
+        await mp.submitAiStep(applyGameAction(game, { type: 'CPU_TURN' }), aiId);
+        return;
+      }
+      for (const step of steps) {
+        if (cancelled) return;
+        const ok = await mp.submitAiStep(step.stateAfter, aiId);
+        if (!ok) return; // conflito/parada — re-planeja no próximo render
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mp.online, mp.isHost, game?.turn.currentPlayer, game?.turn.turnNumber]);
+
   if (!game) return null;
+
+  const isMyTurn = !mp.online || game.turn.currentPlayer === mp.mySuperpower;
+  const currentName = game.players[game.turn.currentPlayer]?.name ?? '';
 
   return (
     <>
@@ -224,6 +265,18 @@ export default function GameScreen() {
 
       {/* Full-screen game layout - no wasted space */}
       <div className="fixed inset-0 overflow-hidden flex flex-col bg-background">
+        {/* Online: banner de turno (vez de quem / aguardando) */}
+        {mp.online && (
+          <div
+            className={`absolute top-1 left-1/2 -translate-x-1/2 z-50 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider shadow-md ${
+              isMyTurn ? 'bg-green-600 text-white' : 'bg-amber-500/90 text-black'
+            }`}
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            {isMyTurn ? 'Sua vez' : `Vez de ${currentName} — aguarde`}
+          </div>
+        )}
+
         {/* Top: Turn Phase Bar - compact, always visible */}
         <TurnPhaseBar />
 

@@ -219,6 +219,10 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Segurança: nunca publicar sourcemaps em produção (evita reconstruir o
+    // código-fonte/mecânica a partir do bundle). Explícito para impedir
+    // regressão — ver docs/auditoria-exposicao-seguranca.md (Fase 1).
+    sourcemap: false,
   },
   server: {
     port: 3000,

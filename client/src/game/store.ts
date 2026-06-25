@@ -26,6 +26,13 @@ interface GameStore {
   /** Private overlay showing which map territories relate to the player's company cards. */
   companyMapVisible: boolean;
 
+  /**
+   * Quando definido (partida online), as ações de jogo do humano são roteadas
+   * para o servidor em vez de aplicadas localmente. Null = jogo local/IA.
+   */
+  onlineSubmit: ((action: GameAction) => void) | null;
+  setOnlineSubmit: (fn: ((action: GameAction) => void) | null) => void;
+
   // Actions
   startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty, marketMode?: MarketMode) => void;
   dispatch: (action: GameAction) => void;
@@ -3037,6 +3044,194 @@ function migrateBalancedFields(state: GameState): void {
   }
 }
 
+// ============================================================
+// REDUCER PURO — fonte única de verdade da transição de estado.
+// (state, action) => novo state, SEM efeitos colaterais (sem set/
+// localStorage). Usado tanto pelo dispatch local quanto pelo
+// multiplayer (computeNextState no servidor/adapter). As ações
+// APPLY_AI_STEP e LOAD_GAME são tratadas no dispatch (substituem o
+// estado direto) e não passam por aqui.
+// ============================================================
+export function applyGameAction(game: GameState, action: GameAction): GameState {
+  // Clone state for immutability
+  const state = JSON.parse(JSON.stringify(game)) as GameState;
+
+  switch (action.type) {
+    case 'PAY_SALARIES':
+      paySalaries(state);
+      state.turn.stageComplete = true;
+      break;
+    case 'TRANSFER_PRODUCTION':
+      transferProduction(state);
+      state.turn.stageComplete = true;
+      break;
+    case 'NEXT_STAGE':
+      nextStage(state);
+      break;
+    case 'SKIP_STAGE':
+      if (state.turn.stage > 2) {
+        nextStage(state);
+      }
+      break;
+    case 'SELECT_OPTIONAL_STAGE':
+      selectOptionalStage(state, action.stage);
+      break;
+    case 'SET_ARMY_PLACEMENT': {
+      const human = Object.values(state.players).find(p => p.isHuman);
+      if (human) {
+        const newArmies: Record<string, number> = {};
+        for (const [tid, count] of Object.entries(action.placement)) {
+          if (count > 0 && state.territories[tid]?.owner === human.id) {
+            newArmies[tid] = count;
+          }
+        }
+        human.armies = newArmies;
+      }
+      break;
+    }
+    case 'END_TURN':
+      advanceToNextPlayer(state);
+      break;
+    case 'SELL_RESOURCE':
+      sellResource(state, action.resource, action.quantity);
+      break;
+    case 'BUY_RESOURCE':
+      buyResource(state, action.resource, action.quantity);
+      break;
+    case 'PROSPECT':
+      prospect(state, action.resourceType);
+      break;
+    case 'BUILD_UNITS':
+      buildUnits(state, action.units);
+      break;
+    case 'BUILD_NUKE':
+      buildNuke(state);
+      break;
+    case 'BUILD_LASER_STAR':
+      buildLaserStar(state);
+      break;
+    case 'RESEARCH_NUKE':
+      researchNuke(state, action.cardId);
+      break;
+    case 'RESEARCH_LASER_STAR':
+      researchLaserStar(state, action.cardId);
+      break;
+    case 'MOVE_ARMY':
+      moveArmy(state, action.from, action.to, action.count);
+      break;
+    case 'MOVE_NAVY':
+      moveNavy(state, action.from, action.to, action.count);
+      break;
+    case 'EMBARK':
+      embark(state, action.territoryId, action.seaZoneId, action.count);
+      break;
+    case 'DISEMBARK':
+      disembark(state, action.seaZoneId, action.territoryId, action.count);
+      break;
+    case 'AIRLIFT':
+      airlift(state, action.from, action.to, action.count);
+      break;
+    case 'ATTACK_TERRITORY':
+      initiateAttack(state, action.from, action.target, 'territory');
+      break;
+    case 'ATTACK_SEA':
+      initiateAttack(state, action.from, action.target, 'sea');
+      break;
+    case 'ROLL_COMBAT':
+      rollCombat(state);
+      if (state.combat.active && state.combat.phase === 'result') {
+        resolveDefenderResponseAuto(state);
+      }
+      break;
+    case 'OCCUPY_TERRITORY':
+      occupyTerritory(state, action.count ?? 1);
+      break;
+    case 'LAUNCH_NUKE':
+      launchNuke(state, action.target, action.targetType);
+      break;
+    case 'DEFEND_NUKE':
+      defendNuke(state);
+      break;
+    case 'RESOLVE_NUKE':
+      resolveNuke(state);
+      break;
+    case 'TAKE_LOAN':
+      takeLoan(state, action.amount);
+      break;
+    case 'PAY_LOAN':
+      payLoan(state, action.amount);
+      break;
+    case 'CPU_TURN':
+      cpuTurn(state);
+      break;
+    case 'DISMISS_DRAWN_CARD':
+      finalizeResearch(state);
+      finalizeProspect(state);
+      state.drawnCard = null;
+      break;
+    case 'DRAW_RESEARCH_CARD':
+      state.drawnCard = null;
+      drawResearchCardInternal(state);
+      break;
+    case 'STOP_RESEARCH':
+      finalizeResearch(state);
+      state.drawnCard = null;
+      break;
+    case 'DRAW_PROSPECT_CARD':
+      state.drawnCard = null;
+      drawProspectCardInternal(state);
+      break;
+    case 'STOP_PROSPECT':
+      finalizeProspect(state);
+      state.drawnCard = null;
+      break;
+    case 'REINFORCE_AFTER_COMBAT': {
+      if (state.combat.phase !== 'defender_response') break;
+      performReinforcement(state, action.from, action.count);
+      break;
+    }
+    case 'COUNTER_ATTACK': {
+      if (state.combat.phase !== 'defender_response') break;
+      performCounterAttack(state);
+      break;
+    }
+    case 'FINISH_DEFENDER_RESPONSE': {
+      if (state.combat.phase !== 'defender_response') break;
+      const wasAiTurn = !state.players[state.turn.currentPlayer].isHuman;
+      resetCombat(state);
+      if (wasAiTurn) advanceToNextPlayer(state);
+      break;
+    }
+    case 'OPEN_SIMULTANEOUS_SELL':
+      openSimultaneousSell(state);
+      break;
+    case 'SUBMIT_SELL_DECLARATION':
+      submitSellDeclaration(state, action.playerId, action.grain, action.oil, action.mineral);
+      break;
+    case 'RESOLVE_SIMULTANEOUS_SELL':
+      resolveSimultaneousSell(state);
+      break;
+    case 'ACK_SIMULTANEOUS_SELL':
+      ackSimultaneousSell(state);
+      break;
+    case 'DECLARE_DETENTE': {
+      state.gameOver = true;
+      state.endCondition = 'detente';
+      let maxWealth = -Infinity;
+      let winner: SuperpowerId | null = null;
+      for (const p of Object.values(state.players)) {
+        if (p.isEliminated) continue;
+        const w = calculateWealth(state, p.id);
+        if (w > maxWealth) { maxWealth = w; winner = p.id; }
+      }
+      state.winner = winner;
+      break;
+    }
+  }
+
+  return state;
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
   game: null,
   selectedTerritory: null,
@@ -3044,7 +3239,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   uiMode: 'map',
   buildAction: null,
   companyMapVisible: false,
+  onlineSubmit: null,
 
+  setOnlineSubmit: (fn) => set({ onlineSubmit: fn }),
   setCompanyMapVisible: (v) => set({ companyMapVisible: v }),
 
   startGame: (humanPlayer: SuperpowerId, aiCount: number, aiDifficulty?: AIDifficulty, marketMode?: MarketMode) => {
@@ -3056,208 +3253,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   dispatch: (action: GameAction) => {
-    const { game } = get();
+    const { game, onlineSubmit } = get();
     if (!game || game.gameOver) return;
 
-    // Clone state for immutability
-    const state = JSON.parse(JSON.stringify(game)) as GameState;
-
-    switch (action.type) {
-      case 'PAY_SALARIES':
-        paySalaries(state);
-        state.turn.stageComplete = true;
-        break;
-      case 'TRANSFER_PRODUCTION':
-        transferProduction(state);
-        state.turn.stageComplete = true;
-        break;
-      case 'NEXT_STAGE':
-        nextStage(state);
-        break;
-      case 'SKIP_STAGE':
-        if (state.turn.stage > 2) {
-          nextStage(state);
-        }
-        break;
-      case 'SELECT_OPTIONAL_STAGE':
-        selectOptionalStage(state, action.stage);
-        break;
-      case 'SET_ARMY_PLACEMENT': {
-        // Apply the human player's initial army distribution from the setup screen
-        const human = Object.values(state.players).find(p => p.isHuman);
-        if (human) {
-          const newArmies: Record<string, number> = {};
-          for (const [tid, count] of Object.entries(action.placement)) {
-            if (count > 0 && state.territories[tid]?.owner === human.id) {
-              newArmies[tid] = count;
-            }
-          }
-          human.armies = newArmies;
-        }
-        break;
-      }
-      case 'END_TURN':
-        advanceToNextPlayer(state);
-        break;
-      case 'SELL_RESOURCE':
-        sellResource(state, action.resource, action.quantity);
-        break;
-      case 'BUY_RESOURCE':
-        buyResource(state, action.resource, action.quantity);
-        break;
-      case 'PROSPECT':
-        prospect(state, action.resourceType);
-        break;
-      case 'BUILD_UNITS':
-        buildUnits(state, action.units);
-        break;
-      case 'BUILD_NUKE':
-        buildNuke(state);
-        break;
-      case 'BUILD_LASER_STAR':
-        buildLaserStar(state);
-        break;
-      case 'RESEARCH_NUKE':
-        researchNuke(state, action.cardId);
-        break;
-      case 'RESEARCH_LASER_STAR':
-        researchLaserStar(state, action.cardId);
-        break;
-      case 'MOVE_ARMY':
-        moveArmy(state, action.from, action.to, action.count);
-        break;
-      case 'MOVE_NAVY':
-        moveNavy(state, action.from, action.to, action.count);
-        break;
-      case 'EMBARK':
-        embark(state, action.territoryId, action.seaZoneId, action.count);
-        break;
-      case 'DISEMBARK':
-        disembark(state, action.seaZoneId, action.territoryId, action.count);
-        break;
-      case 'AIRLIFT':
-        airlift(state, action.from, action.to, action.count);
-        break;
-      case 'ATTACK_TERRITORY':
-        initiateAttack(state, action.from, action.target, 'territory');
-        break;
-      case 'ATTACK_SEA':
-        initiateAttack(state, action.from, action.target, 'sea');
-        break;
-      case 'ROLL_COMBAT':
-        rollCombat(state);
-        // Humano é o atacante aqui → o defensor é a IA. Resolve a resposta do
-        // defensor (D6/D7) automaticamente e mantém phase 'result' para que o
-        // humano veja o resultado + o contra-ataque no CombatModal antes de encerrar.
-        if (state.combat.active && state.combat.phase === 'result') {
-          resolveDefenderResponseAuto(state);
-        }
-        break;
-      case 'OCCUPY_TERRITORY':
-        occupyTerritory(state, action.count ?? 1);
-        break;
-      case 'LAUNCH_NUKE':
-        launchNuke(state, action.target, action.targetType);
-        break;
-      case 'DEFEND_NUKE':
-        defendNuke(state);
-        break;
-      case 'RESOLVE_NUKE':
-        resolveNuke(state);
-        break;
-      case 'TAKE_LOAN':
-        takeLoan(state, action.amount);
-        break;
-      case 'PAY_LOAN':
-        payLoan(state, action.amount);
-        break;
-      case 'CPU_TURN':
-        cpuTurn(state);
-        break;
-      case 'DISMISS_DRAWN_CARD':
-        finalizeResearch(state);  // Returns drawn research cards to deck if session active
-        finalizeProspect(state);  // Returns set-aside prospect cards to deck if session active
-        state.drawnCard = null;
-        break;
-      case 'DRAW_RESEARCH_CARD':
-        state.drawnCard = null;
-        drawResearchCardInternal(state);
-        break;
-      case 'STOP_RESEARCH':
-        finalizeResearch(state); // Return all drawn cards to deck + reshuffle
-        state.drawnCard = null;
-        break;
-      case 'DRAW_PROSPECT_CARD':
-        state.drawnCard = null;
-        drawProspectCardInternal(state);
-        break;
-      case 'STOP_PROSPECT':
-        finalizeProspect(state); // Return all set-aside cards to deck + reshuffle
-        state.drawnCard = null;
-        break;
-      // ── D6/D7: resposta interativa do defensor humano ──
-      // Sub-ações enquanto combat.phase === 'defender_response'. Não encerram o
-      // combate; FINISH_DEFENDER_RESPONSE encerra (e, se for turno da IA, avança).
-      case 'REINFORCE_AFTER_COMBAT': {
-        if (state.combat.phase !== 'defender_response') break;
-        performReinforcement(state, action.from, action.count);
-        break;
-      }
-      case 'COUNTER_ATTACK': {
-        if (state.combat.phase !== 'defender_response') break;
-        performCounterAttack(state);
-        break;
-      }
-      case 'FINISH_DEFENDER_RESPONSE': {
-        if (state.combat.phase !== 'defender_response') break;
-        const wasAiTurn = !state.players[state.turn.currentPlayer].isHuman;
-        resetCombat(state);
-        // Se a resposta ocorreu durante o turno da IA (IA atacou o humano), o turno
-        // da IA encerra aqui. Simplificação documentada: a IA abre mão dos estágios
-        // opcionais restantes deste turno após o humano responder ao combate.
-        if (wasAiTurn) advanceToNextPlayer(state);
-        break;
-      }
-      case 'APPLY_AI_STEP':
-        set({ game: action.state, buildAction: null });
-        localStorage.setItem('supremacia_save', JSON.stringify(action.state));
-        return;
-      case 'OPEN_SIMULTANEOUS_SELL':
-        openSimultaneousSell(state);
-        break;
-      case 'SUBMIT_SELL_DECLARATION':
-        submitSellDeclaration(state, action.playerId, action.grain, action.oil, action.mineral);
-        break;
-      case 'RESOLVE_SIMULTANEOUS_SELL':
-        resolveSimultaneousSell(state);
-        break;
-      case 'ACK_SIMULTANEOUS_SELL':
-        ackSimultaneousSell(state);
-        break;
-      case 'DECLARE_DETENTE': {
-        state.gameOver = true;
-        state.endCondition = 'detente';
-        // Find richest player
-        let maxWealth = -Infinity;
-        let winner: SuperpowerId | null = null;
-        for (const p of Object.values(state.players)) {
-          if (p.isEliminated) continue;
-          const w = calculateWealth(state, p.id);
-          if (w > maxWealth) { maxWealth = w; winner = p.id; }
-        }
-        state.winner = winner;
-        break;
-      }
-      case 'LOAD_GAME': {
-        // Migrate saves that pre-date newer fields
-        const loaded = action.state;
-        if (loaded.researchSession === undefined) loaded.researchSession = null;
-        if (loaded.prospectingSession === undefined) loaded.prospectingSession = null;
-        migrateBalancedFields(loaded);
-        set({ game: loaded });
-        return;
-      }
+    // Multiplayer online: as ações de jogo do humano vão para o servidor (turn
+    // lock + versão lá). O snapshot autoritativo volta via loadGame. APPLY_AI_STEP
+    // e LOAD_GAME substituem o estado direto e permanecem locais.
+    if (onlineSubmit && action.type !== 'APPLY_AI_STEP' && action.type !== 'LOAD_GAME') {
+      onlineSubmit(action);
+      return;
     }
+
+    // APPLY_AI_STEP / LOAD_GAME aplicam um GameState pronto (não passam pelo reducer).
+    if (action.type === 'APPLY_AI_STEP') {
+      set({ game: action.state, buildAction: null });
+      localStorage.setItem('supremacia_save', JSON.stringify(action.state));
+      return;
+    }
+    if (action.type === 'LOAD_GAME') {
+      const loaded = action.state;
+      if (loaded.researchSession === undefined) loaded.researchSession = null;
+      if (loaded.prospectingSession === undefined) loaded.prospectingSession = null;
+      migrateBalancedFields(loaded);
+      set({ game: loaded });
+      return;
+    }
+
+    const state = applyGameAction(game, action);
 
     // A pending build target selection only makes sense within the same stage of
     // the same player's turn — drop it whenever either changes so the map never

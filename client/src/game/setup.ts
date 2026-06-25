@@ -16,13 +16,44 @@ export function createInitialGameState(
   // Modo de mercado. Partidas novas → Digital Balanceado (default da regra).
   marketMode: MarketMode = RULES.DEFAULT_MARKET_MODE,
 ): GameState {
+  return buildGameState({ humans: [humanPlayer], aiIds: activeAiIds, aiDifficulty, marketMode });
+}
+
+// Variante multiplayer: vários assentos humanos + assentos de IA, cada qual
+// associado a uma superpotência. Mesma matemática/estrutura do single-player —
+// só muda QUEM é humano. Usada pelo módulo multiplayer (lobby/host).
+export function createMultiplayerGameState(opts: {
+  humans: SuperpowerId[];
+  ai: Array<{ id: SuperpowerId; difficulty: AIDifficulty }>;
+  marketMode?: MarketMode;
+}): GameState {
+  const aiDifficulty: Partial<Record<SuperpowerId, AIDifficulty>> = {};
+  opts.ai.forEach(a => { aiDifficulty[a.id] = a.difficulty; });
+  return buildGameState({
+    humans: opts.humans,
+    aiIds: opts.ai.map(a => a.id),
+    aiDifficulty,
+    marketMode: opts.marketMode ?? RULES.DEFAULT_MARKET_MODE,
+  });
+}
+
+// Construtor compartilhado: fonte única de verdade do estado inicial. Os dois
+// wrappers acima só diferem em quantos assentos são humanos.
+function buildGameState(args: {
+  humans: SuperpowerId[];
+  aiIds: SuperpowerId[];
+  aiDifficulty: AIDifficulty | Partial<Record<SuperpowerId, AIDifficulty>>;
+  marketMode: MarketMode;
+}): GameState {
+  const { humans, aiIds, aiDifficulty, marketMode } = args;
+  const humanSet = new Set(humans);
   const difficultyFor = (id: SuperpowerId): AIDifficulty =>
     typeof aiDifficulty === 'string'
       ? aiDifficulty
       : aiDifficulty[id] ?? DEFAULT_AI_DIFFICULTY;
   const resourceCards = generateResourceCards();
 
-  const activePlayers = [humanPlayer, ...activeAiIds];
+  const activePlayers = [...humans, ...aiIds];
   const inactiveIds = SUPERPOWER_IDS.filter(id => !activePlayers.includes(id));
 
   // Create players — all 6 slots exist so the Record type stays satisfied.
@@ -31,7 +62,7 @@ export function createInitialGameState(
   SUPERPOWER_IDS.forEach(id => {
     const sp = SUPERPOWERS[id];
     const isActive = activePlayers.includes(id);
-    const isHuman = id === humanPlayer;
+    const isHuman = humanSet.has(id);
 
     if (isActive) {
       const playerCards = resourceCards.filter(c => c.originSuperpower === id).slice(0, 6);
@@ -151,11 +182,11 @@ export function createInitialGameState(
   };
 
   const config: GameConfig = {
-    humanPlayers: 1,
-    aiPlayers: activeAiIds.length,
+    humanPlayers: humans.length,
+    aiPlayers: aiIds.length,
     totalActivePlayers: activePlayers.length,
     maxPlayers: SUPERPOWER_IDS.length,
-    multiplayerReady: false,
+    multiplayerReady: humans.length > 1,
     marketMode,
   };
 

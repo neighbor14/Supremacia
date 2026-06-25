@@ -124,6 +124,13 @@ export default function Home() {
           >
             Nova Partida
           </button>
+          <button
+            onClick={() => setLocation('/lobby')}
+            className="w-full py-4 px-6 bg-secondary text-secondary-foreground font-semibold uppercase tracking-wider text-sm rounded-md hover:opacity-90 transition-opacity active:scale-[0.97]"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Jogar Online
+          </button>
           {hasSave && (
             <button
               onClick={handleContinue}
