@@ -3347,7 +3347,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // stays in "tap to build" mode in another phase.
     const stageOrPlayerChanged =
       state.turn.stage !== game.turn.stage || state.turn.currentPlayer !== game.turn.currentPlayer;
-    set({ game: state, ...(stageOrPlayerChanged ? { buildAction: null } : {}) });
+
+    // Auto-reveal the company-map overlay the instant the human acquires a new
+    // company card (prospecting hit or conquest capture) so the territory's
+    // turquoise/amber highlight is already on when the card modal is dismissed —
+    // no manual toggle, phase change, or click needed. The toggle still resets
+    // between turns (hotseat privacy) and can be turned off manually.
+    const actor = game.turn.currentPlayer;
+    const gainedCard =
+      !!game.players[actor]?.isHuman &&
+      (state.players[actor]?.resourceCards.length ?? 0) > (game.players[actor]?.resourceCards.length ?? 0);
+
+    set({
+      game: state,
+      ...(stageOrPlayerChanged ? { buildAction: null } : {}),
+      ...(gainedCard ? { companyMapVisible: true } : {}),
+    });
     // Auto-save
     localStorage.setItem('supremacia_save', JSON.stringify(state));
   },
