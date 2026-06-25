@@ -309,6 +309,9 @@ export interface EventLogEntry {
   message: string;
   timestamp: number;
   type: 'info' | 'combat' | 'nuclear' | 'economy' | 'build' | 'move' | 'elimination';
+  // Subtipo estruturado para filtros de UI sem depender do texto da mensagem
+  // (ex.: MarketDrawer separa vendas/compras). Opcional — nem todo evento marca.
+  kind?: 'sell' | 'buy';
 }
 
 export interface GameState {

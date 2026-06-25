@@ -142,7 +142,7 @@ describe('AI movement (stage 5) — land + naval', () => {
     expect(getLegalOptionalStages(game, ai)).toContain(5);
     const ev = evaluateAction({ stage: 5 }, game, ai, AI_PROFILES.god);
     expect(ev.score).toBeGreaterThan(0);
-    expect(ev.reason).toContain('território neutro');
+    expect(ev.reason).toBe('aireason.moveExpand');
   });
 
   it('stage 5 is legal and scores > 0 for an amphibious landing across the sea', () => {
@@ -166,7 +166,7 @@ describe('AI movement (stage 5) — land + naval', () => {
     expect(getLegalOptionalStages(game, ai)).toContain(5);
     const ev = evaluateAction({ stage: 5 }, game, ai, AI_PROFILES.god);
     expect(ev.score).toBeGreaterThan(0);
-    expect(ev.reason).toContain('além-mar');
+    expect(ev.reason).toBe('aireason.moveAmphibious');
   });
 
   it('cpuMove (via CPU_TURN) lands troops across the sea onto neutral land (amphibious)', () => {

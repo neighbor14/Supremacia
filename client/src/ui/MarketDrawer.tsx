@@ -155,7 +155,7 @@ export default function MarketDrawer() {
           {/* Recent market transactions */}
           {(() => {
             const txEvents = game.eventLog
-              .filter(e => e.type === 'economy' && (e.message.startsWith('Vendeu') || e.message.startsWith('Comprou')))
+              .filter(e => e.kind === 'sell' || e.kind === 'buy')
               .slice(-5)
               .reverse();
             if (txEvents.length === 0) return null;
@@ -167,7 +167,7 @@ export default function MarketDrawer() {
                 <div className="space-y-1">
                   {txEvents.map(e => {
                     const sp = SUPERPOWERS[e.player];
-                    const isSell = e.message.startsWith('Vendeu');
+                    const isSell = e.kind === 'sell';
                     return (
                       <div key={e.id} className="flex items-start gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: sp.color }} />

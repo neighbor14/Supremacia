@@ -418,10 +418,10 @@ export function evaluateAction(
       // Se está sem caixa para o próximo salário, vender é defensivo (levantar caixa).
       if (cushion < 0) b.economyScore += 20 * config.economyPriority;
       reason = config.usesMarketStrategy && edge > 0.15
-        ? 'vender excedente porque o preço está alto'
+        ? 'aireason.sellHighPrice'
         : cushion < 0
-          ? 'vender recursos para cobrir salários'
-          : 'vender o excedente de recursos';
+          ? 'aireason.sellCoverSalary'
+          : 'aireason.sellExcess';
       break;
     }
     case 4: { // Combate
@@ -432,8 +432,8 @@ export function evaluateAction(
       // Atacar com a fronteira ameaçada enfraquece a defesa.
       b.vulnerabilityPenalty = -threat * 10 * config.defensePriority;
       reason = atk.bestMargin >= 3
-        ? 'atacar um alvo claramente mais fraco'
-        : 'preparar um ataque com vantagem';
+        ? 'aireason.attackWeaker'
+        : 'aireason.attackAdvantage';
       break;
     }
     case 6: { // Construção
@@ -447,8 +447,8 @@ export function evaluateAction(
         b.techScore = 10;
       }
       reason = threat > 0
-        ? 'construir unidades para reforçar a fronteira'
-        : 'construir unidades para expandir';
+        ? 'aireason.buildReinforce'
+        : 'aireason.buildExpand';
       break;
     }
     case 7: { // Mercado (comprar)
@@ -459,8 +459,8 @@ export function evaluateAction(
       // Comprar sem caixa para o salário é arriscado.
       if (cushion < RULES.UNIT_COST * 2) b.salaryRiskPenalty = -16 * config.economyPriority;
       reason = config.usesMarketStrategy && edge > 0.15
-        ? 'comprar recursos com o preço baixo'
-        : 'comprar recursos em falta';
+        ? 'aireason.buyLowPrice'
+        : 'aireason.buyShortage';
       break;
     }
     case 5: { // Movimento (terrestre + naval + anfíbio)
@@ -475,12 +475,12 @@ export function evaluateAction(
       // Aproximar a frota de terra inimiga prepara combate/projeção naval.
       b.militaryScore = move.navalRepositions * 8 * config.aggression;
       reason = move.expansionTargets > 0
-        ? 'expandir ocupando território neutro'
+        ? 'aireason.moveExpand'
         : move.amphibiousTargets > 0
-          ? 'desembarcar tropas além-mar para ocupar território neutro'
+          ? 'aireason.moveAmphibious'
           : move.reinforceTargets > 0
-            ? 'reforçar a fronteira ameaçada'
-            : 'reposicionar a frota para o mar contestado';
+            ? 'aireason.moveReinforce'
+            : 'aireason.moveNaval';
       break;
     }
   }

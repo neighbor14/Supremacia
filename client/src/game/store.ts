@@ -8,7 +8,9 @@ import { nanoid } from 'nanoid';
 import { isNukeCard, isLaserCard, isTechCard, getTechCounts } from './researchDeck';
 import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, planAmphibiousInvasion, OptionalStage, AIConfig } from './ai';
 import { isSimultaneousSellRound } from './simultaneousSell';
-import { fmtNum } from '../i18n/useI18n';
+import { fmtNum, t } from '../i18n/useI18n';
+import { TranslationKey } from '../i18n';
+import { territoryName, seaName, locationName, factionName, factionShort, companyName } from '../i18n/names';
 
 /**
  * Build-selection mode (fase Construir). When the player picks "Construir
@@ -77,9 +79,12 @@ export function getBuildTargets(game: GameState, action: BuildAction): string[] 
   return Array.from(navalZoneIds).filter(id => !!game.seaZones[id]);
 }
 
-const RESOURCE_NAME: Record<ResourceType, string> = { grain: 'cereal', oil: 'petróleo', mineral: 'minério' };
+/** Nome do recurso no idioma atual (fonte única — evita mapas pt espalhados). */
+function resName(r: ResourceType): string {
+  return t(`resource.${r}` as TranslationKey);
+}
 
-function addEvent(state: GameState, player: SuperpowerId, message: string, type: EventLogEntry['type'] = 'info'): void {
+function addEvent(state: GameState, player: SuperpowerId, message: string, type: EventLogEntry['type'] = 'info', kind?: EventLogEntry['kind']): void {
   state.eventLog.push({
     id: nanoid(8),
     turn: state.turn.turnNumber,
@@ -88,6 +93,7 @@ function addEvent(state: GameState, player: SuperpowerId, message: string, type:
     message,
     timestamp: Date.now(),
     type,
+    kind,
   });
   // Keep last 100 events
   if (state.eventLog.length > 100) state.eventLog = state.eventLog.slice(-100);
@@ -157,7 +163,7 @@ function paySalaries(state: GameState): void {
   if (upkeepAlreadyDone(state)) {
     // Salário já cobrado na fase global da rodada — nada a fazer.
     state.turn.unpaidCompanies = [];
-    addEvent(state, state.turn.currentPlayer, 'Salários já pagos na fase global da rodada (Modo Digital Balanceado).', 'economy');
+    addEvent(state, state.turn.currentPlayer, t('log.salaryAlreadyPaid'), 'economy');
     return;
   }
   state.turn.unpaidCompanies = paySalariesFor(state, state.turn.currentPlayer);
@@ -173,7 +179,7 @@ function paySalariesFor(state: GameState, playerId: SuperpowerId): string[] {
 
   if (player.money >= totalCost) {
     player.money -= totalCost;
-    addEvent(state, player.id, `Pagou salários: ${fmtNum(unitCost)} (unidades) + ${fmtNum(companyCost)} (companhias) + ${fmtNum(loanInterest)} (juros)`, 'economy');
+    addEvent(state, player.id, t('log.salaryPaid', { units: fmtNum(unitCost), companies: fmtNum(companyCost), interest: fmtNum(loanInterest) }), 'economy');
     return [];
   }
 
@@ -222,11 +228,11 @@ function paySalariesFor(state: GameState, playerId: SuperpowerId): string[] {
   }
   player.money = money;
 
-  const parts: string[] = ['Fundos insuficientes para salários.'];
-  if (removedUnits > 0) parts.push(`${removedUnits} unidade(s) dispensada(s).`);
+  const parts: string[] = [t('log.salaryShortfall')];
+  if (removedUnits > 0) parts.push(t('log.salaryUnitsDismissed', { n: removedUnits }));
   if (dormant.length > 0) {
-    const names = dormant.map(id => state.resourceCards[id]?.companyName ?? id).join(', ');
-    parts.push(`${dormant.length} companhia(s) sem salário não vão produzir: ${names}.`);
+    const names = dormant.map(id => companyName(id, state.resourceCards[id]?.companyName ?? id)).join(', ');
+    parts.push(t('log.salaryDormant', { n: dormant.length, names }));
   }
   addEvent(state, player.id, parts.join(' '), 'economy');
   return dormant;
@@ -235,7 +241,7 @@ function paySalariesFor(state: GameState, playerId: SuperpowerId): string[] {
 function transferProduction(state: GameState): void {
   if (upkeepAlreadyDone(state)) {
     // Produção já transferida na fase global da rodada — nada a fazer.
-    addEvent(state, state.turn.currentPlayer, 'Produção já recebida na fase global da rodada (Modo Digital Balanceado).', 'economy');
+    addEvent(state, state.turn.currentPlayer, t('log.productionAlreadyReceived'), 'economy');
     return;
   }
   transferProductionFor(state, state.turn.currentPlayer, state.turn.unpaidCompanies);
@@ -260,9 +266,13 @@ function transferProductionFor(state: GameState, playerId: SuperpowerId, dormant
   }
 
   const suffix = dormantCount > 0
-    ? ` (${dormantCount} companhia(s) dormente(s) por salário não pago não produziram)`
+    ? t('log.productionDormantSuffix', { n: dormantCount })
     : '';
-  addEvent(state, player.id, `Produção: +${produced.grain} cereal, +${produced.oil} petróleo, +${produced.mineral} minério${suffix}`, 'economy');
+  addEvent(state, player.id, t('log.production', {
+    grain: produced.grain, gn: resName('grain'),
+    oil: produced.oil, on: resName('oil'),
+    mineral: produced.mineral, mn: resName('mineral'), suffix,
+  }), 'economy');
 }
 
 // ============================================================
@@ -339,7 +349,7 @@ function openSimultaneousSell(state: GameState): void {
   ss.soldThisRound = [];
   ss.resolution = null;
 
-  addEvent(state, state.turn.currentPlayer, 'Fase de Venda Simultânea iniciada.', 'economy');
+  addEvent(state, state.turn.currentPlayer, t('log.simSellStarted'), 'economy');
 }
 
 // Valida e registra a declaração de um jogador. Clampa ao estoque, sem
@@ -381,7 +391,7 @@ function resolveSimultaneousSell(state: GameState): void {
   if (!allDeclarationsConfirmed(state)) return;
 
   const actives = activePlayerIds(state);
-  addEvent(state, state.turn.currentPlayer, 'Todos os jogadores confirmaram suas vendas.', 'economy');
+  addEvent(state, state.turn.currentPlayer, t('log.simSellAllConfirmed'), 'economy');
 
   // Preço único por recurso = snapshot tirado na abertura (antes de qualquer venda).
   const perResource: Record<ResourceType, { totalSold: number; priceBefore: number; priceAfter: number }> = {
@@ -411,9 +421,11 @@ function resolveSimultaneousSell(state: GameState): void {
       soldThisRound.push(id);
       const pieces = RESOURCE_TYPES
         .filter(r => decl[r] > 0)
-        .map(r => `${decl[r]} ${RESOURCE_NAME[r]}`)
-        .join(' e ');
-      addEvent(state, id, `${pl.name} vendeu ${pieces} e recebeu $${fmtNum(revenue)}.`, 'economy');
+        .map(r => `${decl[r]} ${resName(r)}`)
+        .join(t('log.listSep'));
+      // NB: sem kind 'sell' — a venda simultânea tem painel próprio; o MarketDrawer
+      // lista apenas as vendas/compras individuais (Estágios 3/7).
+      addEvent(state, id, t('log.simSold', { player: factionName(id), pieces, revenue: fmtNum(revenue) }), 'economy');
     }
     perPlayer.push({
       playerId: id, playerName: pl.name,
@@ -436,7 +448,7 @@ function resolveSimultaneousSell(state: GameState): void {
     if (perResource[r].totalSold > 0) {
       addEvent(
         state, state.turn.currentPlayer,
-        `Total vendido de ${RESOURCE_NAME[r]}: ${perResource[r].totalSold}. O preço caiu de $${fmtNum(before)} para $${fmtNum(after)}.`,
+        t('log.simPriceDrop', { res: resName(r), sold: perResource[r].totalSold, before: fmtNum(before), after: fmtNum(after) }),
         'economy',
       );
     }
@@ -447,7 +459,7 @@ function resolveSimultaneousSell(state: GameState): void {
     if (pp.soldAny) {
       addEvent(
         state, pp.playerId,
-        `${pp.playerName} usou 1 ação de venda e ainda possui ${pp.optionalActionsRemaining} ações opcionais.`,
+        t('log.simSoldAction', { player: factionName(pp.playerId), remaining: pp.optionalActionsRemaining }),
         'economy',
       );
     }
@@ -506,12 +518,12 @@ function sellResource(state: GameState, resource: ResourceType, quantity: number
   player.money += totalRevenue;
 
   const priceTag = newPrice !== previousPrice
-    ? ` Preço do ${RESOURCE_NAME[resource]}: $${(previousPrice / 1000).toFixed(0)}k → $${(newPrice / 1000).toFixed(0)}k.`
+    ? t('log.priceTag', { res: resName(resource), beforeK: (previousPrice / 1000).toFixed(0), afterK: (newPrice / 1000).toFixed(0) })
     : '';
   addEvent(
     state, player.id,
-    `Vendeu ${toSell} ${RESOURCE_NAME[resource]} por $${fmtNum(totalRevenue)}.${priceTag}`,
-    'economy'
+    t('log.sold', { n: toSell, res: resName(resource), revenue: fmtNum(totalRevenue), priceTag }),
+    'economy', 'sell',
   );
 }
 
@@ -538,17 +550,16 @@ function buyResource(state: GameState, resource: ResourceType, quantity: number)
   if (bought > 0) {
     const newPrice = state.market.prices[resource];
     const priceTag = newPrice !== previousPrice
-      ? ` Preço do ${RESOURCE_NAME[resource]}: $${(previousPrice / 1000).toFixed(0)}k → $${(newPrice / 1000).toFixed(0)}k.`
+      ? t('log.priceTag', { res: resName(resource), beforeK: (previousPrice / 1000).toFixed(0), afterK: (newPrice / 1000).toFixed(0) })
       : '';
     addEvent(
       state, player.id,
-      `Comprou ${bought} ${RESOURCE_NAME[resource]} por $${fmtNum(totalCost)}.${priceTag}`,
-      'economy'
+      t('log.bought', { n: bought, res: resName(resource), cost: fmtNum(totalCost), priceTag }),
+      'economy', 'buy',
     );
   }
 }
 
-const RESOURCE_ICON: Record<ResourceType, string> = { grain: 'cereal', oil: 'petróleo', mineral: 'minério' };
 
 /**
  * Fidelidade ao manual Grow: "A nova carta será devolvida ao maço, se ela estiver
@@ -573,16 +584,17 @@ function acquireCompany(state: GameState, player: Player, cardId: string): void 
   card.ownerId = player.id;
   card.revealed = true;
   if (!player.resourceCards.includes(cardId)) player.resourceCards.push(cardId);
-  const icon = RESOURCE_ICON[card.type];
-  const where = state.territories[card.territoryId]?.name ?? card.territoryId;
-  addEvent(state, player.id, `Prospecção: ${card.companyName} (+${card.production} ${icon}, ${where}) adquirida.`, 'economy');
+  const res = resName(card.type);
+  const where = territoryName(card.territoryId);
+  const coName = companyName(card.id, card.companyName);
+  addEvent(state, player.id, t('log.acquired', { company: coName, prod: card.production, res, where }), 'economy');
   state.drawnCard = {
     active: true,
     type: 'resource',
     success: true,
-    cardName: card.companyName,
-    cardEffect: `+${card.production} ${icon} por turno · localizada em ${where}`,
-    context: 'Prospecção de Recursos',
+    cardName: coName,
+    cardEffect: t('draw.eff.companyAt', { prod: card.production, res, where }),
+    context: t('draw.ctx.prospect'),
     cardId: card.id,
     resourceType: card.type,
     companyName: card.companyName,
@@ -610,18 +622,18 @@ function acquireCompany(state: GameState, player: Player, cardId: string): void 
 function prospect(state: GameState, targetType?: ResourceType): void {
   const player = state.players[state.turn.currentPlayer];
   if (state.resourceDeck.length === 0) {
-    addEvent(state, player.id, 'Baralho vazio — nada para prospectar.', 'info');
+    addEvent(state, player.id, t('log.deckEmpty'), 'info');
     return;
   }
   if (player.money < RULES.RESEARCH_COST_PER_CARD) {
-    addEvent(state, player.id, 'Dinheiro insuficiente para prospectar.', 'info');
+    addEvent(state, player.id, t('log.prospectNoMoney'), 'info');
     return;
   }
   // D3 fidelidade: limite de 3 tentativas de prospecção por turno (manual Grow).
   // Cada nova sessão iniciada (ou carta avulsa no modo sem tipo) conta como 1 tentativa.
   if (!state.prospectingSession && state.turn.prospectAttemptsUsed >= RULES.MAX_PROSPECT_ATTEMPTS) {
     addEvent(state, player.id,
-      `Limite de ${RULES.MAX_PROSPECT_ATTEMPTS} prospecções por turno atingido.`, 'info');
+      t('log.prospectLimit', { max: RULES.MAX_PROSPECT_ATTEMPTS }), 'info');
     return;
   }
 
@@ -643,15 +655,15 @@ function prospect(state: GameState, targetType?: ResourceType): void {
   if (isTechCard(cardId)) {
     state.resourceDeck.push(cardId);
     player.money += RULES.RESEARCH_COST_PER_CARD;
-    const techName = isNukeCard(cardId) ? 'Ogiva Nuclear' : 'Estrela Laser';
-    addEvent(state, player.id, `Prospecção: carta de ${techName} encontrada, devolvida ao baralho.`, 'info');
+    const techName = t(isNukeCard(cardId) ? 'tech.nuke' : 'tech.laser');
+    addEvent(state, player.id, t('log.prospectTechReturned', { tech: techName }), 'info');
     state.drawnCard = {
       active: true,
       type: isNukeCard(cardId) ? 'nuke' : 'laser',
       success: false,
       cardName: techName,
-      cardEffect: 'Cartas de tecnologia só podem ser obtidas por pesquisa (Estágio 6). Devolvida ao baralho sem custo.',
-      context: 'Prospecção de Recursos',
+      cardEffect: t('draw.eff.techReturned'),
+      context: t('draw.ctx.prospect'),
       cardId,
     };
     return;
@@ -664,18 +676,17 @@ function prospect(state: GameState, targetType?: ResourceType): void {
     state.resourceDeck.push(cardId);
     state.resourceDeck = shuffleArray(state.resourceDeck);
     player.money += RULES.RESEARCH_COST_PER_CARD; // estorno
-    const where = state.territories[drawn.territoryId]?.name ?? drawn.territoryId;
-    const motivo = state.territories[drawn.territoryId]?.nuked
-      ? 'território nuclearizado'
-      : 'território sob controle inimigo';
-    addEvent(state, player.id, `Prospecção: ${drawn.companyName} (${where}) devolvida ao baralho — ${motivo}.`, 'info');
+    const where = territoryName(drawn.territoryId);
+    const coName = companyName(drawn.id, drawn.companyName);
+    const motivo = t(state.territories[drawn.territoryId]?.nuked ? 'reason.nuked' : 'reason.enemy');
+    addEvent(state, player.id, t('log.prospectReturned', { company: coName, where, reason: motivo }), 'info');
     state.drawnCard = {
       active: true,
       type: 'resource',
       success: false,
-      cardName: `${drawn.companyName} indisponível`,
-      cardEffect: `A companhia fica em ${where} (${motivo}). Conquiste o território para capturá-la — a carta voltou ao baralho sem custo.`,
-      context: 'Prospecção de Recursos',
+      cardName: t('draw.name.unavailable', { company: coName }),
+      cardEffect: t('draw.eff.unavailable', { where, reason: motivo }),
+      context: t('draw.ctx.prospect'),
       cardId,
     };
     return;
@@ -726,7 +737,6 @@ function finalizeProspect(state: GameState): void {
   state.prospectingSession = null;
 }
 
-const RESOURCE_LABEL: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
 
 /**
  * Flip one card from the deck for a targeted prospecting session.
@@ -740,20 +750,20 @@ function drawProspectCardInternal(state: GameState): void {
   if (!session || session.found) return;
 
   const player = state.players[state.turn.currentPlayer];
-  const typeLabel = RESOURCE_LABEL[session.targetType];
-  const typeIcon = RESOURCE_ICON[session.targetType];
+  const typeLabel = resName(session.targetType);
+  const typeIcon = typeLabel;
 
   // Deck exhausted — finalize immediately, show failure card
   if (state.resourceDeck.length === 0) {
     addEvent(state, player.id,
-      `Prospecção de ${typeLabel}: baralho esgotado após ${session.cardsFlipped} carta(s). Custo total: $${fmtNum(session.totalCost)}. Cartas devolvidas.`, 'info');
+      t('log.prospectDeckExhausted', { res: typeLabel, n: session.cardsFlipped, cost: fmtNum(session.totalCost) }), 'info');
     state.drawnCard = {
       active: true,
       type: 'resource',
       success: false,
-      cardName: `${typeLabel} não encontrada`,
-      cardEffect: `Baralho esgotado após ${session.cardsFlipped} carta(s). As cartas voltaram ao baralho.`,
-      context: `Prospecção de ${typeLabel}`,
+      cardName: t('draw.name.notFound', { res: typeLabel }),
+      cardEffect: t('draw.eff.deckExhausted', { n: session.cardsFlipped }),
+      context: t('draw.ctx.prospectType', { res: typeLabel }),
       prospectTarget: session.targetType,
       prospectCardsFlipped: session.cardsFlipped,
       prospectCostSoFar: session.totalCost,
@@ -765,14 +775,14 @@ function drawProspectCardInternal(state: GameState): void {
   // Insufficient funds — finalize immediately, show failure card
   if (player.money < RULES.RESEARCH_COST_PER_CARD) {
     addEvent(state, player.id,
-      `Prospecção de ${typeLabel}: dinheiro insuficiente após ${session.cardsFlipped} carta(s). Custo total: $${fmtNum(session.totalCost)}. Cartas devolvidas.`, 'info');
+      t('log.prospectNoMoneyMid', { res: typeLabel, n: session.cardsFlipped, cost: fmtNum(session.totalCost) }), 'info');
     state.drawnCard = {
       active: true,
       type: 'resource',
       success: false,
-      cardName: `${typeLabel} não encontrada`,
-      cardEffect: `Dinheiro insuficiente para continuar. As cartas voltaram ao baralho.`,
-      context: `Prospecção de ${typeLabel}`,
+      cardName: t('draw.name.notFound', { res: typeLabel }),
+      cardEffect: t('draw.eff.noMoneyMid'),
+      context: t('draw.ctx.prospectType', { res: typeLabel }),
       prospectTarget: session.targetType,
       prospectCardsFlipped: session.cardsFlipped,
       prospectCostSoFar: session.totalCost,
@@ -786,20 +796,20 @@ function drawProspectCardInternal(state: GameState): void {
   session.cardsFlipped++;
 
   const cardId = state.resourceDeck.shift()!;
-  const context = `Prospecção de ${typeLabel} · Carta ${session.cardsFlipped}`;
+  const context = t('draw.ctx.prospectCard', { res: typeLabel, n: session.cardsFlipped });
 
   // ── Tech card (nuke or laser): set aside, show it ──
   if (isTechCard(cardId)) {
     session.cardsSetAside.push(cardId);
-    const techName = isNukeCard(cardId) ? 'Ogiva Nuclear' : 'Estrela Laser';
+    const techName = t(isNukeCard(cardId) ? 'tech.nuke' : 'tech.laser');
     addEvent(state, player.id,
-      `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — ${techName} (tecnologia, voltará ao baralho). Procurando ${typeLabel}.`, 'economy');
+      t('log.prospectTechAside', { res: typeIcon, n: session.cardsFlipped, tech: techName, target: typeLabel }), 'economy');
     state.drawnCard = {
       active: true,
       type: isNukeCard(cardId) ? 'nuke' : 'laser',
       success: false,
       cardName: techName,
-      cardEffect: `Carta de tecnologia — não é uma companhia de ${typeLabel}. Voltará ao baralho.`,
+      cardEffect: t('draw.eff.techNotType', { res: typeLabel }),
       context,
       cardId,
       prospectTarget: session.targetType,
@@ -814,22 +824,23 @@ function drawProspectCardInternal(state: GameState): void {
   // ── Matching type AND territory available: SUCCESS ──
   if (card && card.type === session.targetType && isProspectableTerritory(state, card, player.id)) {
     session.found = true;
-    const where = state.territories[card.territoryId]?.name ?? card.territoryId;
-    const icon = RESOURCE_ICON[card.type];
+    const where = territoryName(card.territoryId);
+    const icon = resName(card.type);
+    const coName = companyName(card.id, card.companyName);
 
     card.ownerId = player.id;
     card.revealed = true;
     if (!player.resourceCards.includes(cardId)) player.resourceCards.push(cardId);
 
     addEvent(state, player.id,
-      `Prospecção de ${typeLabel}: ${card.companyName} (+${card.production} ${icon}, ${where}) adquirida. ${session.cardsFlipped} carta(s) virada(s), custo $${fmtNum(session.totalCost)}.`, 'economy');
+      t('log.prospectFound', { res: typeLabel, company: coName, prod: card.production, icon, where, n: session.cardsFlipped, cost: fmtNum(session.totalCost) }), 'economy');
 
     state.drawnCard = {
       active: true,
       type: 'resource',
       success: true,
-      cardName: card.companyName,
-      cardEffect: `+${card.production} ${icon} por turno · localizada em ${where}`,
+      cardName: coName,
+      cardEffect: t('draw.eff.companyAt', { prod: card.production, res: icon, where }),
       context,
       cardId,
       resourceType: card.type,
@@ -847,13 +858,13 @@ function drawProspectCardInternal(state: GameState): void {
   session.cardsSetAside.push(cardId);
 
   if (!card) {
-    addEvent(state, player.id, `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — desconhecida. Procurando ${typeLabel}.`, 'economy');
+    addEvent(state, player.id, t('log.prospectUnknown', { res: typeIcon, n: session.cardsFlipped, target: typeLabel }), 'economy');
     state.drawnCard = {
       active: true,
       type: 'resource',
       success: false,
-      cardName: 'Carta desconhecida',
-      cardEffect: `Não era ${typeLabel}. Voltará ao baralho.`,
+      cardName: t('draw.name.unknown'),
+      cardEffect: t('draw.eff.notType', { res: typeLabel }),
       context,
       cardId,
       prospectTarget: session.targetType,
@@ -863,18 +874,19 @@ function drawProspectCardInternal(state: GameState): void {
     return;
   }
 
-  const resourceLabel = RESOURCE_LABEL[card.type];
-  const where = state.territories[card.territoryId]?.name ?? card.territoryId;
+  const resourceLabel = resName(card.type);
+  const where = territoryName(card.territoryId);
+  const coName = companyName(card.id, card.companyName);
 
   if (card.type !== session.targetType) {
     addEvent(state, player.id,
-      `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — ${card.companyName} (${resourceLabel}). Não era ${typeLabel}. Voltará ao baralho.`, 'economy');
+      t('log.prospectWrongType', { res: typeIcon, n: session.cardsFlipped, company: coName, res2: resourceLabel, target: typeLabel }), 'economy');
     state.drawnCard = {
       active: true,
       type: 'resource',
       success: false,
-      cardName: card.companyName,
-      cardEffect: `${resourceLabel} (+${card.production}) em ${where} — não era ${typeLabel}. Voltará ao baralho.`,
+      cardName: coName,
+      cardEffect: t('draw.eff.wrongType', { res: resourceLabel, prod: card.production, where, target: typeLabel }),
       context,
       cardId,
       resourceType: card.type,
@@ -887,15 +899,15 @@ function drawProspectCardInternal(state: GameState): void {
   } else {
     // Right type, but territory is blocked (enemy-held or nuked)
     const territory = state.territories[card.territoryId];
-    const motivo = territory?.nuked ? 'território nuclearizado' : 'território sob controle inimigo';
+    const motivo = t(territory?.nuked ? 'reason.nuked' : 'reason.enemy');
     addEvent(state, player.id,
-      `Prospecção ${typeIcon}: carta ${session.cardsFlipped} — ${card.companyName} (${typeLabel}) indisponível em ${where}: ${motivo}. Voltará ao baralho.`, 'economy');
+      t('log.prospectBlocked', { res: typeIcon, n: session.cardsFlipped, company: coName, target: typeLabel, where, reason: motivo }), 'economy');
     state.drawnCard = {
       active: true,
       type: 'resource',
       success: false,
-      cardName: card.companyName,
-      cardEffect: `${typeLabel} em ${where} — ${motivo}. Voltará ao baralho.`,
+      cardName: coName,
+      cardEffect: t('draw.eff.blockedType', { res: typeLabel, where, reason: motivo }),
       context,
       cardId,
       resourceType: card.type,
@@ -1021,11 +1033,11 @@ function buildUnits(state: GameState, units: Array<{ type: UnitType; locationId:
   const moneyCost = units.length * RULES.UNIT_COST;
 
   if (player.supplies.grain < setsNeeded || player.supplies.oil < setsNeeded || player.supplies.mineral < setsNeeded) {
-    addEvent(state, player.id, 'Suprimentos insuficientes para construção.', 'info');
+    addEvent(state, player.id, t('log.buildNoSupplies'), 'info');
     return;
   }
   if (player.money < moneyCost) {
-    addEvent(state, player.id, 'Dinheiro insuficiente para construção.', 'info');
+    addEvent(state, player.id, t('log.buildNoMoney'), 'info');
     return;
   }
 
@@ -1043,7 +1055,7 @@ function buildUnits(state: GameState, units: Array<{ type: UnitType; locationId:
     }
   }
 
-  addEvent(state, player.id, `Construiu ${units.length} unidade(s) por ${fmtNum(moneyCost)}`, 'build');
+  addEvent(state, player.id, t('log.built', { n: units.length, cost: fmtNum(moneyCost) }), 'build');
 }
 
 // ── Territory control: single source of truth ────────────────────────────────
@@ -1098,13 +1110,13 @@ function claimTerritory(state: GameState, territoryId: string, playerId: Superpo
     }
     if (!attacker.resourceCards.includes(cid)) attacker.resourceCards.push(cid);
     card.ownerId = playerId;
-    capturedNames.push(card.companyName);
+    capturedNames.push(companyName(card.id, card.companyName));
   }
 
   if (capturedNames.length > 0) {
-    addEvent(state, playerId, `Conquistou ${territory.name} — companhia capturada: ${capturedNames.join(', ')}.`, 'move');
+    addEvent(state, playerId, t('log.conqueredWithCompany', { terr: territoryName(territoryId), companies: capturedNames.join(', ') }), 'move');
   } else {
-    addEvent(state, playerId, `Conquistou ${territory.name} — território sem companhia ativa.`, 'move');
+    addEvent(state, playerId, t('log.conqueredNoCompany', { terr: territoryName(territoryId) }), 'move');
   }
   return true;
 }
@@ -1112,14 +1124,6 @@ function claimTerritory(state: GameState, territoryId: string, playerId: Superpo
 export type MoveBlockReason =
   | 'no_units' | 'invalid' | 'not_adjacent' | 'nuked' | 'no_grain' | 'enemy_held';
 
-const MOVE_BLOCK_MESSAGE: Record<MoveBlockReason, string> = {
-  no_units: 'Nenhum exército neste território para mover.',
-  invalid: 'Movimento inválido: território inexistente.',
-  not_adjacent: 'Territórios não são adjacentes.',
-  nuked: 'Destino destruído por bomba nuclear.',
-  no_grain: `Cereal insuficiente — mover tropas custa ${RULES.LAND_MOVE_GRAIN_COST} cereal por território.`,
-  enemy_held: 'Território inimigo — use a fase de Combate (⚔️) para conquistá-lo.',
-};
 
 /**
  * Single source of truth for land-move validation. Returns null when the move is
@@ -1142,7 +1146,7 @@ export function getMoveBlockReason(state: GameState, from: string, to: string): 
 }
 
 export function moveBlockMessage(reason: MoveBlockReason): string {
-  return MOVE_BLOCK_MESSAGE[reason];
+  return t(`moveblock.${reason}` as TranslationKey, { grain: RULES.LAND_MOVE_GRAIN_COST });
 }
 
 function moveArmy(state: GameState, from: string, to: string, count: number): void {
@@ -1155,9 +1159,9 @@ function moveArmy(state: GameState, from: string, to: string, count: number): vo
   const block = getMoveBlockReason(state, from, to);
   if (block) {
     if (block === 'no_grain') {
-      addEvent(state, player.id, `${player.name} tentou mover, mas não tinha cereal suficiente (precisa de ${RULES.LAND_MOVE_GRAIN_COST}).`, 'move');
+      addEvent(state, player.id, t('log.moveNoGrain', { player: factionName(player.id), need: RULES.LAND_MOVE_GRAIN_COST }), 'move');
     } else {
-      addEvent(state, player.id, MOVE_BLOCK_MESSAGE[block], 'info');
+      addEvent(state, player.id, moveBlockMessage(block), 'info');
     }
     return;
   }
@@ -1167,7 +1171,7 @@ function moveArmy(state: GameState, from: string, to: string, count: number): vo
   if (player.armies[from] <= 0) delete player.armies[from];
   player.armies[to] = (player.armies[to] || 0) + toMove;
 
-  addEvent(state, player.id, `Moveu ${toMove} exército(s) para ${state.territories[to]?.name || to}. Cereal consumido: ${RULES.LAND_MOVE_GRAIN_COST}.`, 'move');
+  addEvent(state, player.id, t('log.moved', { n: toMove, to: territoryName(to), grain: RULES.LAND_MOVE_GRAIN_COST }), 'move');
 
   // Entering an unopposed neutral/own territory takes control of it (updates map
   // color + build permission through the single owner field).
@@ -1182,13 +1186,13 @@ function airlift(state: GameState, from: string, to: string, count: number): voi
 
   const toT = state.territories[to];
   if (toT && ((toT.owner && toT.owner !== player.id) || enemyArmiesPresent(state, to, player.id))) {
-    addEvent(state, player.id, MOVE_BLOCK_MESSAGE.enemy_held, 'info');
+    addEvent(state, player.id, moveBlockMessage('enemy_held'), 'info');
     return;
   }
 
   const oilCost = RULES.AIRLIFT_OIL_COST * toMove;
   if (player.supplies.oil < oilCost) {
-    addEvent(state, player.id, 'Petróleo insuficiente para transporte aéreo.', 'info');
+    addEvent(state, player.id, t('log.airliftNoOil'), 'info');
     return;
   }
 
@@ -1197,7 +1201,7 @@ function airlift(state: GameState, from: string, to: string, count: number): voi
   if (player.armies[from] <= 0) delete player.armies[from];
   player.armies[to] = (player.armies[to] || 0) + toMove;
 
-  addEvent(state, player.id, `Aerotransportou ${toMove} exército(s) para ${state.territories[to]?.name || to}`, 'move');
+  addEvent(state, player.id, t('log.airlifted', { n: toMove, to: territoryName(to) }), 'move');
 
   // Airlifting into an unopposed neutral/own territory takes control of it.
   claimTerritory(state, to, player.id);
@@ -1216,7 +1220,7 @@ function moveNavy(state: GameState, from: string, to: string, count: number): vo
   // Validate adjacency between sea zones
   const fromSea = state.seaZones[from];
   if (!fromSea || !fromSea.adjacentSeas.includes(to)) {
-    addEvent(state, player.id, 'Movimento naval inválido: zonas não adjacentes.', 'info');
+    addEvent(state, player.id, t('log.navalMoveInvalid'), 'info');
     return;
   }
 
@@ -1227,16 +1231,16 @@ function moveNavy(state: GameState, from: string, to: string, count: number): vo
       ([pid, p]) => pid !== player.id && ((p as Player).navies[to] || 0) > 0
     );
     if (occupier) {
-      const occupierName = state.players[occupier[0] as SuperpowerId]?.name ?? occupier[0];
+      const occupierName = factionName(occupier[0] as SuperpowerId);
       addEvent(state, player.id,
-        `Mar costeiro ${toSea.name} ocupado por ${occupierName}. Combate naval em mares costeiros ainda não implementado.`,
+        t('log.coastalOccupied', { sea: seaName(to), who: occupierName }),
         'info');
       return;
     }
   }
 
   if (player.supplies.oil < RULES.SEA_MOVE_OIL_COST) {
-    addEvent(state, player.id, 'Petróleo insuficiente para movimento naval.', 'info');
+    addEvent(state, player.id, t('log.navalNoOil'), 'info');
     return;
   }
 
@@ -1257,8 +1261,8 @@ function moveNavy(state: GameState, from: string, to: string, count: number): vo
     }
   }
 
-  const carriedNote = (player.embarked[to] || 0) > 0 ? ` (com ${player.embarked[to]} exército(s) embarcado(s))` : '';
-  addEvent(state, player.id, `Moveu ${toMove} esquadra(s) para ${state.seaZones[to]?.name || to}${carriedNote}`, 'move');
+  const carriedNote = (player.embarked[to] || 0) > 0 ? t('log.carriedSuffix', { n: player.embarked[to] }) : '';
+  addEvent(state, player.id, t('log.movedFleet', { n: toMove, to: seaName(to), carried: carriedNote }), 'move');
 }
 
 /**
@@ -1274,24 +1278,24 @@ function embark(state: GameState, territoryId: string, seaZoneId: string, count:
 
   if (!territory || !sea) return;
   if (!territory.adjacentSeas.includes(seaZoneId)) {
-    addEvent(state, player.id, 'Embarque inválido: território não é costeiro nesta zona.', 'info');
+    addEvent(state, player.id, t('log.embarkInvalidCoastal'), 'info');
     return;
   }
   const available = player.armies[territoryId] || 0;
   if (available <= 0) {
-    addEvent(state, player.id, 'Embarque inválido: nenhum exército neste território.', 'info');
+    addEvent(state, player.id, t('log.embarkInvalidNoArmy'), 'info');
     return;
   }
   const navies = player.navies[seaZoneId] || 0;
   if (navies <= 0) {
-    addEvent(state, player.id, 'Embarque inválido: sem esquadra própria nesta zona.', 'info');
+    addEvent(state, player.id, t('log.embarkInvalidNoFleet'), 'info');
     return;
   }
   const capacity = navies * RULES.NAVY_TRANSPORT_CAPACITY;
   const used = player.embarked[seaZoneId] || 0;
   const freeCapacity = capacity - used;
   if (freeCapacity <= 0) {
-    addEvent(state, player.id, 'Embarque inválido: esquadra sem capacidade.', 'info');
+    addEvent(state, player.id, t('log.embarkInvalidNoCap'), 'info');
     return;
   }
 
@@ -1302,7 +1306,7 @@ function embark(state: GameState, territoryId: string, seaZoneId: string, count:
   if (player.armies[territoryId] <= 0) delete player.armies[territoryId];
   player.embarked[seaZoneId] = used + toEmbark;
 
-  addEvent(state, player.id, `Embarcou ${toEmbark} exército(s) em ${sea.name}`, 'move');
+  addEvent(state, player.id, t('log.embarked', { n: toEmbark, sea: seaName(seaZoneId) }), 'move');
 }
 
 /**
@@ -1317,21 +1321,21 @@ function disembark(state: GameState, seaZoneId: string, territoryId: string, cou
 
   if (!territory || !sea) return;
   if (!sea.adjacentTerritories.includes(territoryId)) {
-    addEvent(state, player.id, 'Desembarque inválido: território não adjacente.', 'info');
+    addEvent(state, player.id, t('log.disembarkInvalidAdj'), 'info');
     return;
   }
   if (territory.nuked) {
-    addEvent(state, player.id, 'Desembarque inválido: território destruído.', 'info');
+    addEvent(state, player.id, t('log.disembarkInvalidNuked'), 'info');
     return;
   }
   const embarkedHere = player.embarked[seaZoneId] || 0;
   if (embarkedHere <= 0) {
-    addEvent(state, player.id, 'Desembarque inválido: nenhum exército embarcado.', 'info');
+    addEvent(state, player.id, t('log.disembarkInvalidNoEmbarked'), 'info');
     return;
   }
   // Only onto own territory or one without enemy armies (no amphibious assault yet).
   if (territory.owner && territory.owner !== player.id && enemyArmiesPresent(state, territoryId, player.id)) {
-    addEvent(state, player.id, 'Desembarque inválido: território ocupado por inimigo.', 'info');
+    addEvent(state, player.id, t('log.disembarkInvalidEnemy'), 'info');
     return;
   }
 
@@ -1342,7 +1346,7 @@ function disembark(state: GameState, seaZoneId: string, territoryId: string, cou
   if (player.embarked[seaZoneId] <= 0) delete player.embarked[seaZoneId];
   player.armies[territoryId] = (player.armies[territoryId] || 0) + toLand;
 
-  addEvent(state, player.id, `Desembarcou ${toLand} exército(s) em ${territory.name}`, 'move');
+  addEvent(state, player.id, t('log.disembarked', { n: toLand, terr: territoryName(territoryId) }), 'move');
 
   // Landing unopposed on a neutral/empty territory takes control of it (and any
   // company there), going through the single claim path.
@@ -1356,13 +1360,13 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
 
   // Attack only allowed in stage 4
   if (state.turn.stage !== 4) {
-    addEvent(state, player.id, 'Ataque só é permitido na fase de Combate (Estágio 4).', 'info');
+    addEvent(state, player.id, t('log.attackOnlyStage4'), 'info');
     return;
   }
 
   // One attack per origin (territory/sea zone) per turn
   if (state.turn.attackedFrom.includes(from)) {
-    addEvent(state, player.id, 'Esta origem já atacou neste turno.', 'info');
+    addEvent(state, player.id, t('log.originAlreadyAttacked'), 'info');
     return;
   }
 
@@ -1370,7 +1374,7 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
   if (player.supplies.grain < RULES.COMBAT_SUPPLY_COST ||
       player.supplies.oil < RULES.COMBAT_SUPPLY_COST ||
       player.supplies.mineral < RULES.COMBAT_SUPPLY_COST) {
-    addEvent(state, player.id, 'Suprimentos insuficientes para atacar.', 'info');
+    addEvent(state, player.id, t('log.combatNoSupplies'), 'info');
     return;
   }
 
@@ -1388,11 +1392,11 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     const territory = state.territories[target];
     if (!fromSea || !territory) return;
     if (fromSea.type !== 'coastal') {
-      addEvent(state, player.id, 'Bombardeio inválido: só esquadras em mar costeiro atacam terra.', 'info');
+      addEvent(state, player.id, t('log.bombardInvalidCoastal'), 'info');
       return;
     }
     if (!fromSea.adjacentTerritories.includes(target)) {
-      addEvent(state, player.id, 'Bombardeio inválido: território não é adjacente ao mar.', 'info');
+      addEvent(state, player.id, t('log.bombardInvalidAdj'), 'info');
       return;
     }
     if (territory.nuked) return;
@@ -1415,7 +1419,7 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     // Adjacency check — engine enforces what the UI already filters
     const fromTerritory = state.territories[from];
     if (!fromTerritory || !fromTerritory.adjacentTerritories.includes(target)) {
-      addEvent(state, player.id, 'Ataque inválido: território alvo não é adjacente.', 'info');
+      addEvent(state, player.id, t('log.attackInvalidAdj'), 'info');
       return;
     }
 
@@ -1438,7 +1442,7 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     // Adjacency check for naval combat
     const fromSea = state.seaZones[from];
     if (!fromSea || !fromSea.adjacentSeas.includes(target)) {
-      addEvent(state, player.id, 'Ataque naval inválido: zona alvo não é adjacente.', 'info');
+      addEvent(state, player.id, t('log.navalAttackInvalidAdj'), 'info');
       return;
     }
 
@@ -1586,14 +1590,15 @@ function rollCombat(state: GameState): void {
   state.combat.attackerUnitsAfter = attackerAfter;
   state.combat.defenderUnitsAfter = defenderAfter;
 
-  const fromName = (state.combat.targetType === 'territory' && !state.combat.bombardment)
-    ? state.territories[fromId || '']?.name
-    : state.seaZones[fromId || '']?.name;
-  const targetName = state.combat.targetType === 'territory'
-    ? state.territories[targetId]?.name
-    : state.seaZones[targetId]?.name;
+  const fromName = locationName(fromId || '');
+  const targetName = locationName(targetId);
   addEvent(state, attacker.id,
-    `${fromName}→${targetName}: [${attackerDice.join(',')}]=${attackerTotal} vs [${defenderDice.join(',')}]=${defenderTotal} — baixas atk -${attackerLosses} def -${defenderLosses}`,
+    t('log.combatResult', {
+      from: fromName, to: targetName,
+      atkDice: attackerDice.join(','), atkTotal: attackerTotal,
+      defDice: defenderDice.join(','), defTotal: defenderTotal,
+      atkLoss: attackerLosses, defLoss: defenderLosses,
+    }),
     'combat'
   );
 
@@ -1604,7 +1609,7 @@ function rollCombat(state: GameState): void {
   if (state.combat.bombardment) {
     if (defenderAfter <= 0) {
       addEvent(state, attacker.id,
-        `Bombardeio limpou os exércitos inimigos em ${targetName} — desembarque um exército para ocupar.`, 'combat');
+        t('log.bombardCleared', { to: targetName }), 'combat');
     }
   // Only land territories can be occupied; naval battles just resolve.
   } else if (state.combat.targetType === 'territory') {
@@ -1674,7 +1679,7 @@ function performReinforcement(state: GameState, from: string, count: number): bo
   state.combat.reinforceUsed = true;
   state.combat.reinforceAvailable = false;
   addEvent(state, defenderId,
-    `Reforço pós-combate: ${toMove} exército(s) de ${source.name} → ${territory.name}.`, 'combat');
+    t('log.reinforcement', { n: toMove, from: territoryName(from), to: territoryName(targetId) }), 'combat');
   return true;
 }
 
@@ -1735,8 +1740,8 @@ function performCounterAttack(state: GameState): boolean {
   if (counterDefender.armies[fromId] <= 0) delete counterDefender.armies[fromId];
 
   const clearedTarget = (counterDefender.armies[fromId] || 0) <= 0;
-  const targetName = state.territories[targetId]?.name ?? targetId;
-  const fromName = state.territories[fromId]?.name ?? fromId;
+  const targetName = territoryName(targetId);
+  const fromName = territoryName(fromId);
 
   state.combat.counterResult = {
     counterAttackerId: defenderId,
@@ -1752,7 +1757,12 @@ function performCounterAttack(state: GameState): boolean {
   state.combat.counterAttackAvailable = false;
 
   addEvent(state, defenderId,
-    `Contra-ataque ${targetName}→${fromName}: [${caRoll.join(',')}]=${caTotal} vs [${cdRoll.join(',')}]=${cdTotal} — baixas defensor -${caLosses}, atacante -${cdLosses}${clearedTarget ? ' (origem do ataque limpa)' : ''}.`,
+    t('log.counterAttack', {
+      from: targetName, to: fromName,
+      caDice: caRoll.join(','), caTotal, cdDice: cdRoll.join(','), cdTotal,
+      caLoss: caLosses, cdLoss: cdLosses,
+      cleared: clearedTarget ? t('log.counterCleared') : '',
+    }),
     'combat');
   return true;
 }
@@ -1854,7 +1864,7 @@ function occupyTerritory(state: GameState, count: number = 1): void {
   }
 
   const movedCount = fromId ? (attacker.armies[targetId] || 0) : 1;
-  addEvent(state, attacker.id, `Ocupou ${territory.name} com ${movedCount} exército(s)`, 'combat');
+  addEvent(state, attacker.id, t('log.occupied', { terr: territoryName(targetId), n: movedCount }), 'combat');
   resetCombat(state);
 }
 
@@ -1902,7 +1912,7 @@ function eliminatePlayer(state: GameState, eliminatedId: SuperpowerId, conquered
   eliminated.navies = {};
   eliminated.embarked = {};
 
-  addEvent(state, conqueredBy, `${eliminated.name} foi eliminada! Ativos transferidos.`, 'elimination');
+  addEvent(state, conqueredBy, t('log.eliminated', { player: factionName(eliminatedId) }), 'elimination');
 
   // Check victory
   const activePlayers = Object.values(state.players).filter(p => !p.isEliminated);
@@ -1961,7 +1971,7 @@ function defendNuke(state: GameState): void {
       state.nuclearAttack.intercepted = true;
       state.nuclearAttack.defenseRolls = rolls;
       state.nuclearAttack.phase = 'result';
-      addEvent(state, defender.id, `Laser-Star interceptou bomba nuclear! (rolou ${roll})`, 'nuclear');
+      addEvent(state, defender.id, t('log.nukeIntercepted', { roll }), 'nuclear');
       return;
     }
   }
@@ -1974,7 +1984,7 @@ function resolveNuke(state: GameState): void {
   if (!state.nuclearAttack.active || !state.nuclearAttack.targetId || !state.nuclearAttack.attackerId) return;
 
   if (state.nuclearAttack.intercepted) {
-    addEvent(state, state.nuclearAttack.attackerId, 'Bomba nuclear interceptada por Laser-Star!', 'nuclear');
+    addEvent(state, state.nuclearAttack.attackerId, t('log.nukeInterceptedShort'), 'nuclear');
     resetNuclearState(state);
     return;
   }
@@ -2002,14 +2012,14 @@ function resolveNuke(state: GameState): void {
     }
 
     territory.owner = null;
-    addEvent(state, attacker.id, `BOMBA NUCLEAR em ${territory.name}! Território destruído.`, 'nuclear');
+    addEvent(state, attacker.id, t('log.nukeTerritory', { terr: territoryName(targetId) }), 'nuclear');
 
     // Check holocaust
     if (state.nukedTerritoryCount >= RULES.HOLOCAUST_THRESHOLD) {
       state.gameOver = true;
       state.winner = null;
       state.endCondition = 'holocaust';
-      addEvent(state, attacker.id, 'HOLOCAUSTO NUCLEAR! Todos perdem.', 'nuclear');
+      addEvent(state, attacker.id, t('log.holocaust'), 'nuclear');
     }
 
     // Check if this eliminates a player (last homeland destroyed)
@@ -2032,7 +2042,7 @@ function resolveNuke(state: GameState): void {
         player.armies = {};
         player.navies = {};
         player.embarked = {};
-        addEvent(state, player.id, `${player.name} eliminada por destruição nuclear total!`, 'elimination');
+        addEvent(state, player.id, t('log.nukeEliminated', { player: factionName(player.id) }), 'elimination');
       }
     }
   } else {
@@ -2045,7 +2055,7 @@ function resolveNuke(state: GameState): void {
         delete player.embarked[targetId];
       }
     }
-    addEvent(state, attacker.id, `BOMBA NUCLEAR no mar ${state.seaZones[targetId]?.name}!`, 'nuclear');
+    addEvent(state, attacker.id, t('log.nukeSea', { sea: seaName(targetId) }), 'nuclear');
   }
 
   resetNuclearState(state);
@@ -2068,7 +2078,7 @@ function buildNuke(state: GameState): void {
   player.money -= RULES.NUKE_COST;
   player.supplies.mineral -= RULES.NUKE_MINERAL_COST;
   player.nukes++;
-  addEvent(state, player.id, `Construiu bomba atômica (total: ${player.nukes})`, 'build');
+  addEvent(state, player.id, t('log.builtNuke', { n: player.nukes }), 'build');
 }
 
 function buildLaserStar(state: GameState): void {
@@ -2081,7 +2091,7 @@ function buildLaserStar(state: GameState): void {
   player.money -= RULES.LASER_STAR_COST;
   player.supplies.mineral -= RULES.LASER_STAR_MINERAL_COST;
   player.laserStars++;
-  addEvent(state, player.id, `Construiu Laser-Star (total: ${player.laserStars})`, 'build');
+  addEvent(state, player.id, t('log.builtLaser', { n: player.laserStars }), 'build');
 }
 
 // ── Research: deck-based card draw system ─────────────────────────────────────
@@ -2093,12 +2103,12 @@ function drawResearchCardInternal(state: GameState): void {
   const player = state.players[state.turn.currentPlayer];
 
   if (state.resourceDeck.length === 0) {
-    addEvent(state, player.id, 'Baralho esgotado — pesquisa encerrada. Cartas devolvidas ao baralho.', 'build');
+    addEvent(state, player.id, t('log.researchDeckEmpty'), 'build');
     finalizeResearch(state);
     return;
   }
   if (player.money < RULES.RESEARCH_COST_PER_CARD) {
-    addEvent(state, player.id, 'Dinheiro insuficiente para continuar a pesquisa. Cartas devolvidas ao baralho.', 'build');
+    addEvent(state, player.id, t('log.researchNoMoney'), 'build');
     finalizeResearch(state);
     return;
   }
@@ -2115,8 +2125,8 @@ function drawResearchCardInternal(state: GameState): void {
     (session.target === 'laser' && foundLaser);
 
   const { nukeCount, laserCount } = getTechCounts(state.resourceDeck);
-  const targetName = session.target === 'nuke' ? 'Bomba Atômica' : 'Laser-Star';
-  const cardContext = `Pesquisa de ${targetName} — carta ${session.cardsRevealed.length}`;
+  const targetName = t(session.target === 'nuke' ? 'tech.nukeTarget' : 'tech.laserTarget');
+  const cardContext = t('draw.ctx.research', { tech: targetName, n: session.cardsRevealed.length });
 
   if (foundTarget) {
     session.found = true;
@@ -2125,13 +2135,13 @@ function drawResearchCardInternal(state: GameState): void {
     } else {
       player.hasResearchedLaserStar = true;
     }
-    addEvent(state, player.id, `Pesquisa: encontrou ${targetName}! (${session.cardsRevealed.length} carta(s) virada(s), custo $${fmtNum(session.totalCost)})`, 'build');
+    addEvent(state, player.id, t('log.researchFound', { tech: targetName, n: session.cardsRevealed.length, cost: fmtNum(session.totalCost) }), 'build');
     state.drawnCard = {
       active: true,
       type: session.target,
       success: true,
-      cardName: session.target === 'nuke' ? 'Ogiva Nuclear' : 'Estrela Laser',
-      cardEffect: `Tecnologia desbloqueada! Agora você pode construir ${targetName} na fase de Construção.`,
+      cardName: t(session.target === 'nuke' ? 'tech.nuke' : 'tech.laser'),
+      cardEffect: t('draw.eff.techUnlocked', { tech: targetName }),
       context: cardContext,
       cardId,
       researchTarget: session.target,
@@ -2148,14 +2158,14 @@ function drawResearchCardInternal(state: GameState): void {
 
   // Drew a tech card that isn't the target — discard it (consumed from deck)
   if (isTechCard(cardId)) {
-    const otherName = foundNuke ? 'Ogiva Nuclear' : 'Estrela Laser';
-    addEvent(state, player.id, `Pesquisa: ${otherName} encontrada (não é o alvo) — devolvida ao baralho.`, 'build');
+    const otherName = t(foundNuke ? 'tech.nuke' : 'tech.laser');
+    addEvent(state, player.id, t('log.researchOtherTech', { tech: otherName }), 'build');
     state.drawnCard = {
       active: true,
       type: foundNuke ? 'nuke' : 'laser',
       success: false,
       cardName: otherName,
-      cardEffect: `Carta de tecnologia diferente encontrada — devolvida ao baralho. Continue procurando ${targetName}.`,
+      cardEffect: t('draw.eff.otherTech', { tech: targetName }),
       context: cardContext,
       cardId,
       researchTarget: session.target,
@@ -2170,19 +2180,18 @@ function drawResearchCardInternal(state: GameState): void {
 
   // Regular resource card — reveal and discard
   const card = state.resourceCards[cardId];
-  const resourceLabel = card
-    ? (card.type === 'grain' ? 'Cereal' : card.type === 'oil' ? 'Petróleo' : 'Minério')
-    : 'Recurso';
+  const resourceLabel = card ? resName(card.type) : t('draw.resourceFallback');
+  const coName = card ? companyName(card.id, card.companyName) : t('draw.name.resourceCard');
   addEvent(state, player.id,
-    `Pesquisa: ${card?.companyName ?? cardId} (${resourceLabel}) — voltará ao baralho. Procurando ${targetName}.`, 'build');
+    t('log.researchResourceCard', { company: coName, res: resourceLabel, tech: targetName }), 'build');
   state.drawnCard = {
     active: true,
     type: 'resource',
     success: false,
-    cardName: card?.companyName ?? 'Carta de Recurso',
+    cardName: coName,
     cardEffect: card
-      ? `${resourceLabel} · produção ${card.production} · ${state.territories[card.territoryId]?.name ?? card.territoryId}`
-      : 'Carta de recurso — voltará ao baralho.',
+      ? t('draw.eff.resourceInfo', { res: resourceLabel, prod: card.production, where: territoryName(card.territoryId) })
+      : t('draw.eff.resourceReturn'),
     context: cardContext,
     cardId,
     resourceType: card?.type,
@@ -2217,7 +2226,7 @@ function researchInstant(state: GameState, target: 'nuke' | 'laser'): void {
   const alreadyFound = target === 'nuke' ? player.hasResearchedNuke : player.hasResearchedLaserStar;
   if (alreadyFound) return;
 
-  const techName = target === 'nuke' ? 'Bomba Atômica' : 'Laser-Star';
+  const techName = t(target === 'nuke' ? 'tech.nukeTarget' : 'tech.laserTarget');
   const drawnCardIds: string[] = [];
   let totalCost = 0;
   let found = false;
@@ -2239,7 +2248,7 @@ function researchInstant(state: GameState, target: 'nuke' | 'laser'): void {
       if (target === 'nuke') player.hasResearchedNuke = true;
       else player.hasResearchedLaserStar = true;
       addEvent(state, player.id,
-        `Pesquisa IA: ${techName} descoberta em ${drawnCardIds.length} carta(s) — $${fmtNum(totalCost)}.`, 'build');
+        t('log.aiResearchFound', { tech: techName, n: drawnCardIds.length, cost: fmtNum(totalCost) }), 'build');
       found = true;
       break;
     }
@@ -2253,7 +2262,7 @@ function researchInstant(state: GameState, target: 'nuke' | 'laser'): void {
 
   if (!found && drawnCardIds.length > 0) {
     addEvent(state, player.id,
-      `Pesquisa IA: ${techName} não encontrada (${drawnCardIds.length} carta(s), $${fmtNum(totalCost)} gastos). Cartas devolvidas ao baralho.`, 'build');
+      t('log.aiResearchNotFound', { tech: techName, n: drawnCardIds.length, cost: fmtNum(totalCost) }), 'build');
   }
 }
 
@@ -2272,7 +2281,7 @@ function takeLoan(state: GameState, amount: number): void {
 
   player.money += loanAmount;
   player.loans += loanAmount;
-  addEvent(state, player.id, `Empréstimo de ${fmtNum(loanAmount)} tomado. Dívida total: ${fmtNum(player.loans)}`, 'economy');
+  addEvent(state, player.id, t('log.loanTaken', { amount: fmtNum(loanAmount), total: fmtNum(player.loans) }), 'economy');
 }
 
 function payLoan(state: GameState, amount: number): void {
@@ -2282,7 +2291,7 @@ function payLoan(state: GameState, amount: number): void {
 
   player.money -= payment;
   player.loans -= payment;
-  addEvent(state, player.id, `Pagou ${fmtNum(payment)} de empréstimo. Dívida restante: ${fmtNum(player.loans)}`, 'economy');
+  addEvent(state, player.id, t('log.loanPaid', { payment: fmtNum(payment), remaining: fmtNum(player.loans) }), 'economy');
 }
 
 function calculateWealth(state: GameState, playerId: SuperpowerId): number {
@@ -2321,7 +2330,7 @@ function cpuTurn(state: GameState): void {
   const cpuCap = RULES.MAX_OPTIONAL_STAGES - state.turn.optionalStagesUsed.length;
   const { stages: sorted, decisions } = chooseOptionalStages(state, player, aiConfig, cpuCap);
   for (const d of decisions) {
-    addEvent(state, player.id, `IA ${player.name} — ${d.reason}.`, 'info');
+    addEvent(state, player.id, t('log.aiDecision', { player: factionName(player.id), reason: t(d.reason as TranslationKey) }), 'info');
   }
 
   for (const stage of sorted) {
@@ -2447,9 +2456,9 @@ function cpuAttack(state: GameState, player: typeof state.players[SuperpowerId])
         const result: CpuAttackResult = {
           fromId: territoryId,
           targetId: adjId,
-          fromName: territory.name,
-          targetName: adjTerritory.name,
-          defenderName: SUPERPOWERS[defenderId]?.shortName ?? 'desconhecido',
+          fromName: territoryName(territoryId),
+          targetName: territoryName(adjId),
+          defenderName: factionShort(defenderId),
           attackerDice: [...state.combat.attackerDice],
           defenderDice: [...state.combat.defenderDice],
           attackerLosses: state.combat.attackerLosses,
@@ -2600,7 +2609,7 @@ function cpuMove(state: GameState, player: typeof state.players[SuperpowerId], c
       results.push({
         kind: 'land',
         fromId: mv.from, toId: mv.to,
-        fromName: fromT?.name || mv.from, toName: toT?.name || mv.to,
+        fromName: territoryName(mv.from), toName: territoryName(mv.to),
         count: 1,
         claimed: state.territories[mv.to]?.owner === player.id && beforeOwner !== player.id,
       });
@@ -2635,7 +2644,7 @@ function cpuMove(state: GameState, player: typeof state.players[SuperpowerId], c
           results.push({
             kind: 'naval',
             fromId: seaId, toId: to,
-            fromName: sea.name, toName: state.seaZones[to]?.name || to,
+            fromName: seaName(seaId), toName: seaName(to),
             count: 1, claimed: false,
           });
         }
@@ -2675,8 +2684,8 @@ function tryAmphibiousInvasion(
         results.push({
           kind: 'embark',
           fromId: plan.embarkTerritory, toId: plan.startSea,
-          fromName: state.territories[plan.embarkTerritory]?.name || plan.embarkTerritory,
-          toName: state.seaZones[plan.startSea]?.name || plan.startSea,
+          fromName: territoryName(plan.embarkTerritory),
+          toName: seaName(plan.startSea),
           count: embarked, claimed: false,
         });
       }
@@ -2697,8 +2706,8 @@ function tryAmphibiousInvasion(
     results.push({
       kind: 'naval',
       fromId: currentSea, toId: to,
-      fromName: state.seaZones[currentSea]?.name || currentSea,
-      toName: state.seaZones[to]?.name || to,
+      fromName: seaName(currentSea),
+      toName: seaName(to),
       count: navHere, claimed: false,
     });
     currentSea = to;
@@ -2715,8 +2724,8 @@ function tryAmphibiousInvasion(
     results.push({
       kind: 'amphibious',
       fromId: currentSea, toId: plan.landTerritory,
-      fromName: state.seaZones[currentSea]?.name || currentSea,
-      toName: state.territories[plan.landTerritory]?.name || plan.landTerritory,
+      fromName: seaName(currentSea),
+      toName: territoryName(plan.landTerritory),
       count: landed, claimed,
     });
   }
@@ -2776,10 +2785,10 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   pushStep({
     phase: 1,
     actionType: 'pay_salaries',
-    title: 'Pagou salários',
+    title: t('present.step.salaryTitle'),
     description: salaryCost > 0
-      ? `${fmtNum(salaryCost)} — ${unitCount} unidades e ${player.resourceCards.length} companhias`
-      : 'Nenhum custo de upkeep neste turno.',
+      ? t('present.step.salaryDesc', { cost: fmtNum(salaryCost), units: unitCount, companies: player.resourceCards.length })
+      : t('present.step.salaryNone'),
     resourceChanges: { money: -salaryCost },
     soundKey: salaryCost > 0 ? 'resource-loss' : undefined,
     durationMs: STEP_MS,
@@ -2796,10 +2805,10 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   pushStep({
     phase: 2,
     actionType: 'transfer_production',
-    title: 'Recebeu produção',
+    title: t('present.step.productionTitle'),
     description: totalProduced > 0
-      ? `+${grainGained} cereal · +${oilGained} petróleo · +${mineralGained} minério`
-      : 'Nenhuma produção disponível neste turno.',
+      ? t('present.step.productionDesc', { grain: grainGained, gn: resName('grain'), oil: oilGained, on: resName('oil'), mineral: mineralGained, mn: resName('mineral') })
+      : t('present.step.productionNone'),
     resourceChanges: { grain: grainGained, oil: oilGained, mineral: mineralGained },
     soundKey: totalProduced > 0 ? 'resource-gain' : undefined,
     durationMs: STEP_MS,
@@ -2819,13 +2828,12 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
     const reason = reasonByStage.get(stage);
     if (reason) {
       // Log visível "ação X/N: motivo" — mobile-first, não depende de tooltip.
-      addEvent(state, playerId, `IA ${sp.name} — ação ${actionIndex}/${sorted.length}: ${reason}.`, 'info');
+      addEvent(state, playerId, t('log.aiAction', { player: factionName(playerId), i: actionIndex, n: sorted.length, reason: t(reason as TranslationKey) }), 'info');
     }
 
     switch (stage) {
       case 3: { // Sell — one announcement per resource type
         const resources: ResourceType[] = ['grain', 'oil', 'mineral'];
-        const RESOURCE_PT: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
         for (const r of resources) {
           if (state.players[playerId].supplies[r] > 4) {
             const qty = state.players[playerId].supplies[r] - 3;
@@ -2835,8 +2843,8 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
             pushStep({
               phase: 3,
               actionType: 'sell_resource',
-              title: `Vendeu ${qty} ${RESOURCE_PT[r]}`,
-              description: `Recebeu ${fmtNum(revenue)} no mercado`,
+              title: t('present.step.sellTitle', { qty, res: resName(r) }),
+              description: t('present.step.sellDesc', { revenue: fmtNum(revenue) }),
               resourceChanges: { money: revenue, [r]: -qty },
               soundKey: 'resource-gain',
               durationMs: STEP_MS,
@@ -2855,10 +2863,10 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
           pushStep({
             phase: 4,
             actionType: conquered ? 'attack_result_victory' : 'attack_result_defeat',
-            title: conquered ? `Conquistou ${targetName}!` : `Ataque em ${targetName} falhou`,
+            title: conquered ? t('present.step.attackVictory', { to: targetName }) : t('present.step.attackFailed', { to: targetName }),
             description: conquered
-              ? `[${attackResult.attackerDice.join(',')}]=${attackerTotal} vs [${attackResult.defenderDice.join(',')}]=${defenderTotal} — derrotou ${defenderName}`
-              : `[${attackResult.attackerDice.join(',')}]=${attackerTotal} vs [${attackResult.defenderDice.join(',')}]=${defenderTotal} — ${defenderName} resistiu`,
+              ? t('present.step.attackDescVictory', { atkDice: attackResult.attackerDice.join(','), atkTotal: attackerTotal, defDice: attackResult.defenderDice.join(','), defTotal: defenderTotal, defender: defenderName })
+              : t('present.step.attackDescFailed', { atkDice: attackResult.attackerDice.join(','), atkTotal: attackerTotal, defDice: attackResult.defenderDice.join(','), defTotal: defenderTotal, defender: defenderName }),
             fromId: attackResult.fromId,
             toId: attackResult.targetId,
             soundKey: conquered ? 'territory-conquered' : 'combat-hit',
@@ -2893,20 +2901,20 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
           let description: string;
           switch (mv.kind) {
             case 'naval':
-              title = `Moveu frota para ${mv.toName}`;
-              description = `Frota avança de ${mv.fromName}`;
+              title = t('present.step.navalTitle', { to: mv.toName });
+              description = t('present.step.navalDesc', { from: mv.fromName });
               break;
             case 'embark':
-              title = 'Embarcou tropas';
-              description = `${mv.count} exército(s) de ${mv.fromName} → ${mv.toName}`;
+              title = t('present.step.embarkTitle');
+              description = t('present.step.embarkDesc', { count: mv.count, from: mv.fromName, to: mv.toName });
               break;
             case 'amphibious':
-              title = mv.claimed ? `Invasão anfíbia: ocupou ${mv.toName}` : `Desembarcou em ${mv.toName}`;
-              description = `${mv.count} exército(s) desembarcaram de ${mv.fromName}`;
+              title = mv.claimed ? t('present.step.amphibiousOccupied', { to: mv.toName }) : t('present.step.amphibiousLanded', { to: mv.toName });
+              description = t('present.step.amphibiousDesc', { count: mv.count, from: mv.fromName });
               break;
             default: // 'land'
-              title = mv.claimed ? `Ocupou ${mv.toName}` : `Reforçou ${mv.toName}`;
-              description = `${mv.count} exército(s) de ${mv.fromName}`;
+              title = mv.claimed ? t('present.step.landOccupied', { to: mv.toName }) : t('present.step.landReinforced', { to: mv.toName });
+              description = t('present.step.landDesc', { count: mv.count, from: mv.fromName });
           }
           pushStep({
             phase: 5,
@@ -2935,12 +2943,12 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
         for (const [loc, newCount] of Object.entries(state.players[playerId].armies)) {
           const built = newCount - (armiesBefore[loc] || 0);
           if (built > 0) {
-            const tName = state.territories[loc]?.name || loc;
+            const tName = territoryName(loc);
             pushStep({
               phase: 6,
               actionType: 'build_armies',
-              title: `Construiu ${built} exército${built > 1 ? 's' : ''}`,
-              description: `em ${tName}`,
+              title: t('present.step.buildArmiesTitle', { n: built }),
+              description: t('present.step.buildAt', { place: tName }),
               toId: loc,
               armyDelta: built,
               resourceChanges: built === Object.values(state.players[playerId].armies).reduce((s: number, v: number) => s + v, 0) - Object.values(armiesBefore).reduce((s: number, v: number) => s + v, 0)
@@ -2954,12 +2962,12 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
         for (const [loc, newCount] of Object.entries(state.players[playerId].navies)) {
           const built = newCount - (naviesBefore[loc] || 0);
           if (built > 0) {
-            const sName = state.seaZones[loc]?.name || loc;
+            const sName = seaName(loc);
             pushStep({
               phase: 6,
               actionType: 'build_navies',
-              title: `Construiu ${built} esquadra${built > 1 ? 's' : ''}`,
-              description: `em ${sName}`,
+              title: t('present.step.buildNaviesTitle', { n: built }),
+              description: t('present.step.buildAt', { place: sName }),
               toId: loc,
               navyDelta: built,
               soundKey: 'resource-gain',
@@ -2972,7 +2980,6 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
 
       case 7: { // Buy — one announcement per resource type
         const resources7: ResourceType[] = ['grain', 'oil', 'mineral'];
-        const RESOURCE_PT7: Record<ResourceType, string> = { grain: 'Cereal', oil: 'Petróleo', mineral: 'Minério' };
         for (const r of resources7) {
           if (state.players[playerId].supplies[r] < 3 && state.players[playerId].money > state.market.prices[r] * 2) {
             const supBefore = state.players[playerId].supplies[r];
@@ -2984,8 +2991,8 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
               pushStep({
                 phase: 7,
                 actionType: 'buy_resource',
-                title: `Comprou ${bought} ${RESOURCE_PT7[r]}`,
-                description: `Pagou ${fmtNum(spent)} no mercado`,
+                title: t('present.step.buyTitle', { n: bought, res: resName(r) }),
+                description: t('present.step.buyDesc', { spent: fmtNum(spent) }),
                 resourceChanges: { money: -spent, [r]: bought },
                 soundKey: 'resource-gain',
                 durationMs: STEP_MS,
@@ -3001,7 +3008,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
   // ── Research nukes — card-by-card so human player sees each draw ────────────
   // Só perfis com usesTechStrategy entram na corrida tecnológica.
   if (sorted.includes(6) && shouldResearchTech(state.players[playerId], aiConfig)) {
-    const techName = 'Bomba Atômica';
+    const techName = t('tech.nukeTarget');
     const drawnForResearch: string[] = [];
     let researchCost = 0;
     let foundNuke = false;
@@ -3022,17 +3029,17 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
         : card?.type === 'grain' ? '🌾'
         : card?.type === 'oil' ? '🛢️'
         : '⛏️';
-      const cardName = isNukeCard(cardId) ? 'Ogiva Nuclear'
-        : isLaserCard(cardId) ? 'Estrela Laser'
-        : card?.companyName ?? 'Carta de Recurso';
+      const cardName = isNukeCard(cardId) ? t('tech.nuke')
+        : isLaserCard(cardId) ? t('tech.laser')
+        : card ? companyName(card.id, card.companyName) : t('draw.name.resourceCard');
 
       pushStep({
         phase: 6,
         actionType: 'card_reveal',
-        title: isTargetCard ? `${techName} encontrada!` : `Revelou: ${cardEmoji} ${cardName}`,
+        title: isTargetCard ? t('present.step.techFound', { tech: techName }) : t('present.step.cardRevealed', { emoji: cardEmoji, card: cardName }),
         description: isTargetCard
-          ? `${sp.shortName} pesquisou ${drawnForResearch.length} carta(s) — $${fmtNum(researchCost)}`
-          : `Procurando ${techName}... carta ${drawnForResearch.length}`,
+          ? t('present.step.techFoundDesc', { player: factionShort(playerId), n: drawnForResearch.length, cost: fmtNum(researchCost) })
+          : t('present.step.searchingTech', { tech: techName, n: drawnForResearch.length }),
         soundKey: isTargetCard ? 'territory-conquered' : 'resource-gain',
         durationMs: STEP_MS,
       });
@@ -3052,7 +3059,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
 
     if (!foundNuke && drawnForResearch.length > 0) {
       addEvent(state, playerId,
-        `Pesquisa IA: ${techName} não encontrada (${drawnForResearch.length} carta(s), $${fmtNum(researchCost)} gastos). Cartas devolvidas.`, 'build');
+        t('log.aiResearchNotFound', { tech: techName, n: drawnForResearch.length, cost: fmtNum(researchCost) }), 'build');
     }
 
     state.drawnCard = null;
@@ -3068,8 +3075,8 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
       playerType: 'ai',
       phase: 1,
       actionType: 'end_turn',
-      title: 'Fim de turno',
-      description: `Turno de ${sp.name} concluído`,
+      title: t('present.step.endTurnTitle'),
+      description: t('present.step.endTurnDesc', { player: factionName(playerId) }),
       durationMs: 1500,
     } as PlayerActionEvent,
     stateAfter: JSON.parse(JSON.stringify(state)),

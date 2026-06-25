@@ -5,6 +5,7 @@ import { TERRITORIES } from '../../data/territories';
 import { SEA_ZONES } from '../../data/seaZones';
 import { generateResourceCards } from '../../data/resourceCards';
 import type { GameState, SuperpowerId } from '../types';
+import { useI18nStore } from '../../i18n/useI18n';
 
 const ALL: SuperpowerId[] = ['south_america', 'africa', 'europe', 'china', 'usa', 'ussr'];
 
@@ -133,6 +134,8 @@ describe('movement consumes cereal and blocks with a reason', () => {
   });
 
   it('a 0-cereal move is rejected (owner unchanged) and logged', () => {
+    // As mensagens do motor são i18n; fixa pt para asserir o texto de forma determinística.
+    useI18nStore.setState({ lang: 'pt' });
     const game = setupGame('usa');
     game.players.usa.armies = { eastern_usa: 2 };
     game.players.usa.supplies.grain = 0;
