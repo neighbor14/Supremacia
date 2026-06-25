@@ -233,3 +233,25 @@ replanejamento da apresentação pré-computada e o risco de exceder o limite de
 
 **D8 — nota:** combate naval em mares costeiros ainda não implementado. Entrar em mar
 costeiro já ocupado por outro jogador é bloqueado com mensagem explicativa.
+
+## Bombardeio naval — esquadra ataca território costeiro (fiel ao manual Grow)
+
+> "As esquadras também podem atacar os exércitos a partir de um mar azul-claro
+> adjacente." — manual transcrito ([referências oficiais](referencias-oficiais.md))
+
+Uma esquadra num **mar costeiro** (`type: 'coastal'`, "azul-claro") pode atacar os
+exércitos inimigos num **território costeiro adjacente** ao mar (ex.: esquadra no
+Mar Amarelo → Xantung/`shantung`). É um **bombardeio**: rola o combate normal
+(atacante = esquadras; defensor = exércitos em terra) e causa baixas, mas **não
+conquista o território** — navio não ocupa terra. Para tomar o território é preciso
+**desembarcar um exército** depois (Estágio 5). Baixas do atacante saem das
+**esquadras** na origem; baixas do defensor saem dos **exércitos** no território.
+
+- **Restrição:** só de mar **costeiro** (mares oceânicos/`deep` não bombardeiam terra).
+- **Engine:** `initiateAttack(..., bombardment = true)`; `combat.bombardment` mantém
+  `targetType: 'territory'` mas redireciona as baixas do atacante para `navies`.
+- **Sem ocupação nem resposta do defensor (D6/D7)** no bombardeio — simplificação de
+  MVP marcada com `// TODO: confirmar regra original` em `store.ts`.
+- **UI:** ao selecionar um mar costeiro próprio na fase de Combate, o painel lista os
+  territórios costeiros adjacentes com inimigos como alvos de bombardeio (💥).
+- Coberto por `__tests__/naval-bombardment.test.ts`.

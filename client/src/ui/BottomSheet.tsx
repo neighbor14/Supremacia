@@ -1182,12 +1182,26 @@ function SelectedSeaZoneAttackActions() {
 
   if (myNavies < 1 || !sea) return null;
 
-  // Adjacent sea zones that hold enemy navies
-  const targets = sea.adjacentSeas.filter(sid =>
+  // Adjacent sea zones that hold enemy navies (combate naval mar→mar)
+  const seaTargets = sea.adjacentSeas.filter(sid =>
     Object.entries(game.players).some(([pid, p]) => pid !== player.id && (p.navies[sid] || 0) > 0)
   );
 
-  if (targets.length === 0) return null;
+  // Bombardeio naval (manual Grow): esquadras num mar COSTEIRO podem atacar
+  // exércitos inimigos num território costeiro adjacente. Só dano — não conquista.
+  const landTargets = sea.type === 'coastal'
+    ? sea.adjacentTerritories.filter(tid => {
+        const t = game.territories[tid];
+        if (!t || t.nuked) return false;
+        const hasEnemyArmy = Object.entries(game.players).some(
+          ([pid, p]) => pid !== player.id && (p.armies[tid] || 0) > 0,
+        );
+        const enemyOwned = !!t.owner && t.owner !== player.id;
+        return hasEnemyArmy || enemyOwned;
+      })
+    : [];
+
+  if (seaTargets.length === 0 && landTargets.length === 0) return null;
 
   return (
     <div className="bg-destructive/10 rounded-md p-2 mb-2">
@@ -1195,7 +1209,7 @@ function SelectedSeaZoneAttackActions() {
         Atacar de <strong>{sea.name}</strong> ({myNavies} esquadra(s)):
       </p>
       <div className="flex flex-wrap gap-1">
-        {targets.map(targetId => (
+        {seaTargets.map(targetId => (
           <button
             key={targetId}
             onClick={() => {
@@ -1207,7 +1221,25 @@ function SelectedSeaZoneAttackActions() {
             ⚔ {game.seaZones[targetId]?.name}
           </button>
         ))}
+        {landTargets.map(targetId => (
+          <button
+            key={targetId}
+            onClick={() => {
+              playSound('combat-start', 0.7);
+              dispatch({ type: 'ATTACK_LAND_FROM_SEA', from: selectedSeaZone, target: targetId });
+            }}
+            className="text-[10px] px-2 py-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded hover:bg-amber-500/30 active:scale-[0.95] border border-amber-500/30"
+            title="Bombardeio naval: causa baixas, mas não conquista o território"
+          >
+            💥 {game.territories[targetId]?.name}
+          </button>
+        ))}
       </div>
+      {landTargets.length > 0 && (
+        <p className="text-[9px] text-muted-foreground mt-1">
+          💥 Bombardeio: causa baixas em terra, mas não conquista (desembarque um exército para ocupar).
+        </p>
+      )}
     </div>
   );
 }

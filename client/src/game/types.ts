@@ -207,6 +207,11 @@ export interface CombatState {
   fromId: string | null; // origin territory/sea zone of the attacker
   targetId: string | null; // territory or sea zone
   targetType: 'territory' | 'sea';
+  // Bombardeio naval (manual Grow): esquadra num mar costeiro ataca exércitos
+  // inimigos num território costeiro adjacente. targetType continua 'territory'
+  // (baixas no defensor saem de armies[targetId]), mas a origem é mar e o atacante
+  // perde NAVIES; o território NÃO é conquistado (navio não ocupa terra).
+  bombardment?: boolean;
   attackerUnits: number;
   defenderUnits: number;
   attackerUnitsAfter: number;
@@ -411,6 +416,7 @@ export type GameAction =
   | { type: 'DISEMBARK'; seaZoneId: string; territoryId: string; count: number }
   | { type: 'ATTACK_TERRITORY'; from: string; target: string }
   | { type: 'ATTACK_SEA'; from: string; target: string }
+  | { type: 'ATTACK_LAND_FROM_SEA'; from: string; target: string } // bombardeio naval (mar costeiro → terra)
   | { type: 'RESOLVE_COMBAT'; defenderChoice: 'resist' | 'retreat' | 'surrender' }
   | { type: 'ROLL_COMBAT' }
   | { type: 'OCCUPY_TERRITORY'; count?: number }

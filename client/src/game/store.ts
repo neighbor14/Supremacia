@@ -1344,7 +1344,7 @@ function disembark(state: GameState, seaZoneId: string, territoryId: string, cou
   }
 }
 
-function initiateAttack(state: GameState, from: string, target: string, targetType: 'territory' | 'sea'): void {
+function initiateAttack(state: GameState, from: string, target: string, targetType: 'territory' | 'sea', bombardment = false): void {
   const player = state.players[state.turn.currentPlayer];
 
   // Attack only allowed in stage 4
@@ -1371,7 +1371,37 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
   let attackerUnits = 0;
   let defenderUnits = 0;
 
-  if (targetType === 'territory') {
+  if (bombardment) {
+    // Bombardeio naval (manual Grow): "As esquadras também podem atacar os
+    // exércitos a partir de um mar azul-claro adjacente." Uma esquadra num mar
+    // COSTEIRO ataca exércitos inimigos num território costeiro adjacente. É só
+    // dano — o território NÃO é conquistado (navio não ocupa terra; para ocupar,
+    // desembarque um exército depois).
+    const fromSea = state.seaZones[from];
+    const territory = state.territories[target];
+    if (!fromSea || !territory) return;
+    if (fromSea.type !== 'coastal') {
+      addEvent(state, player.id, 'Bombardeio inválido: só esquadras em mar costeiro atacam terra.', 'info');
+      return;
+    }
+    if (!fromSea.adjacentTerritories.includes(target)) {
+      addEvent(state, player.id, 'Bombardeio inválido: território não é adjacente ao mar.', 'info');
+      return;
+    }
+    if (territory.nuked) return;
+
+    for (const [pid, p] of Object.entries(state.players) as [SuperpowerId, Player][]) {
+      if (pid === player.id) continue;
+      if ((p.armies[target] || 0) > 0) { defenderId = pid; break; }
+    }
+    // Sem exércitos mas com dono inimigo: o dono defende (sem unidades em campo).
+    if (!defenderId && territory.owner && territory.owner !== player.id) {
+      defenderId = territory.owner;
+    }
+    if (!defenderId) return;
+    attackerUnits = player.navies[from] || 0;
+    defenderUnits = state.players[defenderId].armies[target] || 0;
+  } else if (targetType === 'territory') {
     const territory = state.territories[target];
     if (!territory) return;
 
@@ -1421,6 +1451,7 @@ function initiateAttack(state: GameState, from: string, target: string, targetTy
     fromId: from,
     targetId: target,
     targetType,
+    bombardment,
     attackerUnits,
     defenderUnits,
     attackerUnitsAfter: 0,
@@ -1508,7 +1539,16 @@ function rollCombat(state: GameState): void {
     state.turn.attackedFrom.push(fromId);
   }
 
-  if (state.combat.targetType === 'territory') {
+  if (state.combat.bombardment) {
+    // Bombardeio: atacante perde NAVIES (na origem-mar); defensor perde ARMIES (na terra).
+    if (fromId) {
+      attacker.navies[fromId] = Math.max(0, (attacker.navies[fromId] || 0) - attackerLosses);
+      if (attacker.navies[fromId] <= 0) delete attacker.navies[fromId];
+      dropOverCapacityEmbarked(attacker, fromId);
+    }
+    defender.armies[targetId] = Math.max(0, (defender.armies[targetId] || 0) - defenderLosses);
+    if (defender.armies[targetId] <= 0) delete defender.armies[targetId];
+  } else if (state.combat.targetType === 'territory') {
     if (fromId) {
       attacker.armies[fromId] = Math.max(0, (attacker.armies[fromId] || 0) - attackerLosses);
       if (attacker.armies[fromId] <= 0) delete attacker.armies[fromId];
@@ -1527,7 +1567,10 @@ function rollCombat(state: GameState): void {
   }
 
   // Track post-combat unit counts for display
-  const attackerAfter = state.combat.targetType === 'territory'
+  // No bombardeio o atacante é uma esquadra (navies); o defensor é exército (armies).
+  const attackerAfter = state.combat.bombardment
+    ? (fromId ? (attacker.navies[fromId] || 0) : 0)
+    : state.combat.targetType === 'territory'
     ? (fromId ? (attacker.armies[fromId] || 0) : 0)
     : (fromId ? (attacker.navies[fromId] || 0) : 0);
   const defenderAfter = state.combat.targetType === 'territory'
@@ -1536,7 +1579,7 @@ function rollCombat(state: GameState): void {
   state.combat.attackerUnitsAfter = attackerAfter;
   state.combat.defenderUnitsAfter = defenderAfter;
 
-  const fromName = state.combat.targetType === 'territory'
+  const fromName = (state.combat.targetType === 'territory' && !state.combat.bombardment)
     ? state.territories[fromId || '']?.name
     : state.seaZones[fromId || '']?.name;
   const targetName = state.combat.targetType === 'territory'
@@ -1547,8 +1590,17 @@ function rollCombat(state: GameState): void {
     'combat'
   );
 
+  // Bombardeio naval só causa dano: nunca ocupa nem abre resposta do defensor.
+  // (manual Grow: navio não toma terra; para ocupar é preciso desembarcar exército)
+  // TODO: confirmar regra original — reforço/contra-ataque do defensor após
+  // bombardeio naval não implementado (simplificação de MVP).
+  if (state.combat.bombardment) {
+    if (defenderAfter <= 0) {
+      addEvent(state, attacker.id,
+        `Bombardeio limpou os exércitos inimigos em ${targetName} — desembarque um exército para ocupar.`, 'combat');
+    }
   // Only land territories can be occupied; naval battles just resolve.
-  if (state.combat.targetType === 'territory') {
+  } else if (state.combat.targetType === 'territory') {
     if (defenderAfter <= 0) {
       // Pyrrhic: if attacker also wiped out, no occupation possible
       if (attackerAfter > 0) {
@@ -1571,7 +1623,7 @@ function rollCombat(state: GameState): void {
 // contra-atacar. Só land combat. Não muta unidades.
 function markDefenderResponseAvailability(state: GameState): void {
   const { defenderId, targetId, fromId, targetType } = state.combat;
-  if (targetType !== 'territory' || !defenderId || !targetId || !fromId) return;
+  if (targetType !== 'territory' || state.combat.bombardment || !defenderId || !targetId || !fromId) return;
   const defender = state.players[defenderId];
   const territory = state.territories[targetId];
   if (!territory) return;
@@ -1729,7 +1781,7 @@ function resolveDefenderResponseAuto(state: GameState): void {
 function resetCombat(state: GameState): void {
   state.combat = {
     active: false, attackerId: null, defenderId: null, fromId: null, targetId: null,
-    targetType: 'territory', attackerUnits: 0, defenderUnits: 0,
+    targetType: 'territory', bombardment: false, attackerUnits: 0, defenderUnits: 0,
     attackerUnitsAfter: 0, defenderUnitsAfter: 0, conquered: false,
     attackerDice: [], defenderDice: [], attackerLosses: 0, defenderLosses: 0,
     phase: 'select_target', defenderChoice: null,
@@ -1742,8 +1794,8 @@ function occupyTerritory(state: GameState, count: number = 1): void {
   if (!state.combat.active) return;
   const combat = state.combat;
 
-  // Naval battles are never "occupied" — just close out the combat.
-  if (combat.targetType === 'sea' || !combat.attackerId || !combat.targetId) {
+  // Naval battles and naval bombardment are never "occupied" — just close out.
+  if (combat.targetType === 'sea' || combat.bombardment || !combat.attackerId || !combat.targetId) {
     resetCombat(state);
     return;
   }
@@ -3136,6 +3188,9 @@ export function applyGameAction(game: GameState, action: GameAction): GameState 
       break;
     case 'ATTACK_SEA':
       initiateAttack(state, action.from, action.target, 'sea');
+      break;
+    case 'ATTACK_LAND_FROM_SEA':
+      initiateAttack(state, action.from, action.target, 'territory', true);
       break;
     case 'ROLL_COMBAT':
       rollCombat(state);
