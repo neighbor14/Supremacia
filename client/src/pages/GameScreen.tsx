@@ -137,14 +137,19 @@ export default function GameScreen() {
     (ss?.lastResolvedRound ?? 0) < game.turn.turnNumber;
 
   useEffect(() => {
-    if (needsSellOpen) dispatch({ type: 'OPEN_SIMULTANEOUS_SELL' });
+    // Online: a abertura é uma transição global — só o host dispara (os demais
+    // recebem o snapshot já com a fase aberta e as IAs auto-declaradas).
+    if (needsSellOpen && (!mp.online || mp.isHost)) dispatch({ type: 'OPEN_SIMULTANEOUS_SELL' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsSellOpen, game?.turn.turnNumber]);
+  }, [needsSellOpen, game?.turn.turnNumber, mp.online, mp.isHost]);
 
   // Resolve automaticamente quando todos (humano + IAs) confirmaram.
   useEffect(() => {
     if (!game || game.config.marketMode !== 'balanced') return;
     if (ss?.phase !== 'declare') return;
+    // Online: a resolução é global — só o host dispara (os demais recebem o
+    // snapshot resolvido via Realtime).
+    if (mp.online && !mp.isHost) return;
     const actives = game.turn.playerOrder.filter(id => !game.players[id].isEliminated);
     const allConfirmed = actives.every(id => ss.declarations[id]?.confirmed === true);
     if (allConfirmed) {
@@ -235,6 +240,11 @@ export default function GameScreen() {
     if (!mp.online || !mp.isHost || !game || game.gameOver) return;
     const cur = game.players[game.turn.currentPlayer];
     if (cur.isHuman || cur.isEliminated) return;
+    // Modo Digital Balanceado (1ª rodada): ninguém joga a vez normal — nem a IA —
+    // enquanto a Venda Simultânea não resolver. Mesmo bloqueio do fluxo local.
+    if (isSimultaneousSellRound(game) &&
+        (game.simultaneousSell.phase !== 'inactive' ||
+         game.simultaneousSell.lastResolvedRound < game.turn.turnNumber)) return;
     if (game.combat.active && game.combat.phase === 'defender_response') return;
 
     let cancelled = false;
@@ -257,7 +267,7 @@ export default function GameScreen() {
     void run();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mp.online, mp.isHost, game?.turn.currentPlayer, game?.turn.turnNumber]);
+  }, [mp.online, mp.isHost, game?.turn.currentPlayer, game?.turn.turnNumber, game?.simultaneousSell.phase]);
 
   if (!game) return null;
 

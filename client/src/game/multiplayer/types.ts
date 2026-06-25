@@ -14,6 +14,24 @@
 
 import type { GameAction, GameState, SuperpowerId } from '../types';
 
+// ── Venda Simultânea: ações isentas do turn lock ────────────────────────────
+// A fase de Venda Simultânea (Modo Digital Balanceado) é GLOBAL: acontece antes
+// da vez do 1º jogador, mas todos os jogadores agem nela ao mesmo tempo. Logo,
+// estas ações NÃO seguem o turn lock — cada humano declara a própria venda e as
+// transições abrir/resolver/confirmar são idempotentes (qualquer membro dispara,
+// o reducer ignora se já passou da fase). Quem pode declarar por quem é validado
+// na camada de sessão (só a própria superpotência).
+const TURN_EXEMPT_TYPES: ReadonlySet<GameAction['type']> = new Set<GameAction['type']>([
+  'OPEN_SIMULTANEOUS_SELL',
+  'SUBMIT_SELL_DECLARATION',
+  'RESOLVE_SIMULTANEOUS_SELL',
+  'ACK_SIMULTANEOUS_SELL',
+]);
+
+export function isTurnExemptAction(type: GameAction['type']): boolean {
+  return TURN_EXEMPT_TYPES.has(type);
+}
+
 // ── game_rooms ──────────────────────────────────────────────
 export type RoomStatus = 'lobby' | 'active' | 'paused' | 'finished';
 

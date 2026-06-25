@@ -10,10 +10,12 @@ import { useT } from '../i18n/useI18n';
 import { useNames } from '../i18n/names';
 import { TranslationKey } from '../i18n';
 
-// MVP online: apenas Modo Clássico. O Digital Balanceado depende da fase de
-// Venda Simultânea (declaração privada por jogador), que é uma feature
-// multiplayer à parte — ver docs/multiplayer-status.md.
-const MARKET_MODE_IDS: MarketMode[] = ['classic'];
+// Os dois modos valem no online. O Digital Balanceado roda a Venda Simultânea
+// como fase global isenta do turn lock: cada humano declara a própria venda e o
+// host resolve quando todos confirmam (ver isTurnExemptAction + GameScreen).
+// Sigilo das declarações é trust-based no MVP (mesmo modelo do RNG client-side);
+// a versão à prova de trapaça (resolução server-side) é Fase 2 — docs/multiplayer-status.md.
+const MARKET_MODE_IDS: MarketMode[] = ['balanced', 'classic'];
 
 type View = 'choose' | 'create' | 'join' | 'room';
 
@@ -28,8 +30,8 @@ export default function Lobby() {
   const [humanSlots, setHumanSlots] = useState(2);
   const [aiCount, setAiCount] = useState(1);
   const [difficulty, setDifficulty] = useState<AIDifficulty>(DEFAULT_AI_DIFFICULTY);
-  // MVP online: forçado a 'classic' (ver MARKET_MODES acima).
-  const [marketMode, setMarketMode] = useState<MarketMode>('classic');
+  // Default = Digital Balanceado (mesmo default das partidas locais novas).
+  const [marketMode, setMarketMode] = useState<MarketMode>('balanced');
   const [copied, setCopied] = useState(false);
 
   const usingLocal = !isMultiplayerConfigured();

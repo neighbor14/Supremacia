@@ -16,6 +16,7 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import { getMultiplayerAdapter } from './index';
+import { isTurnExemptAction } from './types';
 import type {
   GamePlayerSeat, GameRoom, MultiplayerAction, MultiplayerAdapter,
   PresenceState, RoomSubscription,
@@ -168,28 +169,50 @@ export const useMultiplayerStore = create<MpSession>((set, get) => ({
   },
 
   async submit(action) {
-    const { _adapter, room, version, mySuperpower } = get();
+    const { _adapter, room, mySuperpower } = get();
     if (!_adapter || !room || !mySuperpower) return;
     const game = useGameStore.getState().game;
     if (!game) return;
-    if (game.turn.currentPlayer !== mySuperpower) {
+
+    // Venda Simultânea (Modo Digital Balanceado): fase global, isenta do turn
+    // lock. Cada humano só declara a PRÓPRIA venda; abrir/resolver/confirmar são
+    // idempotentes (qualquer membro dispara). Como vários humanos podem agir ao
+    // mesmo tempo, há retry curto em conflito de versão.
+    const sellAction = isTurnExemptAction(action.type);
+    if (action.type === 'SUBMIT_SELL_DECLARATION' && action.playerId !== mySuperpower) {
+      return; // não declaro a venda de outro jogador
+    }
+    if (!sellAction && game.turn.currentPlayer !== mySuperpower) {
       toast.message('Não é a sua vez.');
       return;
     }
-    const res = await _adapter.submitAction({
-      roomId: room.id, playerId: mySuperpower, action,
-      expectedVersion: version, clientRequestId: nanoid(),
-      computeNextState: (cur) => applyGameAction(cur, action),
-    });
-    if (res.ok) {
-      set({ version: res.snapshot.version });
-      useGameStore.getState().loadGame(res.snapshot.state);
-    } else if (res.reason === 'version_conflict') {
-      set({ version: res.latest.version });
-      useGameStore.getState().loadGame(res.latest.state);
-      toast.message('Estado atualizado — tente novamente.');
-    } else {
+
+    const attempts = sellAction ? 4 : 1;
+    for (let i = 0; i < attempts; i++) {
+      const res = await _adapter.submitAction({
+        roomId: room.id, playerId: mySuperpower, action,
+        expectedVersion: get().version, clientRequestId: nanoid(),
+        computeNextState: (cur) => applyGameAction(cur, action),
+      });
+      if (res.ok) {
+        set({ version: res.snapshot.version });
+        useGameStore.getState().loadGame(res.snapshot.state);
+        return;
+      }
+      if (res.reason === 'version_conflict') {
+        set({ version: res.latest.version });
+        useGameStore.getState().loadGame(res.latest.state);
+        // Outra declaração chegou primeiro: reaplica sobre o estado novo e tenta
+        // de novo (a fase ainda está aberta). Esgotou as tentativas → avisa.
+        if (sellAction && i < attempts - 1) {
+          await new Promise(r => setTimeout(r, 60));
+          continue;
+        }
+        if (!sellAction) toast.message('Estado atualizado — tente novamente.');
+        return;
+      }
       toast.message(res.message);
+      return;
     }
   },
 

@@ -69,9 +69,16 @@ BroadcastChannel (mesmo dispositivo).
 ---
 
 ## Limitações conhecidas do MVP (próximos passos)
-1. **Online só no Modo Clássico.** O Digital Balanceado depende da fase de Venda
-   Simultânea (declaração privada por jogador) — feature MP à parte. O lobby online
-   oferece apenas Clássico; o single-player mantém os dois modos.
+1. **Digital Balanceado online (✅ implementado).** A Venda Simultânea roda como
+   fase GLOBAL isenta do turn lock (`isTurnExemptAction` em `multiplayer/types.ts`,
+   consultado pelos dois adapters + sessão): cada humano declara a própria venda
+   fora da sua vez, e o **host** abre/resolve quando todos confirmam (orquestração
+   em `GameScreen.tsx`). O lobby oferece os dois modos (default Balanceado).
+   **Sigilo das declarações é trust-based no MVP:** as declarações trafegam no
+   snapshot compartilhado (um jogador com devtools poderia espiar antes de
+   declarar — mesma classe do RNG client-side do item 3). A versão à prova de
+   trapaça (declaração privada por tabela com RLS por dono + resolução
+   `service_role`) é Fase 2, junto do anti-cheat do item 3.
 2. **Combate humano-vs-humano:** a resposta interativa do defensor (D6/D7 — reforço/
    contra-ataque) hoje só é interativa quando a IA é o defensor. Em PvP o combate
    resolve do lado do atacante. Tornar a defesa interativa entre clientes é o

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useGameStore } from '../game/store';
+import { useMultiplayerStore } from '../game/multiplayer/session';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { playSound } from '../game/audio';
 import { ResourceType } from '../game/types';
@@ -25,15 +26,22 @@ const money = (n: number) => `$${fmtNum(n)}`;
 
 export default function SimultaneousSellModal() {
   const { game, dispatch } = useGameStore();
+  const online = useMultiplayerStore(s => s.online);
+  const mySuperpower = useMultiplayerStore(s => s.mySuperpower);
   const t = useT();
   const names = useNames();
   const ss = game?.simultaneousSell;
 
-  // O humano da partida (MVP: 1 humano).
-  const human = useMemo(
-    () => (game ? Object.values(game.players).find(p => p.isHuman && !p.isEliminated) : undefined),
-    [game],
-  );
+  // Quem este cliente representa: no online, a PRÓPRIA superpotência (cada
+  // jogador declara só a sua venda); no local (vs IA), o único humano.
+  const human = useMemo(() => {
+    if (!game) return undefined;
+    if (online && mySuperpower) {
+      const me = game.players[mySuperpower];
+      return me && me.isHuman && !me.isEliminated ? me : undefined;
+    }
+    return Object.values(game.players).find(p => p.isHuman && !p.isEliminated);
+  }, [game, online, mySuperpower]);
 
   const humanDeclared = !!(human && ss?.declarations[human.id]?.confirmed);
 

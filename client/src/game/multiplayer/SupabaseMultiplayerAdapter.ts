@@ -16,6 +16,7 @@
 import { nanoid } from 'nanoid';
 import type { GameAction, GameState, SuperpowerId } from '../types';
 import { ensureAnonAuth, getSupabase } from './supabaseClient';
+import { isTurnExemptAction } from './types';
 import type {
   GamePlayerSeat,
   GameRoom,
@@ -222,7 +223,10 @@ export class SupabaseMultiplayerAdapter implements MultiplayerAdapter {
     if (input.expectedVersion !== latest.version) {
       return { ok: false, reason: 'version_conflict', latest };
     }
-    if (latest.state.turn.currentPlayer !== input.playerId) {
+    // Turn lock: só o jogador da vez age — exceto na Venda Simultânea (fase
+    // global em que todos agem ao mesmo tempo, ver isTurnExemptAction).
+    if (!isTurnExemptAction(input.action.type) &&
+        latest.state.turn.currentPlayer !== input.playerId) {
       return { ok: false, reason: 'not_your_turn', message: 'Não é a sua vez' };
     }
 
