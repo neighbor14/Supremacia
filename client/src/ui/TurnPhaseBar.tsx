@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useGameStore } from '../game/store';
+import { isSimultaneousSellRound } from '../game/simultaneousSell';
 import { playSound } from '../game/audio';
 import { SUPERPOWERS } from '../data/initialPlayers';
 import { TurnStage } from '../game/types';
@@ -185,9 +186,10 @@ export default function TurnPhaseBar() {
 
   const getStageAvailability = (stage: number) => {
     if (stage <= 2) return 'mandatory';
-    // Modo Digital Balanceado: a venda (Estágio 3) é resolvida na fase de Venda
-    // Simultânea no início da rodada — aqui ela aparece como já tratada.
-    if (stage === 3 && game.config.marketMode === 'balanced') return 'used';
+    // Modo Digital Balanceado: só na 1ª rodada a venda (Estágio 3) é resolvida na
+    // fase de Venda Simultânea — aqui aparece como já tratada. Da rodada 2 em
+    // diante o Estágio 3 volta ao fluxo normal de venda por turno.
+    if (stage === 3 && isSimultaneousSellRound(game)) return 'used';
     if (turn.optionalStagesUsed.includes(stage as TurnStage)) return 'used';
     const lastUsed = turn.optionalStagesUsed[turn.optionalStagesUsed.length - 1] || 2;
     if (stage <= lastUsed) return 'past';

@@ -281,6 +281,58 @@ describe('fluxo integrado humano + IA', () => {
 });
 
 // ============================================================
+// 9b. Venda Simultânea é EXCLUSIVA da 1ª rodada (round === 1)
+//     A partir da rodada 2 o jogo volta ao fluxo padrão de venda por turno.
+// ============================================================
+describe('venda simultânea limitada à 1ª rodada', () => {
+  it('OPEN não abre a fase na rodada 2 (volta ao fluxo padrão)', () => {
+    const game = balancedGame('usa', 2);
+    game.turn.turnNumber = 2; // simula início da 2ª rodada
+    const moneyBefore = game.players[game.turn.currentPlayer].money;
+    load(game);
+    dispatch({ type: 'OPEN_SIMULTANEOUS_SELL' });
+    const s = g();
+    expect(s.simultaneousSell.phase).toBe('inactive');
+    // sem upkeep global: nada de salário/produção coletivos na rodada 2
+    expect(s.turn.upkeepPreprocessed).toBeFalsy();
+    expect(s.players[s.turn.currentPlayer].money).toBe(moneyBefore);
+  });
+
+  it('Estágio 3 (venda por turno) volta a ser selecionável na rodada 2 e o preço cai a cada venda', () => {
+    const game = balancedGame('usa', 2);
+    game.turn.turnNumber = 2;
+    game.turn.stage = 2; // após os obrigatórios, escolhendo o opcional
+    game.turn.optionalStagesUsed = [];
+    game.players[game.turn.currentPlayer].supplies = { grain: 9, oil: 9, mineral: 9 };
+    load(game);
+    const cur = g().turn.currentPlayer;
+    // Estágio 3 deve ser selecionável (no balanced isso só era bloqueado na rodada 1)
+    dispatch({ type: 'SELECT_OPTIONAL_STAGE', stage: 3 });
+    expect(g().turn.optionalStagesUsed).toContain(3);
+    // Venda individual: o preço cai imediatamente após a venda do jogador
+    const priceBefore = g().market.prices.grain;
+    dispatch({ type: 'SELL_RESOURCE', resource: 'grain', quantity: 2 });
+    const s = g();
+    expect(s.players[cur].supplies.grain).toBe(7);
+    expect(s.market.prices.grain).toBeLessThan(priceBefore);
+  });
+
+  it('não pré-consome o Estágio 3 na rodada 2 mesmo com soldThisRound da rodada 1', () => {
+    const game = balancedGame('usa', 2);
+    const actives = game.turn.playerOrder.filter(id => !game.players[id].isEliminated);
+    // resíduo da rodada 1: todos marcados como tendo vendido na fase simultânea
+    game.simultaneousSell.soldThisRound = [...actives];
+    game.simultaneousSell.lastResolvedRound = 1;
+    game.turn.turnNumber = 2;
+    game.turn.optionalStagesUsed = [];
+    load(game);
+    // advanceToNextPlayer roda applySoldOptionalStage; na rodada 2 deve ser no-op
+    dispatch({ type: 'END_TURN' });
+    expect(g().turn.optionalStagesUsed).not.toContain(3);
+  });
+});
+
+// ============================================================
 // 10. Modo Clássico Grow permanece disponível e inalterado
 // ============================================================
 describe('Modo Clássico Grow', () => {

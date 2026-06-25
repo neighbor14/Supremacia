@@ -7,6 +7,7 @@ import { SUPERPOWER_IDS, SUPERPOWERS } from '../data/initialPlayers';
 import { nanoid } from 'nanoid';
 import { isNukeCard, isLaserCard, isTechCard, getTechCounts } from './researchDeck';
 import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, planAmphibiousInvasion, OptionalStage, AIConfig } from './ai';
+import { isSimultaneousSellRound } from './simultaneousSell';
 
 /**
  * Build-selection mode (fase Construir). When the player picks "Construir
@@ -301,8 +302,10 @@ function nowMs(): number {
 }
 
 // Abre a fase de Venda Simultânea no início de uma rodada (idempotente).
+// Só dispara na 1ª rodada (ver isSimultaneousSellRound). Em round >= 2 é no-op:
+// o jogo usa o fluxo padrão de venda por turno (Estágio 3 sequencial).
 function openSimultaneousSell(state: GameState): void {
-  if (state.config.marketMode !== 'balanced') return;
+  if (!isSimultaneousSellRound(state)) return;
   const ss = state.simultaneousSell;
   // Já aberta ou já resolvida nesta rodada → não reabrir.
   if (ss.phase !== 'inactive') return;
@@ -463,7 +466,9 @@ function resolveSimultaneousSell(state: GameState): void {
 // deixando-o com 2 ações opcionais na sua vez. No Modo Digital Balanceado o
 // Estágio 3 individual fica indisponível (a venda é só a simultânea).
 function applySoldOptionalStage(state: GameState, playerId: SuperpowerId): void {
-  if (state.config.marketMode !== 'balanced') return;
+  // Só na 1ª rodada: em round >= 2 não há venda simultânea, e o soldThisRound
+  // remanescente da rodada 1 não pode pré-consumir o Estágio 3 indevidamente.
+  if (!isSimultaneousSellRound(state)) return;
   if (state.turn.currentPlayer !== playerId) return;
   if (state.simultaneousSell.soldThisRound.includes(playerId)) {
     if (!state.turn.optionalStagesUsed.includes(3)) {
@@ -947,9 +952,10 @@ function advanceToNextPlayer(state: GameState): void {
 
 function canUseOptionalStage(state: GameState, stage: TurnStage): boolean {
   if (stage <= 2) return true; // mandatory
-  // Modo Digital Balanceado: o Estágio 3 (venda sequencial) não é selecionável —
-  // a venda acontece só na fase de Venda Simultânea no início da rodada.
-  if (stage === 3 && state.config.marketMode === 'balanced') return false;
+  // Modo Digital Balanceado: o Estágio 3 (venda sequencial) só fica indisponível
+  // na 1ª rodada, quando a venda acontece na fase de Venda Simultânea. A partir
+  // da rodada 2 a venda por turno volta ao normal e o Estágio 3 é selecionável.
+  if (stage === 3 && isSimultaneousSellRound(state)) return false;
   if (state.turn.optionalStagesUsed.length >= RULES.MAX_OPTIONAL_STAGES) return false;
   if (state.turn.optionalStagesUsed.includes(stage)) return false;
   // Must be in order

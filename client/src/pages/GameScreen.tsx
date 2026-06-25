@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useGameStore, planAiTurn, applyGameAction } from '../game/store';
+import { isSimultaneousSellRound } from '../game/simultaneousSell';
 import { playSound, SoundEffect } from '../game/audio';
 import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
 import { usePresentationStore } from '../stores/presentationStore';
@@ -127,7 +128,7 @@ export default function GameScreen() {
   const ss = game?.simultaneousSell;
   const needsSellOpen =
     !!game && !game.gameOver &&
-    game.config.marketMode === 'balanced' &&
+    isSimultaneousSellRound(game) &&
     ss?.phase === 'inactive' &&
     (ss?.lastResolvedRound ?? 0) < game.turn.turnNumber;
 
@@ -156,9 +157,10 @@ export default function GameScreen() {
     const currentPlayer = game.players[game.turn.currentPlayer];
     if (currentPlayer.isHuman || currentPlayer.isEliminated) return;
     if (presentation.isPresenting) return; // already presenting (or skip in progress)
-    // Modo Digital Balanceado: enquanto a Venda Simultânea da rodada não resolver,
-    // ninguém (nem a IA que abre a rodada) joga sua vez normal.
-    if (game.config.marketMode === 'balanced' &&
+    // Modo Digital Balanceado (só na 1ª rodada): enquanto a Venda Simultânea não
+    // resolver, ninguém (nem a IA que abre a rodada) joga sua vez normal. A partir
+    // da rodada 2 não há fase coletiva, então a IA não fica bloqueada esperando.
+    if (isSimultaneousSellRound(game) &&
         (game.simultaneousSell.phase !== 'inactive' ||
          game.simultaneousSell.lastResolvedRound < game.turn.turnNumber)) return;
     // D6/D7: a IA atacou o humano e o combate está pausado aguardando a resposta

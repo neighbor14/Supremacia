@@ -19,6 +19,7 @@
 import { GameState, Player, ResourceType } from '../types';
 import { RULES } from '../rulesConfig';
 import { AIConfig, getConfigForDifficulty } from './aiConfig';
+import { isSimultaneousSellRound } from '../simultaneousSell';
 
 export type OptionalStage = 3 | 4 | 5 | 6 | 7;
 
@@ -358,9 +359,9 @@ export function getLegalOptionalStages(state: GameState, player: Player): Option
     player.supplies.grain >= 1 && player.supplies.oil >= 1 && player.supplies.mineral >= 1;
 
   // 3 — Vender: precisa ter excedente. No Modo Digital Balanceado a venda é só
-  // na fase de Venda Simultânea (início da rodada), então o Estágio 3 individual
-  // não é uma opção de turno aqui.
-  if (state.config.marketMode !== 'balanced' && excess(player) > 0) legal.push(3);
+  // na fase de Venda Simultânea apenas na 1ª rodada; a partir da rodada 2 a IA
+  // volta a vender no Estágio 3 do próprio turno, como o humano.
+  if (!isSimultaneousSellRound(state) && excess(player) > 0) legal.push(3);
 
   // 4 — Combate: não no 1º turno, precisa de suprimentos e de um alvo viável.
   if (!state.turn.isFirstTurn && hasCombatSupplies && readAttacks(state, player).opportunities > 0) {
