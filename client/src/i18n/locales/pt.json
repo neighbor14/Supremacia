@@ -88,7 +88,7 @@
   "tutorial.phase.1.actions": "Toque em “Salários” na barra de fases para pagar automaticamente.",
   "tutorial.phase.1.strategy": "Mantenha sempre uma reserva de dinheiro. Tropas demais sem caixa viram prejuízo.",
   "tutorial.phase.1.ifIgnored": "Não dá para pular — sem dinheiro para o salário, tropas desertam.",
-  "tutorial.phase.1.cost": "$1.000 por exército, por rodada.",
+  "tutorial.phase.1.cost": "$100 por exército + $500 por companhia, por rodada.",
 
   "tutorial.phase.2.title": "Fase de Produção",
   "tutorial.phase.2.whatFor": "Seus territórios e companhias geram recursos automaticamente.",
