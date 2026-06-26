@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ChevronUp, ChevronDown, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGameStore } from '../game/store';
 import { isSimultaneousSellRound } from '../game/simultaneousSell';
@@ -151,6 +152,16 @@ function RoundStatusPanel({ onClose }: { onClose: () => void }) {
 
 export default function TurnPhaseBar() {
   const [showRoundPanel, setShowRoundPanel] = useState(false);
+  // Mini-placar: sempre visível por padrão, mas o jogador pode recolher.
+  // A preferência fica lembrada entre sessões.
+  const [scoreboardOpen, setScoreboardOpen] = useState(() => {
+    try { return localStorage.getItem('supremacia_scoreboard') !== 'collapsed'; } catch { return true; }
+  });
+  const toggleScoreboard = () => setScoreboardOpen(o => {
+    const next = !o;
+    try { localStorage.setItem('supremacia_scoreboard', next ? 'open' : 'collapsed'); } catch { /* ignore */ }
+    return next;
+  });
   const { game, dispatch, companyMapVisible, setCompanyMapVisible } = useGameStore();
   const t = useT();
   const names = useNames();
@@ -288,6 +299,60 @@ export default function TurnPhaseBar() {
             <span className="text-[9px] text-muted-foreground/40 ml-0.5">ℹ</span>
           </button>
         </div>
+      </div>
+
+      {/* Mini-placar de jogadores — informação pública (dinheiro), sempre visível
+          e retrátil. Tocar num jogador abre o painel completo (recursos/cartas/armas). */}
+      <div className="mb-1.5 [@media(max-height:600px)]:mb-1">
+        {scoreboardOpen ? (
+          <div className="flex items-center gap-1">
+            <div className="flex-1 flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+              {turn.playerOrder.map(pid => {
+                const p = game.players[pid];
+                const psp = SUPERPOWERS[pid];
+                const isCur = pid === turn.currentPlayer;
+                const money = p.money >= 1000 ? `$${Math.floor(p.money / 1000)}k` : `$${fmtNum(p.money)}`;
+                return (
+                  <button
+                    key={pid}
+                    onClick={() => setShowRoundPanel(true)}
+                    title={t('hud.viewAllPlayers')}
+                    className={`shrink-0 flex items-center gap-1 px-1.5 py-1 rounded-md border transition-all active:scale-[0.96] ${
+                      isCur ? 'border-primary/60 bg-primary/10' : 'border-border/30 bg-secondary/20 hover:bg-secondary/40'
+                    } ${p.isEliminated ? 'opacity-40' : ''}`}
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: psp.color }} />
+                    <span
+                      className={`text-[9px] font-bold uppercase tracking-wider ${p.isEliminated ? 'line-through' : ''}`}
+                      style={{ fontFamily: 'var(--font-display)', color: isCur ? psp.color : undefined }}
+                    >
+                      {names.factionShort(pid)}
+                    </span>
+                    {!p.isEliminated && (
+                      <span className="text-[9px] font-mono font-bold text-emerald-400">{money}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={toggleScoreboard}
+              title={t('hud.scoreboardHide')}
+              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            >
+              <ChevronUp size={12} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={toggleScoreboard}
+            title={t('hud.scoreboardShow')}
+            className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-secondary/50"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            <Users size={11} /> {t('hud.players')} <ChevronDown size={11} />
+          </button>
+        )}
       </div>
 
       {/* Choosing mode: optional stage selection with counter + progress */}
