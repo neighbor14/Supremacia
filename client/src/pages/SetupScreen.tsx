@@ -6,6 +6,7 @@ import { playSound } from '../game/audio';
 import { Plus, Minus } from 'lucide-react';
 import { useT } from '../i18n/useI18n';
 import { useNames } from '../i18n/names';
+import FactionEmblem from '../ui/FactionEmblem';
 
 export default function SetupScreen() {
   const [, setLocation] = useLocation();
@@ -77,8 +78,8 @@ export default function SetupScreen() {
     <div className="h-screen w-screen bg-background flex flex-col items-center justify-center p-6">
       {/* Header */}
       <div className="text-center mb-8">
-        <div className="flex items-center justify-center gap-3 mb-4">
-          <div className="w-6 h-6 rounded-full" style={{ backgroundColor: sp.color }} />
+        <div className="flex flex-col items-center gap-3 mb-4">
+          <FactionEmblem id={humanPlayer.id} size={88} />
           <h1 className="text-3xl font-bold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: sp.color }}>
             {names.factionShort(humanPlayer.id)}
           </h1>

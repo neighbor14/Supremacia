@@ -27,6 +27,57 @@ Regras detalhadas para alterações de mecânica: [`.claude/rules/game-rules.md`
 
 ---
 
+## Geração de arte (OpenRouter + Gemini)
+
+O projeto tem uma chave OpenRouter configurada para gerar/aprimorar arte (texturas,
+ícones, ilustrações de carta, marcadores de exército/frota) via modelos de imagem do
+Gemini. Isso é **ferramenta de produção de assets**, não uma feature de runtime do jogo.
+
+**Variável de ambiente:** `OPENROUTER_API_KEY` em `.env.local` (gitignored). É um
+**secret de cobrança** — exemplo documentado em `.env.example`.
+
+**Modelos de imagem disponíveis** (endpoint `POST https://openrouter.ai/api/v1/chat/completions`):
+- `google/gemini-3-pro-image` — qualidade máxima (arte final).
+- `google/gemini-3.1-flash-image` — rápido/barato (iteração e rascunho).
+- Aceitam **imagem + texto na entrada** → dá para *editar/aprimorar* um asset
+  existente (image-to-image), não só criar do zero.
+
+**Regras invioláveis:**
+- **NUNCA prefixar a chave com `VITE_`** nem usá-la em código do cliente. Vite injeta
+  qualquer `VITE_*` no bundle do navegador → a chave vazaria e gastaria créditos de
+  terceiros. A chave só pode ser lida por **scripts Node locais** (tempo de dev/build).
+- **Geração é offline, nunca em runtime.** O jogo é um SPA estático servido por nginx,
+  sem backend para esconder a chave. Fluxo correto: script local chama o Gemini →
+  salva os arquivos em `client/public/` → o jogo consome assets prontos. O navegador
+  e o deploy nunca tocam a chave nem a API.
+- **Arte gerada respeita a Regra central:** só muda a *cara* do jogo. Não pode alterar
+  matemática, contagem de territórios/mares/cartas, regras ou condições de vitória.
+- **Não reproduzir arte protegida** do jogo original (ver diretriz acima); gerar arte
+  própria, usando o material oficial apenas como referência de regra.
+- Custo é real (não é free-tier): preferir o modelo `flash` para rascunho e só subir
+  para `pro` no asset final aprovado.
+
+**Script:** [`scripts/gen-art.mjs`](scripts/gen-art.mjs) (Node puro, sem deps — usa
+`fetch` e `--env-file` nativos). Manifesto de assets dentro do próprio script.
+```bash
+node --env-file=.env.local scripts/gen-art.mjs            # gera o que falta
+node --env-file=.env.local scripts/gen-art.mjs --force    # regera tudo
+node --env-file=.env.local scripts/gen-art.mjs emblem:china   # só 1 asset
+node --env-file=.env.local scripts/gen-art.mjs --pro      # modelo pro (final)
+```
+Pós-processo (recorte quadrado + PNG real) com `sips` nativo do macOS:
+`sips -c 768 768 in.png --out tmp && sips -z 512 512 -s format png tmp --out out.png`.
+
+**Componente de consumo:** [`ui/FactionEmblem.tsx`](client/src/ui/FactionEmblem.tsx)
+renderiza `/art/emblems/<id>.png` com **fallback gracioso** para o disco colorido se o
+arquivo faltar — nunca quebra a UI. Cor/identidade vêm sempre de `SUPERPOWERS`.
+
+**Status:** chave configurada e validada. 1ª tanda concluída — 6 brasões de facção
+em `client/public/art/emblems/`, integrados na Home (grid de escolha + header) e na
+SetupScreen. Próximas tandas candidatas: ilustrações de carta e marcadores de unidade.
+
+---
+
 ## Fonte de verdade
 
 Antes de alterar qualquer mecânica, leia esses arquivos — eles são a referência canônica:

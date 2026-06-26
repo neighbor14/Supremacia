@@ -10,6 +10,7 @@ import { GameState } from '../game/types';
 import { useAudioInit, useMusicPlayer } from '../hooks/useAudio';
 import { useT } from '../i18n/useI18n';
 import { useNames } from '../i18n/names';
+import FactionEmblem from '../ui/FactionEmblem';
 import { TranslationKey } from '../i18n';
 import LanguageSelector from '../ui/LanguageSelector';
 import TutorialSelector from '../ui/TutorialSelector';
@@ -181,14 +182,17 @@ export default function Home() {
               <button
                 key={s.id}
                 onClick={() => handleSelectSuperpower(s.id)}
-                className="p-4 rounded-md border border-border hover:border-primary/50 transition-all active:scale-[0.97] text-left"
+                className="p-4 rounded-md border border-border hover:border-primary/50 transition-all active:scale-[0.97] flex items-center gap-3"
                 style={{ borderLeftColor: s.color, borderLeftWidth: '4px' }}
               >
-                <span className="text-xs font-bold uppercase tracking-wider block" style={{ color: s.color, fontFamily: 'var(--font-display)' }}>
-                  {names.factionShort(s.id)}
-                </span>
-                <span className="text-xs text-muted-foreground mt-1 block">
-                  {names.faction(s.id)}
+                <FactionEmblem id={s.id} size={44} />
+                <span className="text-left min-w-0">
+                  <span className="text-xs font-bold uppercase tracking-wider block" style={{ color: s.color, fontFamily: 'var(--font-display)' }}>
+                    {names.factionShort(s.id)}
+                  </span>
+                  <span className="text-xs text-muted-foreground mt-1 block truncate">
+                    {names.faction(s.id)}
+                  </span>
                 </span>
               </button>
             ))}
@@ -219,7 +223,7 @@ export default function Home() {
       {step === 'ai_count' && sp && (
         <div className="w-full max-w-sm">
           <div className="flex items-center justify-center gap-2 mb-6">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sp.color }} />
+            <FactionEmblem id={sp.id} size={28} />
             <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: sp.color, fontFamily: 'var(--font-display)' }}>
               {names.factionShort(sp.id)} — {names.faction(sp.id)}
             </span>
