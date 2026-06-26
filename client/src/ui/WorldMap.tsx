@@ -410,11 +410,18 @@ export default function WorldMap() {
           </filter>
         </defs>
 
-        {/* Background ocean */}
+        {/* Background ocean: gradient base (also the fallback if the texture
+            fails to load) + generated atlas texture overlay on top. */}
         <rect x="0" y="0" width="1000" height="500" fill="url(#ocean-grad)" />
+        <image
+          href="/art/map/ocean.png"
+          x="0" y="0" width="1000" height="500"
+          preserveAspectRatio="xMidYMid slice"
+          opacity="0.55" pointerEvents="none"
+        />
 
         {/* Faint graticule for an atlas feel */}
-        <g stroke="#21527d" strokeWidth="0.4" opacity="0.18" pointerEvents="none">
+        <g stroke="#21527d" strokeWidth="0.4" opacity="0.12" pointerEvents="none">
           {[125, 250, 375].map(y => <line key={`h${y}`} x1="0" y1={y} x2="1000" y2={y} />)}
           {[200, 400, 600, 800].map(x => <line key={`v${x}`} x1={x} y1="0" x2={x} y2="500" />)}
         </g>

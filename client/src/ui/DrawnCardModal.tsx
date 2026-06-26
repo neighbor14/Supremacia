@@ -108,6 +108,13 @@ export default function DrawnCardModal() {
   const cardLabelClass = resourceCfg ? '' : cfg.labelClass;
   const cardLabelStyle = resourceCfg ? { color: resourceCfg.color } : {};
 
+  // Illustrated banner for the reveal moment. Resource cards key off their
+  // resource type; weapons key off the card type. Purely cosmetic — graceful
+  // hide on error so a missing asset never breaks the modal.
+  const cardArtKey =
+    drawnCard.resourceType ??
+    (drawnCard.type === 'nuke' ? 'nuke' : drawnCard.type === 'laser' ? 'laser' : null);
+
   const handleContinueResearch = () => {
     playSound('button-click', 0.5);
     dispatch({ type: 'DRAW_RESEARCH_CARD' });
@@ -186,7 +193,16 @@ export default function DrawnCardModal() {
           </p>
 
           {/* Card visual */}
-          <div className={`rounded-xl border p-4 mb-3 ${cardBg}`}>
+          <div className={`rounded-xl border p-4 mb-3 overflow-hidden ${cardBg}`}>
+            {cardArtKey && (
+              <img
+                src={`/art/cards/${cardArtKey}.png`}
+                alt=""
+                draggable={false}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                className="-mx-4 -mt-4 mb-3 h-24 w-[calc(100%+2rem)] object-cover"
+              />
+            )}
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xl ${cfg.iconBgClass}`}>
                 {cardIcon}

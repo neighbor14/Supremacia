@@ -78,6 +78,23 @@ const MARKERS = [
   },
 ];
 
+// Ilustrações de carta — banner no topo do modal de revelação (DrawnCardModal).
+// Landscape cinematográfico, coerente com o resto da arte. Sem texto.
+const CARD_STYLE = [
+  'Cold-War era cinematic illustration for a geopolitical strategy board game card',
+  'modern semi-flat painterly style, dramatic lighting, rich but muted palette',
+  'wide landscape banner composition, no text, no letters, no numbers, no logos',
+  'atmospheric, high production value',
+].join(', ');
+
+const CARDS = [
+  { id: 'card:grain',   tint: 'warm golden yellow',  scene: 'vast golden wheat fields at harvest with grain silos and a combine harvester under a wide sky' },
+  { id: 'card:oil',     tint: 'amber and black',     scene: 'a field of oil derricks and pumpjacks at dusk with a refinery silhouette and burning flare stacks' },
+  { id: 'card:mineral', tint: 'violet and steel',    scene: 'a massive open-pit terraced mine with haul trucks and glinting raw ore and crystals' },
+  { id: 'card:nuke',    tint: 'ominous crimson red', scene: 'an intercontinental ballistic missile launching with a distant mushroom cloud on the horizon, ominous' },
+  { id: 'card:laser',   tint: 'electric blue',       scene: 'an orbital defense laser satellite in space firing a beam down toward the curved earth, sci-fi' },
+];
+
 const MANIFEST = [
   ...FACTIONS.map(f => ({
     id: `emblem:${f.id}`,
@@ -89,6 +106,21 @@ const MANIFEST = [
       `Heraldic badge inside a clean circular medallion frame. ${STYLE}.`,
   })),
   ...MARKERS,
+  ...CARDS.map(c => ({
+    id: c.id,
+    out: `art/cards/${c.id.split(':')[1]}.png`,
+    prompt: `${c.scene}. Dominant color tone ${c.tint}. ${CARD_STYLE}.`,
+  })),
+  {
+    id: 'ocean',
+    out: 'art/map/ocean.png',
+    prompt:
+      `Top-down stylized ocean background for a Cold-War strategy world map. ` +
+      `Deep navy water, subtle depth gradient (teal-blue near center fading to near-black at the edges), ` +
+      `faint cartographic latitude and longitude grid lines, very subtle wave and current texture. ` +
+      `No land, no continents, no text, no labels, no compass. Muted, dark, non-distracting, ` +
+      `seamless flat atlas look that leaves bright land pieces readable on top. Wide 2:1 landscape.`,
+  },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
