@@ -347,6 +347,12 @@ export default function WorldMap() {
           <clipPath id="markerClip" clipPathUnits="objectBoundingBox">
             <circle cx="0.5" cy="0.5" r="0.5" />
           </clipPath>
+          {/* Neutral relief texture, tiled. Painted over each territory with a
+              soft-light blend so it adds grain/relief without changing the
+              faction colour (which stays the source of truth for ownership). */}
+          <pattern id="terrain-pattern" patternUnits="userSpaceOnUse" width="300" height="164">
+            <image href="/art/map/terrain.png" x="0" y="0" width="300" height="164" />
+          </pattern>
           {/* Deep ocean backdrop */}
           <radialGradient id="ocean-grad" cx="50%" cy="42%" r="75%">
             <stop offset="0%" stopColor="#16344f" />
@@ -489,6 +495,14 @@ export default function WorldMap() {
                 filter={selected ? 'url(#sel-glow)' : 'url(#land-depth)'}
                 onClick={(e) => handleTerritoryClick(territoryId, e as any)}
                 style={{ cursor: 'pointer' }}
+              />
+              {/* Relief texture overlay — soft-light keeps the faction hue. */}
+              <path
+                d={territory.svgPath}
+                fill="url(#terrain-pattern)"
+                opacity={0.28}
+                pointerEvents="none"
+                style={{ mixBlendMode: 'soft-light' }}
               />
               {/* Territory name */}
               <text

@@ -93,7 +93,21 @@ export default function Home() {
   const sp = selectedSuperpower ? SUPERPOWERS[selectedSuperpower] : null;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+    <div className="min-h-screen relative z-0 flex flex-col items-center justify-center p-6 bg-background overflow-hidden">
+      {/* War-room backdrop + scrim. Purely decorative; bg-background stays as the
+          fallback if the art fails to load. Scrim keeps the menu/logo legible.
+          -z-10 keeps it behind the (non-positioned) menu content. */}
+      <div className="absolute inset-0 -z-10 pointer-events-none select-none">
+        <img
+          src="/art/home/bg.png"
+          alt=""
+          draggable={false}
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          className="w-full h-full object-cover opacity-70"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/45 to-background/90" />
+      </div>
+
       {/* Logo / Title */}
       <div className="text-center mb-12">
         <img

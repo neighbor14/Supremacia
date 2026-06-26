@@ -121,6 +121,29 @@ const MANIFEST = [
       `No land, no continents, no text, no labels, no compass. Muted, dark, non-distracting, ` +
       `seamless flat atlas look that leaves bright land pieces readable on top. Wide 2:1 landscape.`,
   },
+  {
+    // Fundo da Home. Composição centrada e escura nas bordas (vinheta) para o
+    // menu/logo lerem por cima; foco no centro tolera crop em retrato (mobile).
+    id: 'home:bg',
+    out: 'art/home/bg.png',
+    prompt:
+      `Atmospheric Cold-War strategic command war-room backdrop for a game main menu. ` +
+      `A dark situation room with a faint glowing holographic world map / war table at the center, ` +
+      `cool blue and amber accent lighting, volumetric haze, deep heavy dark vignette on all edges. ` +
+      `Cinematic, moody, very dark, no text, no letters, no UI, no people in focus. ` +
+      `Lots of empty dark negative space in the center for menu buttons to sit on top. ${STYLE}.`,
+  },
+  {
+    // Textura seamless de relevo NEUTRO (clara) para ser tingida pela cor da
+    // facção via blend no mapa — não substitui a cor, só adiciona grão/relevo.
+    id: 'terrain',
+    out: 'art/map/terrain.png',
+    prompt:
+      `Seamless tileable subtle terrain texture for a strategy map: soft top-down topographic relief, ` +
+      `faint contour lines, fine paper/atlas grain, gentle highlands and lowlands. ` +
+      `Neutral light grey monochrome (no strong colors, will be tinted later), low contrast, ` +
+      `no text, no labels, no borders, no water, evenly lit, repeats seamlessly. Flat, understated.`,
+  },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
