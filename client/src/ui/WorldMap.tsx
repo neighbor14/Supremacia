@@ -342,6 +342,11 @@ export default function WorldMap() {
         }}
       >
         <defs>
+          {/* Clip unit-marker token art to a perfect circle (objectBoundingBox →
+              works at any position/size), so corner artifacts never show. */}
+          <clipPath id="markerClip" clipPathUnits="objectBoundingBox">
+            <circle cx="0.5" cy="0.5" r="0.5" />
+          </clipPath>
           {/* Deep ocean backdrop */}
           <radialGradient id="ocean-grad" cx="50%" cy="42%" r="75%">
             <stop offset="0%" stopColor="#16344f" />
@@ -487,15 +492,25 @@ export default function WorldMap() {
               >
                 {names.territory(territoryId)}
               </text>
-              {/* Army count badge */}
+              {/* Army marker: tank unit chip + stacked count in the corner.
+                  The count stays in its own badge so it remains readable even if
+                  the token art fails to load (count is the mechanically critical info). */}
               {armies > 0 && (
                 <g pointerEvents="none">
+                  {/* faint backing disc — keeps a chip shape if the image is missing */}
+                  <circle cx={lp.x} cy={lp.y + 7} r={7.4} fill="rgba(7,14,26,0.5)" />
+                  <image
+                    href="/art/markers/army.png"
+                    x={lp.x - 7.6} y={lp.y - 0.6} width={15.2} height={15.2}
+                    clipPath="url(#markerClip)"
+                  />
+                  {/* stack count, bottom-right */}
                   <circle
-                    cx={lp.x} cy={lp.y + 7} r={6.6}
-                    fill="rgba(7,14,26,0.86)" stroke={shade(baseColor, 0.32)} strokeWidth={0.9}
+                    cx={lp.x + 6.2} cy={lp.y + 12.6} r={4.6}
+                    fill="rgba(7,14,26,0.95)" stroke={shade(baseColor, 0.4)} strokeWidth={0.8}
                   />
                   <text
-                    x={lp.x} y={lp.y + 7.4} fill="#fef3c7" fontSize="8.5" fontWeight="bold"
+                    x={lp.x + 6.2} y={lp.y + 12.9} fill="#fef3c7" fontSize="6.2" fontWeight="bold"
                     textAnchor="middle" dominantBaseline="central"
                   >
                     {armies}
@@ -534,22 +549,38 @@ export default function WorldMap() {
             <g key={`navy-${seaId}`} pointerEvents="none">
               {forces.map((f, i) => {
                 const y = startY + i * rowH;
-                // Width scales with content so the pill stays readable when zoomed out.
-                const label = `⚓${f.navies}${f.embarked > 0 ? `  🪖${f.embarked}` : ''}`;
-                const w = 16 + label.length * 4.2;
+                const hasEmb = f.embarked > 0;
+                // Pill: [owner dot] [fleet token]{navies} (+ [army token]{embarked}).
+                const w = hasEmb ? 48 : 31;
+                const left = -w / 2;
                 return (
                   <g key={f.id} transform={`translate(${sea.labelPos.x}, ${y})`}>
                     <rect
-                      x={-w / 2} y={-5} width={w} height={10} rx={5}
-                      fill="rgba(8,18,34,0.82)" stroke={f.color} strokeWidth={0.6}
+                      x={left} y={-6} width={w} height={12} rx={6}
+                      fill="rgba(8,18,34,0.85)" stroke={f.color} strokeWidth={0.7}
                     />
-                    <circle cx={-w / 2 + 5} cy={0} r={2} fill={f.color} />
+                    {/* owner colour dot */}
+                    <circle cx={left + 4} cy={0} r={1.8} fill={f.color} />
+                    {/* fleet token + count */}
+                    <image href="/art/markers/navy.png" x={left + 7} y={-5} width={10} height={10} clipPath="url(#markerClip)" />
                     <text
-                      x={3} y={0.5} fill="#dbeafe" fontSize="7" fontWeight="bold"
+                      x={left + 19} y={0.4} fill="#dbeafe" fontSize="7.2" fontWeight="bold"
                       textAnchor="middle" dominantBaseline="central"
                     >
-                      {label}
+                      {f.navies}
                     </text>
+                    {/* embarked armies token + count */}
+                    {hasEmb && (
+                      <>
+                        <image href="/art/markers/army.png" x={left + 26} y={-5} width={10} height={10} clipPath="url(#markerClip)" />
+                        <text
+                          x={left + 38} y={0.4} fill="#dbeafe" fontSize="7.2" fontWeight="bold"
+                          textAnchor="middle" dominantBaseline="central"
+                        >
+                          {f.embarked}
+                        </text>
+                      </>
+                    )}
                   </g>
                 );
               })}

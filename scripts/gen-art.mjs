@@ -53,15 +53,43 @@ const FACTIONS = [
   { id: 'ussr',          color: 'deep soviet red',  motif: 'a bear head over an industrial gear and star' },
 ];
 
-const MANIFEST = FACTIONS.map(f => ({
-  id: `emblem:${f.id}`,
-  out: `art/emblems/${f.id}.png`,
-  size: '1024x1024',
-  prompt:
-    `Circular national military crest insignia for a fictional superpower. ` +
-    `Dominant color ${f.color}. Central motif: ${f.motif}. ` +
-    `Heraldic badge inside a clean circular medallion frame. ${STYLE}.`,
-}));
+// Marcadores de unidade no mapa. Precisam LER em tamanho minúsculo (zoom até 6x):
+// silhueta cheia, alto contraste, claro/prateado em fundo escuro de token (casa com
+// o badge escuro do mapa). Sem cor de facção — neutros para ler em qualquer pílula.
+const MARKER_STYLE = [
+  'minimalist bold military unit icon, single centered subject, heavy silhouette',
+  'light silver-white metallic finish with subtle bevel, on a dark slate circular token disc',
+  'no text, no numbers, no letters, flat game-token style, high contrast, crisp edges',
+  'readable when tiny, generous margin around the subject',
+].join(', ');
+
+const MARKERS = [
+  {
+    id: 'marker:army',
+    out: 'art/markers/army.png',
+    prompt: `Top-down board-game token: a single modern main battle tank seen from a 3/4 top view, ` +
+      `as a clean emblematic icon. ${MARKER_STYLE}.`,
+  },
+  {
+    id: 'marker:navy',
+    out: 'art/markers/navy.png',
+    prompt: `Board-game token: a single modern naval destroyer warship in side profile, ` +
+      `as a clean emblematic icon. ${MARKER_STYLE}.`,
+  },
+];
+
+const MANIFEST = [
+  ...FACTIONS.map(f => ({
+    id: `emblem:${f.id}`,
+    out: `art/emblems/${f.id}.png`,
+    size: '1024x1024',
+    prompt:
+      `Circular national military crest insignia for a fictional superpower. ` +
+      `Dominant color ${f.color}. Central motif: ${f.motif}. ` +
+      `Heraldic badge inside a clean circular medallion frame. ${STYLE}.`,
+  })),
+  ...MARKERS,
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
