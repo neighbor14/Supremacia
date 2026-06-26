@@ -8,6 +8,10 @@ import {
   getLegalOptionalStages,
   evaluateAction,
   planAmphibiousInvasion,
+  publicWealth,
+  readOpponentIntel,
+  gamePressure,
+  victoryThreat,
   EXECUTABLE_OPTIONAL_STAGES,
 } from '../ai';
 import type { AIDifficulty, GameState, Player } from '../types';
@@ -268,6 +272,181 @@ describe('AI movement (stage 5) — land + naval', () => {
 
     const after = useGameStore.getState().game!;
     expect(after.territories.north_africa.owner).toBe('africa');
+  });
+});
+
+describe('opponent economic intel (public info)', () => {
+  it('publicWealth only reads public fields and matches the détente wealth shape', () => {
+    const { game, ai } = aiGame();
+    ai.money = 10000;
+    ai.supplies = { grain: 2, oil: 0, mineral: 0 };
+    ai.resourceCards = ['c1', 'c2'];
+    ai.armies = {}; ai.navies = {}; ai.embarked = {}; // isola: zero unidades
+    ai.nukes = 1;
+    ai.loans = 3000;
+    const w = publicWealth(game, ai);
+    const expected =
+      10000 +
+      2 * game.market.prices.grain +
+      2 * RULES.WEALTH_COMPANY_VALUE +
+      0 + // sem unidades
+      1 * RULES.WEALTH_NUKE_VALUE -
+      3000;
+    expect(w).toBe(expected);
+  });
+
+  it('readOpponentIntel finds the richest live rival and counts nuke-armed enemies', () => {
+    const game = createInitialGameState('usa', ['africa', 'china'], undefined, 'classic');
+    const me = game.players.usa;
+    game.players.africa.money = 999999; // claramente o líder
+    game.players.china.money = 1000;
+    game.players.china.nukes = 2;       // armado
+    const intel = readOpponentIntel(game, me);
+    expect(intel.leaderId).toBe('africa');
+    expect(intel.behindBy).toBeGreaterThan(0);
+    expect(intel.nukeArmedEnemies).toBe(1);
+  });
+
+  it('trailing the wealth leader raises the combat score and flags attackLeader', () => {
+    const { game, ai } = aiGame();
+    game.turn.isFirstTurn = false;
+    ai.armies = { west_africa: 4 };
+    ai.supplies = { grain: 3, oil: 3, mineral: 3 };
+    game.territories.north_africa.owner = 'usa';     // alvo inimigo adjacente
+    game.players.usa.armies = { north_africa: 1 };   // vencível (margem ≥ 2)
+    game.players.usa.money = 500000;                 // humano disparado na frente
+    ai.money = 1000;
+
+    const smart = evaluateAction({ stage: 4 }, game, ai, AI_PROFILES.god);       // usesOpponentIntel
+    const naive = evaluateAction({ stage: 4 }, game, ai, AI_PROFILES.beginner);  // ignora intel
+    expect(smart.score).toBeGreaterThan(naive.score);
+    expect(smart.reason).toBe('aireason.attackLeader');
+  });
+
+  it('gamePressure is low early and high when one player dominates wealth', () => {
+    const game = createInitialGameState('usa', ['africa'], undefined, 'classic');
+    const early = gamePressure(game);
+    expect(early).toBeGreaterThanOrEqual(0);
+    expect(early).toBeLessThan(0.6); // turno 1, equilíbrio → começo de jogo
+    game.players.usa.money = 5_000_000; // dominância de riqueza disparada
+    expect(gamePressure(game)).toBeGreaterThan(early);
+    expect(gamePressure(game)).toBeGreaterThan(0.8);
+  });
+
+  it('victoryThreat rises with territorial control', () => {
+    const game = createInitialGameState('usa', ['africa'], undefined, 'classic');
+    const before = victoryThreat(game, game.players.africa);
+    // Dá quase todo o mapa à África → ameaça de Supremacia (fração territorial)
+    // ultrapassa qualquer fração de riqueza.
+    Object.keys(game.territories).forEach(id => { game.territories[id].owner = 'africa'; });
+    expect(victoryThreat(game, game.players.africa)).toBeGreaterThan(before);
+    expect(victoryThreat(game, game.players.africa)).toBeGreaterThan(0.9);
+  });
+
+  it('phase-aware: expansion (stage 5) scores higher early than in a dominated late game', () => {
+    function expansionScore(dominate: boolean) {
+      const { game, ai } = aiGame();
+      game.turn.isFirstTurn = false;
+      ai.armies = { west_africa: 3 };
+      game.territories.west_africa.owner = 'africa';
+      game.territories.north_africa.owner = null;   // terra neutra p/ expandir
+      ai.supplies = { grain: 6, oil: 0, mineral: 6 }; // oil 0 isola o estágio 5
+      ai.money = 50000;
+      if (dominate) {
+        // Humano dominando o mapa → pressão de fim de jogo alta.
+        Object.keys(game.territories).forEach(id => {
+          if (id !== 'west_africa' && id !== 'north_africa') game.territories[id].owner = 'usa';
+        });
+      }
+      return evaluateAction({ stage: 5 }, game, ai, AI_PROFILES.god).breakdown.expansionScore;
+    }
+    expect(expansionScore(false)).toBeGreaterThan(expansionScore(true));
+  });
+
+  it('cpuAttack prefers a poorer target when capturing it steals an enemy company', () => {
+    const game = createInitialGameState('south_america', ['africa'], 'god', 'classic');
+    game.turn.currentPlayer = 'africa';
+    game.turn.currentPlayerIndex = game.turn.playerOrder.indexOf('africa');
+    game.turn.isFirstTurn = false;
+    game.turn.stage = 1;
+    const af = game.players.africa;
+    af.resourceCards = [];
+    af.supplies = { grain: 6, oil: 6, mineral: 6 };
+    af.money = 60000;
+    af.armies = { west_africa: 4, north_africa: 4 };
+    game.territories.west_africa.owner = 'africa';
+    game.territories.north_africa.owner = 'africa';
+    const companyT = game.territories.west_africa.adjacentTerritories.find(
+      id => id !== 'north_africa' && game.territories[id],
+    )!;
+    const plainT = game.territories.north_africa.adjacentTerritories.find(
+      id => id !== 'west_africa' && game.territories[id] && id !== companyT,
+    )!;
+    // companyT pertence ao jogador POBRE, mas hospeda uma empresa do humano.
+    game.territories[companyT].owner = 'usa';
+    game.territories[plainT].owner = 'south_america';
+    game.players.usa.armies = { [companyT]: 1 };
+    game.players.south_america.armies = { [plainT]: 1 };
+    game.players.usa.money = 1000;
+    game.players.south_america.money = 50000;
+    // Coloca uma carta de empresa do humano em companyT (capturável na conquista).
+    const someCard = Object.values(game.resourceCards)[0];
+    someCard.territoryId = companyT;
+    someCard.ownerId = 'south_america';
+    useGameStore.setState({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map' });
+
+    useGameStore.getState().dispatch({ type: 'CPU_TURN' });
+
+    const after = useGameStore.getState().game!;
+    expect(after.territories[companyT].owner).toBe('africa'); // mirou a empresa, não o "mais rico"
+  });
+
+  it('a rival already holding nukes pushes the AI toward the tech/deterrent build', () => {
+    const { game, ai } = aiGame();
+    ai.money = 50000;
+    ai.supplies = { grain: 3, oil: 3, mineral: 3 };
+    ai.nukes = 0;
+    game.players.usa.nukes = 1; // rival já armado
+    const ev = evaluateAction({ stage: 6 }, game, ai, AI_PROFILES.god);
+    expect(ev.reason).toBe('aireason.buildDeterrent');
+    expect(ev.breakdown.techScore).toBeGreaterThan(10);
+  });
+
+  it('cpuAttack (smart profile) prefers striking the wealthier of two winnable targets', () => {
+    const game = createInitialGameState('south_america', ['africa'], 'god', 'classic');
+    game.turn.currentPlayer = 'africa';
+    game.turn.currentPlayerIndex = game.turn.playerOrder.indexOf('africa');
+    game.turn.isFirstTurn = false;
+    game.turn.stage = 1;
+    const af = game.players.africa;
+    af.resourceCards = [];
+    af.supplies = { grain: 6, oil: 6, mineral: 6 };
+    af.money = 60000;
+    // África tem tropa em west_africa e north_africa, cada uma com um alvo inimigo
+    // adjacente vencível, mas pertencentes a donos de riqueza muito diferente.
+    af.armies = { west_africa: 4, north_africa: 4 };
+    game.territories.west_africa.owner = 'africa';
+    game.territories.north_africa.owner = 'africa';
+    // central_africa (adj. a west_africa) = dono pobre; egypt-ish vizinho de north_africa = rico.
+    const poorT = game.territories.west_africa.adjacentTerritories.find(
+      id => id !== 'north_africa' && game.territories[id],
+    )!;
+    const richT = game.territories.north_africa.adjacentTerritories.find(
+      id => id !== 'west_africa' && game.territories[id] && id !== poorT,
+    )!;
+    game.territories[poorT].owner = 'usa';
+    game.territories[richT].owner = 'south_america';
+    game.players.usa.armies = { [poorT]: 1 };
+    game.players.south_america.armies = { [richT]: 1 };
+    game.players.usa.money = 1000;            // alvo pobre
+    game.players.south_america.money = 800000; // alvo rico → deve ser o escolhido
+    useGameStore.setState({ game, selectedTerritory: null, selectedSeaZone: null, uiMode: 'map' });
+
+    useGameStore.getState().dispatch({ type: 'CPU_TURN' });
+
+    const after = useGameStore.getState().game!;
+    // O território rico deve ter sido atacado (conquistado, dado margem 4 vs 1).
+    expect(after.territories[richT].owner).toBe('africa');
   });
 });
 

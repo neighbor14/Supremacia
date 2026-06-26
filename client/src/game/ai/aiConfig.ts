@@ -28,6 +28,14 @@ export interface AIConfig {
   usesMarketStrategy: boolean;
   /** Investe em pesquisa de bomba/laser quando faz sentido. */
   usesTechStrategy: boolean;
+  /**
+   * Lê a economia PÚBLICA dos rivais (dinheiro, recursos, nº de companhias,
+   * unidades, ogivas/laser — a mesma régua da vitória por Détente, e a mesma
+   * informação que o humano vê no placar de jogadores) para priorizar jogadas:
+   * frear o líder de riqueza, mirar o competidor mais forte ao atacar e reagir
+   * à corrida nuclear. NÃO é informação oculta — só a leitura da info já pública.
+   */
+  usesOpponentIntel: boolean;
 
   // Pesos de personalidade (0..1) — moldam o estilo, não a regra.
   aggression: number;
@@ -50,6 +58,7 @@ export const AI_PROFILES: Record<AIDifficulty, AIConfig> = {
     evaluatesActionPairs: false,
     usesMarketStrategy: false,
     usesTechStrategy: false,
+    usesOpponentIntel: false,
     aggression: 0.5,
     defensePriority: 0.3,
     expansionPriority: 0.5,
@@ -65,6 +74,7 @@ export const AI_PROFILES: Record<AIDifficulty, AIConfig> = {
     evaluatesActionPairs: true,
     usesMarketStrategy: true,
     usesTechStrategy: true,
+    usesOpponentIntel: true,
     aggression: 0.5,
     defensePriority: 0.6,
     expansionPriority: 0.5,
@@ -80,6 +90,7 @@ export const AI_PROFILES: Record<AIDifficulty, AIConfig> = {
     evaluatesActionPairs: true,
     usesMarketStrategy: true,
     usesTechStrategy: true,
+    usesOpponentIntel: true,
     aggression: 0.65,
     defensePriority: 0.7,
     expansionPriority: 0.65,
@@ -95,6 +106,7 @@ export const AI_PROFILES: Record<AIDifficulty, AIConfig> = {
     evaluatesActionPairs: true,
     usesMarketStrategy: true,
     usesTechStrategy: true,
+    usesOpponentIntel: true,
     aggression: 0.7,
     defensePriority: 0.8,
     expansionPriority: 0.7,

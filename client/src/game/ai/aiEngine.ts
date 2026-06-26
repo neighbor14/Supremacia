@@ -16,7 +16,7 @@
 // AICandidate (estágio + metadados), fiel à estrutura de turno real.
 // ============================================================
 
-import { GameState, Player, ResourceType } from '../types';
+import { GameState, Player, ResourceType, SuperpowerId } from '../types';
 import { RULES } from '../rulesConfig';
 import { AIConfig, getConfigForDifficulty } from './aiConfig';
 import { isSimultaneousSellRound } from '../simultaneousSell';
@@ -95,6 +95,117 @@ function excess(player: Player, keep = 3): number {
 
 function marketMid(state: GameState): number {
   return (state.market.minPrice + state.market.maxPrice) / 2;
+}
+
+// ────────────────────────────────────────────────────────────
+// Leitura da ECONOMIA PÚBLICA dos rivais (mesma info que o humano vê no
+// placar de jogadores). NÃO é informação oculta: dinheiro, recursos, nº de
+// companhias, unidades, ogivas/laser e empréstimos são todos públicos.
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Riqueza pública de um jogador — MESMA fórmula da vitória por Détente
+ * (`calculateWealth` no store), calculada só sobre informação pública.
+ * É a régua que a IA usa para comparar a sua posição com a dos rivais.
+ */
+export function publicWealth(state: GameState, p: Player): number {
+  return (
+    p.money +
+    p.supplies.grain * state.market.prices.grain +
+    p.supplies.oil * state.market.prices.oil +
+    p.supplies.mineral * state.market.prices.mineral +
+    p.resourceCards.length * RULES.WEALTH_COMPANY_VALUE +
+    unitTotal(p) * RULES.WEALTH_UNIT_VALUE +
+    p.nukes * RULES.WEALTH_NUKE_VALUE +
+    p.laserStars * RULES.WEALTH_LASER_STAR_VALUE -
+    p.loans
+  );
+}
+
+function livePlayers(state: GameState): Player[] {
+  return Object.values(state.players).filter(p => !(p as Player).isEliminated) as Player[];
+}
+
+/**
+ * Proximidade da VITÓRIA de um jogador (0..1) sobre info pública. Não há um
+ * número fixo de territórios p/ vencer (Supremacia = sobrar sozinho), então
+ * usamos dois proxies e pegamos o maior:
+ *  - fração de territórios controlados (rumo à Supremacia);
+ *  - fração da riqueza pública total (rumo à Détente).
+ */
+export function victoryThreat(state: GameState, p: Player): number {
+  const totalLand = Object.keys(state.territories).length || 1;
+  const owned = Object.values(state.territories).filter(t => t.owner === p.id).length;
+  const terrShare = owned / totalLand;
+
+  const live = livePlayers(state);
+  const wealths = live.map(x => Math.max(0, publicWealth(state, x)));
+  const sumW = wealths.reduce((a, b) => a + b, 0) || 1;
+  const wealthShare = Math.max(0, publicWealth(state, p)) / sumW;
+
+  return Math.max(terrShare, wealthShare);
+}
+
+/**
+ * "Pressão de fim de jogo" (0..1): perto de 0 no começo (expansão/economia
+ * importam mais), perto de 1 quando alguém está dominando ou o relógio avançou
+ * (conter quem vai vencer importa mais). Tudo de info pública. Pegamos o MAIOR
+ * sinal — qualquer ameaça de fim de jogo já eleva a pressão.
+ */
+export function gamePressure(state: GameState): number {
+  const totalLand = Object.keys(state.territories).length || 1;
+  const ownedCount: Record<string, number> = {};
+  for (const t of Object.values(state.territories)) {
+    if (t.owner) ownedCount[t.owner] = (ownedCount[t.owner] || 0) + 1;
+  }
+  const maxTerrShare = Object.values(ownedCount).reduce((m, c) => Math.max(m, c / totalLand), 0);
+
+  const live = livePlayers(state);
+  const wealths = live.map(p => Math.max(0, publicWealth(state, p)));
+  const sumW = wealths.reduce((a, b) => a + b, 0) || 1;
+  const maxW = wealths.reduce((m, w) => Math.max(m, w), 0);
+  const fair = 1 / Math.max(live.length, 1);
+  const wealthDom = sumW > 0 ? Math.max(0, (maxW / sumW - fair) / (1 - fair || 1)) : 0;
+
+  const nuked = Object.values(state.territories).filter(t => t.nuked).length;
+  const nukeSat = nuked / RULES.HOLOCAUST_THRESHOLD;
+
+  const turnProg = Math.min((state.turn.turnNumber ?? 1) / 14, 1);
+
+  return Math.max(0, Math.min(1, Math.max(maxTerrShare, wealthDom, nukeSat, turnProg)));
+}
+
+export interface OpponentIntel {
+  leaderId: SuperpowerId | null; // rival vivo MAIS PERTO de vencer (maior ameaça)
+  leaderThreat: number;          // 0..1 — proximidade da vitória do líder
+  behindBy: number;              // riqueza pública do líder − a minha (0 se a IA lidera)
+  myWealth: number;
+  nukeArmedEnemies: number;      // rivais vivos com ogiva já produzida (nukes > 0)
+}
+
+/** Resume a posição PÚBLICA dos adversários vivos (read-only). O "líder" é quem
+ *  está mais perto de uma condição de vitória — não simplesmente o mais rico. */
+export function readOpponentIntel(state: GameState, player: Player): OpponentIntel {
+  const myWealth = publicWealth(state, player);
+  let leaderId: SuperpowerId | null = null;
+  let leaderThreat = -1;
+  let leaderWealth = 0;
+  let nukeArmedEnemies = 0;
+  for (const [pid, p0] of Object.entries(state.players)) {
+    if (pid === player.id) continue;
+    const p = p0 as Player;
+    if (p.isEliminated) continue;
+    if (p.nukes > 0) nukeArmedEnemies++;
+    const th = victoryThreat(state, p);
+    if (th > leaderThreat) { leaderThreat = th; leaderId = pid as SuperpowerId; leaderWealth = publicWealth(state, p); }
+  }
+  return {
+    leaderId,
+    leaderThreat: leaderId ? leaderThreat : 0,
+    behindBy: leaderId ? Math.max(0, leaderWealth - myWealth) : 0,
+    myWealth,
+    nukeArmedEnemies,
+  };
 }
 
 /** -1..1: o quão bom está o preço médio de mercado para VENDER. */
@@ -434,6 +545,16 @@ export function evaluateAction(
       reason = atk.bestMargin >= 3
         ? 'aireason.attackWeaker'
         : 'aireason.attackAdvantage';
+      // Inteligência situacional: conter quem está PERTO de vencer pesa mais
+      // conforme o jogo avança (gamePressure). Cedo, a agressão geral vale menos
+      // que expansão/economia; tarde, frear o líder vira prioridade.
+      if (config.usesOpponentIntel) {
+        const intel = readOpponentIntel(state, player);
+        const pressure = gamePressure(state);
+        b.militaryScore *= 0.7 + 0.6 * pressure;
+        b.opportunityScore += intel.leaderThreat * (0.5 + 1.5 * pressure) * 16 * config.aggression;
+        if (intel.leaderThreat > 0.4 && pressure > 0.4) reason = 'aireason.attackLeader';
+      }
       break;
     }
     case 6: { // Construção
@@ -449,6 +570,16 @@ export function evaluateAction(
       reason = threat > 0
         ? 'aireason.buildReinforce'
         : 'aireason.buildExpand';
+      // Dissuasão nuclear: se um rival JÁ tem ogiva e a IA não, correr atrás da
+      // paridade vira prioridade (info pública: arsenal alheio é visível).
+      if (config.usesOpponentIntel && config.usesTechStrategy &&
+          player.nukes === 0 && player.money > RULES.NUKE_COST * 2) {
+        const intel = readOpponentIntel(state, player);
+        if (intel.nukeArmedEnemies > 0) {
+          b.techScore += 16;
+          reason = 'aireason.buildDeterrent';
+        }
+      }
       break;
     }
     case 7: { // Mercado (comprar)
@@ -474,6 +605,14 @@ export function evaluateAction(
       b.defenseScore = move.reinforceTargets * 12 * config.defensePriority;
       // Aproximar a frota de terra inimiga prepara combate/projeção naval.
       b.militaryScore = move.navalRepositions * 8 * config.aggression;
+      // Consciência de fase: expandir/ocupar terra neutra vale MAIS no começo
+      // (corrida por território e produção) e perde força quando o jogo já está
+      // dominado (aí defender/conter o líder importa mais).
+      if (config.usesOpponentIntel) {
+        const pressure = gamePressure(state);
+        b.expansionScore *= 1.3 - 0.6 * pressure;
+        b.defenseScore *= 0.8 + 0.5 * pressure;
+      }
       reason = move.expansionTargets > 0
         ? 'aireason.moveExpand'
         : move.amphibiousTargets > 0

@@ -6,7 +6,7 @@ import { rollDice, sumDice, shuffleArray } from './rng';
 import { SUPERPOWER_IDS, SUPERPOWERS } from '../data/initialPlayers';
 import { nanoid } from 'nanoid';
 import { isNukeCard, isLaserCard, isTechCard, getTechCounts } from './researchDeck';
-import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, planAmphibiousInvasion, OptionalStage, AIConfig } from './ai';
+import { chooseOptionalStages, getPlayerAIConfig, shouldResearchTech, planAmphibiousInvasion, victoryThreat, gamePressure, OptionalStage, AIConfig } from './ai';
 import { isSimultaneousSellRound } from './simultaneousSell';
 import { fmtNum, t } from '../i18n/useI18n';
 import { TranslationKey } from '../i18n';
@@ -2342,7 +2342,7 @@ function cpuTurn(state: GameState): void {
         cpuSell(state, player);
         break;
       case 4: { // Attack
-        const atk = cpuAttack(state, player);
+        const atk = cpuAttack(state, player, aiConfig);
         // D6/D7: se o defensor é humano e pode responder, pausa o turno da IA.
         // O humano age via CombatModal; FINISH_DEFENDER_RESPONSE avança o turno.
         if (atk?.awaitingDefenderResponse) return;
@@ -2423,9 +2423,23 @@ interface CpuAttackResult {
   awaitingDefenderResponse?: boolean;
 }
 
-function cpuAttack(state: GameState, player: typeof state.players[SuperpowerId]): CpuAttackResult | null {
+interface CpuAttackTarget {
+  territoryId: string;
+  adjId: string;
+  armyCount: number;
+  enemyForces: number;
+  defenderId: SuperpowerId;
+}
+
+function cpuAttack(
+  state: GameState,
+  player: typeof state.players[SuperpowerId],
+  config?: AIConfig,
+): CpuAttackResult | null {
   if (player.supplies.grain < 1 || player.supplies.oil < 1 || player.supplies.mineral < 1) return null;
 
+  // 1) Reúne TODOS os alvos vencíveis (mesma condição de antes: margem ≥ 2).
+  const targets: CpuAttackTarget[] = [];
   for (const [territoryId, armyCount] of Object.entries(player.armies)) {
     if (armyCount < 3) continue;
     const territory = state.territories[territoryId];
@@ -2445,54 +2459,86 @@ function cpuAttack(state: GameState, player: typeof state.players[SuperpowerId])
       }
 
       if (armyCount > enemyForces + 1 && defenderId) {
-        const attackerUnitsInitial = armyCount;
-        const defenderUnitsInitial = enemyForces;
-
-        // Use the same shared path as the human player
-        initiateAttack(state, territoryId, adjId, 'territory');
-        if (!state.combat.active) return null;
-        rollCombat(state);
-
-        const result: CpuAttackResult = {
-          fromId: territoryId,
-          targetId: adjId,
-          fromName: territoryName(territoryId),
-          targetName: territoryName(adjId),
-          defenderName: factionShort(defenderId),
-          attackerDice: [...state.combat.attackerDice],
-          defenderDice: [...state.combat.defenderDice],
-          attackerLosses: state.combat.attackerLosses,
-          defenderLosses: state.combat.defenderLosses,
-          attackerUnitsInitial,
-          defenderUnitsInitial,
-          attackerUnitsAfter: state.combat.attackerUnitsAfter,
-          defenderUnitsAfter: state.combat.defenderUnitsAfter,
-          conquered: false,
-        };
-
-        if (state.combat.phase === 'occupy') {
-          occupyTerritory(state, 1); // AI always advances 1 army
-          result.conquered = state.territories[adjId]?.owner === player.id;
-        } else {
-          // Defensor sobreviveu → D6/D7.
-          const defender = state.players[defenderId];
-          const hasResponse = state.combat.reinforceAvailable || state.combat.counterAttackAvailable;
-          if (defender.isHuman && hasResponse) {
-            // Pausa: humano decide reforçar/contra-atacar pela CombatModal.
-            // Não reseta — o combate fica em 'defender_response' para o snapshot.
-            state.combat.phase = 'defender_response';
-            result.awaitingDefenderResponse = true;
-          } else {
-            // Defensor IA (ou humano sem opções) → resolve automaticamente.
-            resolveDefenderResponseAuto(state);
-            resetCombat(state);
-          }
-        }
-        return result; // One attack per turn for CPU
+        targets.push({ territoryId, adjId, armyCount, enemyForces, defenderId });
       }
     }
   }
-  return null;
+
+  if (targets.length === 0) return null;
+
+  // 2) Escolhe o alvo. Com inteligência situacional (info pública), pondera três
+  // coisas, com pesos que mudam conforme a FASE do jogo (gamePressure):
+  //   • ameaça de vitória do dono — conter quem está perto de vencer (pesa mais tarde);
+  //   • empresas inimigas capturáveis ali — conquistar transfere as cartas + produção
+  //     (claimTerritory), o que às vezes torna o alvo "pobre" o mais valioso;
+  //   • facilidade do combate (menos defensores) — pesa mais cedo (golpe barato).
+  // Sem inteligência (iniciante), mantém o 1º alvo encontrado (comportamento anterior).
+  let chosen = targets[0];
+  if (config?.usesOpponentIntel) {
+    const pressure = gamePressure(state);
+    const scoreOf = (tg: CpuAttackTarget) => {
+      const defender = state.players[tg.defenderId];
+      const threat = victoryThreat(state, defender);
+      const enemyCompanies = companiesInTerritory(state, tg.adjId)
+        .filter(cid => {
+          const o = state.resourceCards[cid]?.ownerId;
+          return o != null && o !== player.id;
+        }).length;
+      const ease = 1 / (1 + tg.enemyForces);
+      return (
+        threat * (0.4 + 1.6 * pressure) * 10 +   // conter o líder — mais no fim de jogo
+        enemyCompanies * 6 +                      // roubar empresa = cartas + produção
+        ease * (1.5 - 0.5 * pressure) * 2         // golpe barato — mais valioso cedo
+      );
+    };
+    chosen = targets.reduce((best, cur) => (scoreOf(cur) > scoreOf(best) ? cur : best), targets[0]);
+  }
+
+  // 3) Executa o ataque escolhido pelo MESMO caminho do humano.
+  const { territoryId, adjId, armyCount, enemyForces, defenderId } = chosen;
+  const attackerUnitsInitial = armyCount;
+  const defenderUnitsInitial = enemyForces;
+
+  initiateAttack(state, territoryId, adjId, 'territory');
+  if (!state.combat.active) return null;
+  rollCombat(state);
+
+  const result: CpuAttackResult = {
+    fromId: territoryId,
+    targetId: adjId,
+    fromName: territoryName(territoryId),
+    targetName: territoryName(adjId),
+    defenderName: factionShort(defenderId),
+    attackerDice: [...state.combat.attackerDice],
+    defenderDice: [...state.combat.defenderDice],
+    attackerLosses: state.combat.attackerLosses,
+    defenderLosses: state.combat.defenderLosses,
+    attackerUnitsInitial,
+    defenderUnitsInitial,
+    attackerUnitsAfter: state.combat.attackerUnitsAfter,
+    defenderUnitsAfter: state.combat.defenderUnitsAfter,
+    conquered: false,
+  };
+
+  if (state.combat.phase === 'occupy') {
+    occupyTerritory(state, 1); // AI always advances 1 army
+    result.conquered = state.territories[adjId]?.owner === player.id;
+  } else {
+    // Defensor sobreviveu → D6/D7.
+    const defender = state.players[defenderId];
+    const hasResponse = state.combat.reinforceAvailable || state.combat.counterAttackAvailable;
+    if (defender.isHuman && hasResponse) {
+      // Pausa: humano decide reforçar/contra-atacar pela CombatModal.
+      // Não reseta — o combate fica em 'defender_response' para o snapshot.
+      state.combat.phase = 'defender_response';
+      result.awaitingDefenderResponse = true;
+    } else {
+      // Defensor IA (ou humano sem opções) → resolve automaticamente.
+      resolveDefenderResponseAuto(state);
+      resetCombat(state);
+    }
+  }
+  return result; // One attack per turn for CPU
 }
 
 function cpuBuild(state: GameState, player: typeof state.players[SuperpowerId]): void {
@@ -2855,7 +2901,7 @@ export function planAiTurn(initialState: GameState): PlannedStep[] {
       }
 
       case 4: { // Attack — cpuAttack returns full result for rich presentation
-        const attackResult = cpuAttack(state, state.players[playerId]);
+        const attackResult = cpuAttack(state, state.players[playerId], getPlayerAIConfig(state.players[playerId]));
         if (attackResult) {
           const { fromName, targetName, defenderName, conquered } = attackResult;
           const attackerTotal = attackResult.attackerDice.reduce((a, b) => a + b, 0);
